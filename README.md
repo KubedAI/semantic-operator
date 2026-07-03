@@ -104,12 +104,10 @@ make ecr-login docker-build docker-push \
 helm install semantic-operator charts/semantic-operator \
   --namespace semantic-system --create-namespace \
   --set image.repository=<acct>.dkr.ecr.us-west-2.amazonaws.com/osi-semantic-operator \
+  --set image.tag=0.1.0 \
   --set starrocks.host=starrocks-fe.starrocks.svc.cluster.local \
-  --set starrocks.passwordSecret.name=starrocks-auth \
-  --set starrocks.icebergCatalog=iceberg \
   --set valkey.addr=valkey.valkey.svc.cluster.local:6379 \
-  --set aws.region=us-west-2 \
-  --set glue.database=osi_demo
+  --set aws.region=us-west-2
 
 # 3. Load demo data (creates Iceberg tables in Glue via StarRocks, idempotent)
 make demo-data
@@ -128,7 +126,7 @@ make demo-nl QUESTION="What was total sales by category in 2001?"
 make bench
 ```
 
-Every endpoint, credential, and catalog name above is a Helm value or environment variable. Nothing is hardcoded. See [charts/semantic-operator/values.yaml](charts/semantic-operator/values.yaml).
+Every endpoint, credential, and catalog name above is a Helm value or environment variable. Nothing is hardcoded. See [charts/semantic-operator/values.yaml](charts/semantic-operator/values.yaml). The full copy-paste procedure, including the one-time StarRocks external catalog setup for Glue and troubleshooting, is [docs/RUNBOOK.md](docs/RUNBOOK.md).
 
 ## Demo: with and without the semantic layer
 

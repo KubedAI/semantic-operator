@@ -1,0 +1,354 @@
+# Benchmark question set. Each question has two paraphrases and a
+# hand-written ground-truth SQL whose definition matches the certified
+# metric in demo/model/semanticmodel.yaml. $DB. expands to the configured
+# `catalog`.`database`. prefix at run time. Ground truth executes on the
+# same StarRocks cluster, so comparisons are engine-identical.
+#
+# The ambiguous questions (customer lifetime value, sales per employee) are
+# the point of the benchmark: raw text-to-SQL tends to invent a plausible
+# but wrong formula, and to invent different formulas across paraphrases.
+
+questions:
+  - id: q01
+    question: "What was total sales revenue in 2001?"
+    paraphrases:
+      - "How much revenue did we make in 2001?"
+      - "Give me gross sales for the year 2001."
+    ground_truth_sql: |
+      SELECT SUM(ss.ss_ext_sales_price)
+      FROM $DB.store_sales ss JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      WHERE d.d_year = 2001
+
+  - id: q02
+    question: "What was total sales by product category in 2001?"
+    paraphrases:
+      - "Break down 2001 revenue by category."
+      - "Show sales amount per department for 2001."
+    ground_truth_sql: |
+      SELECT i.i_category, SUM(ss.ss_ext_sales_price)
+      FROM $DB.store_sales ss
+      JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      JOIN $DB.item i ON ss.ss_item_sk = i.i_item_sk
+      WHERE d.d_year = 2001
+      GROUP BY i.i_category
+
+  - id: q03
+    question: "What was total net profit in 2002?"
+    paraphrases:
+      - "How much profit did we earn in 2002?"
+      - "Total earnings for 2002?"
+    ground_truth_sql: |
+      SELECT SUM(ss.ss_net_profit)
+      FROM $DB.store_sales ss JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      WHERE d.d_year = 2002
+
+  - id: q04
+    question: "Show monthly total sales for 2001 by calendar month."
+    paraphrases:
+      - "What is the monthly revenue trend across 2001?"
+      - "Total sales per month in 2001, please."
+    ground_truth_sql: |
+      SELECT DATE_TRUNC('month', d.d_date), SUM(ss.ss_ext_sales_price)
+      FROM $DB.store_sales ss JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      WHERE d.d_year = 2001
+      GROUP BY 1
+
+  - id: q05
+    question: "How many units were sold per category in 2000?"
+    paraphrases:
+      - "Total quantity sold by product category in 2000?"
+      - "Units sold in 2000, broken down by department."
+    ground_truth_sql: |
+      SELECT i.i_category, SUM(ss.ss_quantity)
+      FROM $DB.store_sales ss
+      JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      JOIN $DB.item i ON ss.ss_item_sk = i.i_item_sk
+      WHERE d.d_year = 2000
+      GROUP BY i.i_category
+
+  - id: q06
+    question: "How many sales transactions were there in 2001?"
+    paraphrases:
+      - "What is the number of sales line items recorded in 2001?"
+      - "Count the sales transactions for 2001."
+    ground_truth_sql: |
+      SELECT COUNT(ss.ss_ticket_number)
+      FROM $DB.store_sales ss JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      WHERE d.d_year = 2001
+
+  - id: q07
+    question: "What is total sales revenue by store state?"
+    paraphrases:
+      - "Revenue split by the state each store is in?"
+      - "Show gross sales per state."
+    ground_truth_sql: |
+      SELECT s.s_state, SUM(ss.ss_ext_sales_price)
+      FROM $DB.store_sales ss JOIN $DB.store s ON ss.ss_store_sk = s.s_store_sk
+      GROUP BY s.s_state
+
+  - id: q08
+    question: "What was revenue in quarter 2001Q3?"
+    paraphrases:
+      - "Total sales for the third quarter of 2001?"
+      - "How much did we sell in Q3 2001?"
+    ground_truth_sql: |
+      SELECT SUM(ss.ss_ext_sales_price)
+      FROM $DB.store_sales ss JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      WHERE d.d_quarter_name = '2001Q3'
+
+  - id: q09
+    question: "What is the customer lifetime value?"
+    paraphrases:
+      - "What is our CLV?"
+      - "What is the average lifetime revenue per customer?"
+    ground_truth_sql: |
+      SELECT SUM(ss_ext_sales_price) / COUNT(DISTINCT ss_customer_sk)
+      FROM $DB.store_sales
+
+  - id: q10
+    question: "What was customer lifetime value for purchases made in 2001?"
+    paraphrases:
+      - "CLV computed over 2001 sales only?"
+      - "Average revenue per distinct customer for 2001?"
+    ground_truth_sql: |
+      SELECT SUM(ss.ss_ext_sales_price) / COUNT(DISTINCT ss.ss_customer_sk)
+      FROM $DB.store_sales ss JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      WHERE d.d_year = 2001
+
+  - id: q11
+    question: "What is our overall sales per employee?"
+    paraphrases:
+      - "What is the store productivity, measured as revenue per employee?"
+      - "How much revenue do we generate per store employee?"
+    ground_truth_sql: |
+      SELECT (SELECT SUM(ss_ext_sales_price) FROM $DB.store_sales)
+           / NULLIF((SELECT SUM(s_number_employees) FROM $DB.store), 0)
+
+  - id: q12
+    question: "What is sales per employee by store state?"
+    paraphrases:
+      - "Show store productivity for each state."
+      - "Revenue per employee, split by state?"
+    ground_truth_sql: |
+      SELECT n.s_state, n.rev / NULLIF(d.emp, 0)
+      FROM (SELECT s.s_state, SUM(ss.ss_ext_sales_price) AS rev
+            FROM $DB.store_sales ss JOIN $DB.store s ON ss.ss_store_sk = s.s_store_sk
+            GROUP BY s.s_state) n
+      JOIN (SELECT s_state, SUM(s_number_employees) AS emp
+            FROM $DB.store GROUP BY s_state) d
+        ON n.s_state = d.s_state
+
+  - id: q13
+    question: "What was net profit by category in 2001?"
+    paraphrases:
+      - "2001 profit broken down by product category?"
+      - "Show earnings per department for 2001."
+    ground_truth_sql: |
+      SELECT i.i_category, SUM(ss.ss_net_profit)
+      FROM $DB.store_sales ss
+      JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      JOIN $DB.item i ON ss.ss_item_sk = i.i_item_sk
+      WHERE d.d_year = 2001
+      GROUP BY i.i_category
+
+  - id: q14
+    question: "What was revenue for the Books category by year?"
+    paraphrases:
+      - "Yearly sales for Books?"
+      - "How did the Books department revenue evolve per year?"
+    ground_truth_sql: |
+      SELECT d.d_year, SUM(ss.ss_ext_sales_price)
+      FROM $DB.store_sales ss
+      JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      JOIN $DB.item i ON ss.ss_item_sk = i.i_item_sk
+      WHERE i.i_category = 'Books'
+      GROUP BY d.d_year
+
+  - id: q15
+    question: "How many units were sold in December 2001?"
+    paraphrases:
+      - "Total quantity sold during Dec 2001?"
+      - "Units moved in the last month of 2001?"
+    ground_truth_sql: |
+      SELECT SUM(ss.ss_quantity)
+      FROM $DB.store_sales ss JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      WHERE d.d_year = 2001 AND d.d_moy = 12
+
+  - id: q16
+    question: "How many transactions happened per store state in 2000?"
+    paraphrases:
+      - "2000 sales counts by state?"
+      - "Number of sales line items per state for the year 2000."
+    ground_truth_sql: |
+      SELECT s.s_state, COUNT(ss.ss_ticket_number)
+      FROM $DB.store_sales ss
+      JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      JOIN $DB.store s ON ss.ss_store_sk = s.s_store_sk
+      WHERE d.d_year = 2000
+      GROUP BY s.s_state
+
+  - id: q17
+    question: "What was revenue from Texas stores in 2001?"
+    paraphrases:
+      - "2001 sales for stores located in TX?"
+      - "How much did Texas locations sell in 2001?"
+    ground_truth_sql: |
+      SELECT SUM(ss.ss_ext_sales_price)
+      FROM $DB.store_sales ss
+      JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      JOIN $DB.store s ON ss.ss_store_sk = s.s_store_sk
+      WHERE d.d_year = 2001 AND s.s_state = 'TX'
+
+  - id: q18
+    question: "What is customer lifetime value for California store purchases?"
+    paraphrases:
+      - "CLV restricted to sales at CA stores?"
+      - "Average lifetime revenue per customer shopping in California?"
+    ground_truth_sql: |
+      SELECT SUM(ss.ss_ext_sales_price) / COUNT(DISTINCT ss.ss_customer_sk)
+      FROM $DB.store_sales ss JOIN $DB.store s ON ss.ss_store_sk = s.s_store_sk
+      WHERE s.s_state = 'CA'
+
+  - id: q19
+    question: "Show revenue by quarter for 2002."
+    paraphrases:
+      - "Quarterly sales in 2002?"
+      - "2002 revenue per fiscal quarter."
+    ground_truth_sql: |
+      SELECT d.d_quarter_name, SUM(ss.ss_ext_sales_price)
+      FROM $DB.store_sales ss JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      WHERE d.d_year = 2002
+      GROUP BY d.d_quarter_name
+
+  - id: q20
+    question: "What is sales per employee for Texas stores?"
+    paraphrases:
+      - "Store productivity in TX?"
+      - "Revenue per employee across Texas locations?"
+    ground_truth_sql: |
+      SELECT (SELECT SUM(ss.ss_ext_sales_price)
+              FROM $DB.store_sales ss JOIN $DB.store s ON ss.ss_store_sk = s.s_store_sk
+              WHERE s.s_state = 'TX')
+           / NULLIF((SELECT SUM(s_number_employees) FROM $DB.store WHERE s_state = 'TX'), 0)
+
+  - id: q21
+    question: "How many units of brand 'scholar #1' did we sell in 2001?"
+    paraphrases:
+      - "2001 quantity sold for the scholar #1 brand?"
+      - "Units moved in 2001 for items branded 'scholar #1'?"
+    ground_truth_sql: |
+      SELECT SUM(ss.ss_quantity)
+      FROM $DB.store_sales ss
+      JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      JOIN $DB.item i ON ss.ss_item_sk = i.i_item_sk
+      WHERE d.d_year = 2001 AND i.i_brand = 'scholar #1'
+
+  - id: q22
+    question: "What was net profit by store state in 2002?"
+    paraphrases:
+      - "2002 earnings per state?"
+      - "Break down 2002 profit by the state of the store."
+    ground_truth_sql: |
+      SELECT s.s_state, SUM(ss.ss_net_profit)
+      FROM $DB.store_sales ss
+      JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      JOIN $DB.store s ON ss.ss_store_sk = s.s_store_sk
+      WHERE d.d_year = 2002
+      GROUP BY s.s_state
+
+  - id: q23
+    question: "Show total sales by month name for 2000."
+    paraphrases:
+      - "2000 revenue per calendar month name?"
+      - "Sales for each month of 2000, labeled by month."
+    ground_truth_sql: |
+      SELECT d.d_month_name, SUM(ss.ss_ext_sales_price)
+      FROM $DB.store_sales ss JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      WHERE d.d_year = 2000
+      GROUP BY d.d_month_name
+
+  - id: q24
+    question: "What is total revenue by product category across all years?"
+    paraphrases:
+      - "All-time sales per category?"
+      - "Show me lifetime revenue for each department."
+    ground_truth_sql: |
+      SELECT i.i_category, SUM(ss.ss_ext_sales_price)
+      FROM $DB.store_sales ss JOIN $DB.item i ON ss.ss_item_sk = i.i_item_sk
+      GROUP BY i.i_category
+
+  - id: q25
+    question: "Show yearly revenue for 2000 and 2001."
+    paraphrases:
+      - "Compare total sales between 2000 and 2001, by year."
+      - "Revenue per year, but only for 2000 and 2001."
+    ground_truth_sql: |
+      SELECT d.d_year, SUM(ss.ss_ext_sales_price)
+      FROM $DB.store_sales ss JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      WHERE d.d_year IN (2000, 2001)
+      GROUP BY d.d_year
+
+  - id: q26
+    question: "What was net profit for Electronics in 2001Q2?"
+    paraphrases:
+      - "Electronics earnings in the second quarter of 2001?"
+      - "Q2 2001 profit for the Electronics category?"
+    ground_truth_sql: |
+      SELECT SUM(ss.ss_net_profit)
+      FROM $DB.store_sales ss
+      JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      JOIN $DB.item i ON ss.ss_item_sk = i.i_item_sk
+      WHERE d.d_quarter_name = '2001Q2' AND i.i_category = 'Electronics'
+
+  - id: q27
+    question: "What is customer lifetime value by year?"
+    paraphrases:
+      - "CLV per year?"
+      - "Yearly average lifetime revenue per distinct customer?"
+    ground_truth_sql: |
+      SELECT d.d_year, SUM(ss.ss_ext_sales_price) / COUNT(DISTINCT ss.ss_customer_sk)
+      FROM $DB.store_sales ss JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      GROUP BY d.d_year
+
+  - id: q28
+    question: "What is sales per employee for California stores in 2002?"
+    paraphrases:
+      - "2002 store productivity in CA?"
+      - "Revenue per employee for California locations during 2002?"
+    ground_truth_sql: |
+      SELECT (SELECT SUM(ss.ss_ext_sales_price)
+              FROM $DB.store_sales ss
+              JOIN $DB.store s ON ss.ss_store_sk = s.s_store_sk
+              JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+              WHERE s.s_state = 'CA' AND d.d_year = 2002)
+           / NULLIF((SELECT SUM(t.s_number_employees) FROM (
+                SELECT DISTINCT s.s_store_sk, s.s_number_employees
+                FROM $DB.store_sales ss
+                JOIN $DB.store s ON ss.ss_store_sk = s.s_store_sk
+                JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+                WHERE s.s_state = 'CA' AND d.d_year = 2002) t), 0)
+
+  - id: q29
+    question: "Show revenue by store state and year for the Jewelry category."
+    paraphrases:
+      - "Jewelry sales split by state and year?"
+      - "For Jewelry items, what is revenue per state per year?"
+    ground_truth_sql: |
+      SELECT s.s_state, d.d_year, SUM(ss.ss_ext_sales_price)
+      FROM $DB.store_sales ss
+      JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      JOIN $DB.store s ON ss.ss_store_sk = s.s_store_sk
+      JOIN $DB.item i ON ss.ss_item_sk = i.i_item_sk
+      WHERE i.i_category = 'Jewelry'
+      GROUP BY s.s_state, d.d_year
+
+  - id: q30
+    question: "How many transactions and how much revenue did we have in 2002, by quarter?"
+    paraphrases:
+      - "2002 quarterly transaction counts alongside sales totals?"
+      - "Per quarter of 2002: number of sales and total revenue."
+    ground_truth_sql: |
+      SELECT d.d_quarter_name, COUNT(ss.ss_ticket_number), SUM(ss.ss_ext_sales_price)
+      FROM $DB.store_sales ss JOIN $DB.date_dim d ON ss.ss_sold_date_sk = d.d_date_sk
+      WHERE d.d_year = 2002
+      GROUP BY d.d_quarter_name
