@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "semantic-operator.name" . }}-manager
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "semantic-operator.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.manager.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "semantic-operator.name" . }}
+      app.kubernetes.io/component: manager
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "semantic-operator.name" . }}
+        app.kubernetes.io/component: manager
+      {{- with .Values.podAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "semantic-operator.managerSA" . }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: manager
+          image: "{{ required "image.repository is required" .Values.image.repository }}/manager:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --leader-elect={{ .Values.manager.leaderElect }}
+          env:
+            {{- include "semantic-operator.starrocksEnv" . | nindent 12 }}
+            - name: VIEW_DATABASE
+              value: {{ .Values.manager.viewDatabase | quote }}
+            - name: RESYNC_PERIOD
+              value: {{ .Values.manager.resyncPeriod | quote }}
+            - name: AWS_REGION
+              value: {{ .Values.aws.region | quote }}
+          ports:
+            - {containerPort: 8080, name: metrics}
+            - {containerPort: 8081, name: health}
+          livenessProbe:
+            httpGet: {path: /healthz, port: health}
+            initialDelaySeconds: 10
+          readinessProbe:
+            httpGet: {path: /readyz, port: health}
+            initialDelaySeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            readOnlyRootFilesystem: true
+          resources: {{- toYaml .Values.manager.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}

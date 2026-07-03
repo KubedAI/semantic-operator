@@ -1,0 +1,78 @@
+# All connection details are values. Nothing is hardcoded in the images.
+
+image:
+  # Base repository; the chart appends /manager and /server.
+  # Example: 123456789012.dkr.ecr.us-west-2.amazonaws.com/osi-semantic-operator
+  repository: ""
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Existing StarRocks cluster (FE MySQL-protocol endpoint). Required.
+starrocks:
+  host: ""            # e.g. starrocks-fe.starrocks.svc.cluster.local
+  port: 9030
+  user: root
+  # Reference an existing Secret holding the password; leave name empty for
+  # passwordless dev clusters.
+  passwordSecret:
+    name: ""
+    key: password
+  # Name of the StarRocks external catalog that fronts Iceberg/Glue. Used by
+  # the demo resources and documented for CR authors; each SemanticModel CR
+  # pins its own catalog in spec.connection.
+  icebergCatalog: iceberg
+
+# Existing Valkey (Redis-protocol). Optional; empty addr disables caching.
+valkey:
+  addr: ""            # e.g. valkey.valkey.svc.cluster.local:6379
+  passwordSecret:
+    name: ""
+    key: password
+  db: 0
+
+aws:
+  # Region for Glue catalog-source calls from the operator (IRSA supplies
+  # credentials; annotate the manager service account below).
+  region: us-west-2
+
+manager:
+  replicas: 1
+  leaderElect: true
+  # Drift-detection cadence.
+  resyncPeriod: 5m
+  # StarRocks default-catalog database where governed views are created.
+  viewDatabase: semantic_views
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 256Mi}
+
+server:
+  replicas: 2
+  logLevel: info
+  listenPort: 8090
+  planCacheTTL: 24h
+  resultCacheTTL: 60s
+  # OTLP/HTTP traces endpoint; empty disables tracing.
+  otelEndpoint: ""
+  resources:
+    requests: {cpu: 250m, memory: 256Mi}
+    limits: {memory: 512Mi}
+  service:
+    type: ClusterIP
+    port: 8090
+
+serviceAccount:
+  manager:
+    create: true
+    name: ""
+    # IRSA: eks.amazonaws.com/role-arn: arn:aws:iam::<acct>:role/<glue-read-role>
+    annotations: {}
+  server:
+    create: true
+    name: ""
+    annotations: {}
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

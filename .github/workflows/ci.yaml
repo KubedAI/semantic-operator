@@ -1,0 +1,46 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./... -count=1
+      - name: Verify generated code is current
+        run: |
+          go run sigs.k8s.io/controller-tools/cmd/controller-gen object paths=./api/...
+          go run sigs.k8s.io/controller-tools/cmd/controller-gen crd paths=./api/... output:crd:dir=./charts/semantic-operator/crds
+          git diff --exit-code
+
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Lint chart
+        run: helm lint charts/semantic-operator
+      - name: Render templates
+        run: helm template charts/semantic-operator --set starrocks.host=fe.example >/dev/null
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images (no push)
+        run: |
+          docker build --target manager -t manager:ci .
+          docker build --target server -t server:ci .

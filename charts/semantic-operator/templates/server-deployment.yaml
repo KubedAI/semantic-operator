@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "semantic-operator.name" . }}-server
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "semantic-operator.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.server.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "semantic-operator.name" . }}
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "semantic-operator.name" . }}
+        app.kubernetes.io/component: server
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.server.listenPort | quote }}
+        prometheus.io/path: /metrics
+      {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "semantic-operator.serverSA" . }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: server
+          image: "{{ required "image.repository is required" .Values.image.repository }}/server:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- include "semantic-operator.starrocksEnv" . | nindent 12 }}
+            - name: LISTEN_ADDR
+              value: ":{{ .Values.server.listenPort }}"
+            - name: LOG_LEVEL
+              value: {{ .Values.server.logLevel | quote }}
+            - name: WATCH_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: PLAN_CACHE_TTL
+              value: {{ .Values.server.planCacheTTL | quote }}
+            - name: RESULT_CACHE_TTL
+              value: {{ .Values.server.resultCacheTTL | quote }}
+            {{- if .Values.valkey.addr }}
+            - name: VALKEY_ADDR
+              value: {{ .Values.valkey.addr | quote }}
+            - name: VALKEY_DB
+              value: {{ .Values.valkey.db | quote }}
+            {{- if .Values.valkey.passwordSecret.name }}
+            - name: VALKEY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.valkey.passwordSecret.name }}
+                  key: {{ .Values.valkey.passwordSecret.key }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.server.otelEndpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.server.otelEndpoint | quote }}
+            {{- end }}
+          ports:
+            - containerPort: {{ .Values.server.listenPort }}
+              name: http
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 5
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            readOnlyRootFilesystem: true
+          resources: {{- toYaml .Values.server.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "semantic-operator.name" . }}-server
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "semantic-operator.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.server.service.type }}
+  selector:
+    app.kubernetes.io/name: {{ include "semantic-operator.name" . }}
+    app.kubernetes.io/component: server
+  ports:
+    - name: http
+      port: {{ .Values.server.service.port }}
+      targetPort: http
