@@ -1,0 +1,370 @@
+# Flights SemanticModel — a second Glue-backed example.
+#
+# Adapted from the Apache Ossie flights example:
+#   https://github.com/apache/ossie/blob/main/examples/flights.yaml
+#
+# The upstream file uses Ossie's `ontology` / `ontology_mappings` representation.
+# This operator implements the `semantic_model` form (datasets / relationships /
+# metrics), so this file is a faithful re-expression of that flights domain in
+# the form our validator and planner consume. It is illustrative (model only):
+# it binds to a Glue database `osi_flights` that you would create with your own
+# flight tables, or derive stubs from with `osictl derive --database osi_flights`.
+#
+# Glue binding: `spec.connection` pins catalog=iceberg (the StarRocks external
+# catalog fronting Glue) and database=osi_flights. Each `dataset.source` is a
+# bare table name that resolves to `iceberg.osi_flights.<table>`. Note that
+# orig_airport and dest_airport are two datasets bound to the SAME physical
+# Glue table (`airports`), aliased by role — the classic star-schema pattern
+# the ontology form expresses with two link mappings to Airport.
+apiVersion: semantic.osi.io/v1alpha1
+kind: SemanticModel
+metadata:
+  name: flights
+  namespace: semantic-system
+spec:
+  connection:
+    catalog: iceberg          # StarRocks external catalog fronting Glue
+    database: osi_flights
+    viewDatabase: semantic_views
+  osi:
+    name: flights_model
+    description: On-time-performance semantic model over flights, carriers, routes, and airports
+    ai_context:
+      instructions: >-
+        Use this model for flight on-time-performance analytics. Metrics are
+        certified definitions; never re-derive them from raw columns.
+        cancellation_rate is a fan-out-safe ratio over the flights fact, not a
+        per-row average. orig_airport and dest_airport are the same airports
+        table joined on the origin and destination of a route respectively.
+    datasets:
+      - name: flights
+        source: flights
+        primary_key: [fl_id]
+        description: Fact table of individual flights
+        ai_context:
+          synonyms: ["flights", "departures", "trips", "flight legs"]
+        fields:
+          - name: fl_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: fl_id
+            description: Flight identifier
+          - name: fl_carrier_code
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: fl_carrier_code
+            description: Foreign key to carriers
+          - name: fl_route_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: fl_route_id
+            description: Foreign key to routes
+          - name: fl_flight_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: fl_flight_date
+            dimension:
+              is_time: true
+            description: Date of the flight
+            ai_context:
+              synonyms: ["flight date", "date", "day"]
+          - name: fl_dep_delay
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: fl_dep_delay
+            description: Departure delay in minutes (negative means early)
+            ai_context:
+              synonyms: ["departure delay", "dep delay", "delay leaving"]
+          - name: fl_arr_delay
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: fl_arr_delay
+            description: Arrival delay in minutes (negative means early)
+            ai_context:
+              synonyms: ["arrival delay", "arr delay", "delay arriving"]
+          - name: fl_cancelled
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: fl_cancelled
+            description: Cancellation flag, 1 if cancelled else 0
+            ai_context:
+              synonyms: ["cancelled", "cancellation flag"]
+          - name: fl_distance
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: fl_distance
+            description: Great-circle distance flown in miles
+            ai_context:
+              synonyms: ["distance", "miles flown"]
+
+      - name: carriers
+        source: carriers
+        primary_key: [c_code]
+        description: Airline carrier dimension
+        ai_context:
+          synonyms: ["airlines", "carriers", "operators"]
+        fields:
+          - name: c_code
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: c_code
+            description: Carrier code (business key)
+          - name: c_name
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: c_name
+            description: Carrier name
+            ai_context:
+              synonyms: ["airline", "airline name", "carrier name"]
+
+      - name: routes
+        source: routes
+        primary_key: [r_id]
+        description: Route dimension (origin/destination airport pair)
+        ai_context:
+          synonyms: ["routes", "city pairs", "legs"]
+        fields:
+          - name: r_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: r_id
+            description: Route identifier
+          - name: r_orig_airport_code
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: r_orig_airport_code
+            description: Origin airport code (foreign key to airports)
+          - name: r_dest_airport_code
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: r_dest_airport_code
+            description: Destination airport code (foreign key to airports)
+          - name: r_distance
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: r_distance
+            description: Route distance in miles
+            ai_context:
+              synonyms: ["route distance"]
+
+      - name: orig_airport
+        source: airports          # same physical Glue table as dest_airport
+        primary_key: [a_code]
+        description: Origin airport (airports table joined on route origin)
+        ai_context:
+          synonyms: ["origin airport", "departure airport", "from airport"]
+        fields:
+          - name: a_code
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: a_code
+            description: Airport code
+          - name: a_city_nm
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: a_city_nm
+            description: Airport city
+            ai_context:
+              synonyms: ["origin city", "departure city"]
+          - name: a_state_code
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: a_state_code
+            description: Airport state code
+            ai_context:
+              synonyms: ["origin state", "departure state"]
+          - name: a_latitude
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: a_latitude
+            description: Latitude (restricted precise geolocation)
+          - name: a_longitude
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: a_longitude
+            description: Longitude (restricted precise geolocation)
+
+      - name: dest_airport
+        source: airports          # same physical Glue table as orig_airport
+        primary_key: [a_code]
+        description: Destination airport (airports table joined on route destination)
+        ai_context:
+          synonyms: ["destination airport", "arrival airport", "to airport"]
+        fields:
+          - name: a_code
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: a_code
+            description: Airport code
+          - name: a_city_nm
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: a_city_nm
+            description: Airport city
+            ai_context:
+              synonyms: ["destination city", "arrival city"]
+          - name: a_state_code
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: a_state_code
+            description: Airport state code
+            ai_context:
+              synonyms: ["destination state", "arrival state"]
+          - name: a_latitude
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: a_latitude
+            description: Latitude (restricted precise geolocation)
+          - name: a_longitude
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: a_longitude
+            description: Longitude (restricted precise geolocation)
+
+    relationships:
+      - name: flights_to_carriers
+        from: flights
+        to: carriers
+        from_columns: [fl_carrier_code]
+        to_columns: [c_code]
+        ai_context:
+          synonyms: ["operated by"]
+      - name: flights_to_routes
+        from: flights
+        to: routes
+        from_columns: [fl_route_id]
+        to_columns: [r_id]
+        ai_context:
+          synonyms: ["flew route"]
+      - name: routes_to_orig_airport
+        from: routes
+        to: orig_airport
+        from_columns: [r_orig_airport_code]
+        to_columns: [a_code]
+        ai_context:
+          synonyms: ["departs from"]
+      - name: routes_to_dest_airport
+        from: routes
+        to: dest_airport
+        from_columns: [r_dest_airport_code]
+        to_columns: [a_code]
+        ai_context:
+          synonyms: ["arrives at"]
+
+    metrics:
+      - name: flight_count
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: COUNT(flights.fl_id)
+        description: Number of flights
+        ai_context:
+          synonyms: ["number of flights", "flights", "departures", "flight volume"]
+      - name: avg_dep_delay
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: AVG(flights.fl_dep_delay)
+        description: Average departure delay in minutes
+        ai_context:
+          synonyms: ["average departure delay", "mean dep delay", "typical departure delay"]
+      - name: avg_arr_delay
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: AVG(flights.fl_arr_delay)
+        description: Average arrival delay in minutes
+        ai_context:
+          synonyms: ["average arrival delay", "mean arr delay", "typical arrival delay"]
+      - name: cancelled_flights
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: SUM(flights.fl_cancelled)
+        description: Number of cancelled flights
+        ai_context:
+          synonyms: ["cancellations", "cancelled flights"]
+      - name: cancellation_rate
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: SUM(flights.fl_cancelled) / NULLIF(COUNT(flights.fl_id), 0)
+        description: >-
+          Fraction of flights cancelled: cancelled flights divided by total
+          flights, computed over the flights fact in a single pass so it is
+          fan-out safe. Naive SQL that joins in dimensions before dividing can
+          distort both counts.
+        ai_context:
+          synonyms: ["cancellation rate", "percent cancelled", "cancel ratio"]
+      - name: avg_distance
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: AVG(flights.fl_distance)
+        description: Average distance flown in miles
+        ai_context:
+          synonyms: ["average distance", "mean miles", "typical distance"]
+
+  governance:
+    defaultRole: analyst
+    roles:
+      - name: analyst
+        allowMetrics: ["*"]
+        # Precise airport coordinates are restricted for the analyst role.
+        denyFields:
+          - orig_airport.a_latitude
+          - orig_airport.a_longitude
+          - dest_airport.a_latitude
+          - dest_airport.a_longitude
+      - name: carrier_analyst
+        allowMetrics: ["*"]
+        denyFields:
+          - orig_airport.a_latitude
+          - orig_airport.a_longitude
+          - dest_airport.a_latitude
+          - dest_airport.a_longitude
+        # A carrier-scoped analyst only sees one airline's flights.
+        rowFilters:
+          - dataset: carriers
+            predicate: "c_code = 'AA'"
+      - name: admin
+        allowMetrics: ["*"]
+
+  views:
+    - name: delays_by_carrier
+      metrics: [avg_dep_delay, avg_arr_delay, flight_count]
+      dimensions: [carriers.c_name]
+      role: admin
+    - name: flights_by_origin_state
+      metrics: [flight_count, cancellation_rate]
+      dimensions: [orig_airport.a_state_code]
+      role: admin
+    - name: monthly_flights
+      metrics: [flight_count, avg_arr_delay, cancellation_rate]
+      dimensions: [flights.fl_flight_date]
+      timeGrain: month
+      role: admin

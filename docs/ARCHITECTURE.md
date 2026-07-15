@@ -2,12 +2,14 @@
 
 This document is the build spec. The code implements what is written here; if the code and this document disagree, fix one of them.
 
+> Naming: this operator implements **Apache Ossie (incubating)**, the semantic-model standard formerly known as Open Semantic Interchange (OSI). Prose below says "Apache Ossie" or "Ossie"; code identifiers keep the historical `osi` short name — the `semantic.osi.io` API group, the `spec.osi` block, `internal/osi`, and the `osictl` CLI — so existing deployments are unaffected.
+
 ## System overview
 
 ```mermaid
 flowchart TB
     subgraph gitops [GitOps]
-        Y[SemanticModel CR<br/>spec.osi is OSI YAML] -->|ArgoCD or kubectl| K8S[(Kubernetes API)]
+        Y[SemanticModel CR<br/>spec.osi is Apache Ossie YAML] -->|ArgoCD or kubectl| K8S[(Kubernetes API)]
     end
 
     subgraph op [semantic-operator Deployment]
@@ -27,7 +29,7 @@ flowchart TB
     end
 
     K8S -->|watch SemanticModel| R
-    R -->|1 validate OSI| R
+    R -->|1 validate Ossie| R
     R -->|2 introspect schema| SRC[(StarRocks)]
     R -->|3 publish compiled ConfigMap| K8S
     R -->|4 create governed views| SRC
@@ -43,13 +45,13 @@ Two deployables, one CLI:
 
 - **semantic-operator** (`cmd/manager`): controller-runtime manager. Owns the write path: CR validation, schema drift detection, compilation, artifact publication, governed view DDL.
 - **semantic-server** (`cmd/server`): stateless serving. Owns the read path: MCP and REST adapters over a shared planner with governance and Valkey caching. Scales horizontally; all state is in ConfigMaps (compiled models) and Valkey (caches).
-- **osictl** (`cmd/osictl`): offline validation, Glue-based model derivation, OSI YAML to CR wrapping and unwrapping.
+- **osictl** (`cmd/osictl`): offline validation, Glue-based model derivation, Apache Ossie YAML to CR wrapping and unwrapping.
 
 The split matters for GitOps: the operator is the only writer, reconciliation is level-triggered and idempotent, and the server never mutates anything, so ArgoCD can own the CRs and nothing fights it.
 
 ## CRD: semantic.osi.io/v1alpha1 SemanticModel
 
-The spec has three sections. `osi` is the OSI semantic model, verbatim. `governance` and `views` are operator extensions that OSI does not define, kept outside the `osi` block so the OSI document round-trips byte-for-byte through `osictl`.
+The spec has three sections. `osi` is the Apache Ossie semantic model, verbatim. `governance` and `views` are operator extensions that Ossie does not define, kept outside the `osi` block so the Ossie document round-trips byte-for-byte through `osictl`.
 
 ```yaml
 apiVersion: semantic.osi.io/v1alpha1
@@ -60,7 +62,7 @@ spec:
   connection:                    # which StarRocks external catalog the sources live in
     catalog: iceberg             # StarRocks external catalog name (Helm default, overridable per CR)
     database: osi_demo
-  osi:                           # OSI v0.2 semantic_model entry, unmodified structure
+  osi:                           # Apache Ossie (OSI v0.2) semantic_model entry, unmodified structure
     name: tpcds_retail_model
     description: ...
     ai_context: {...}
@@ -93,14 +95,14 @@ status:
   conditions: [Validated, Compiled, Published, DriftDetected]
 ```
 
-`dataset.source` in OSI is `db.schema.table` or a bare table name. The operator resolves it against `spec.connection`: a bare name becomes `<catalog>.<database>.<table>`; a qualified name is used as-is. This keeps the OSI document portable while the CR pins the physical binding.
+`dataset.source` in Apache Ossie is `db.schema.table` or a bare table name. The operator resolves it against `spec.connection`: a bare name becomes `<catalog>.<database>.<table>`; a qualified name is used as-is. This keeps the Ossie document portable while the CR pins the physical binding.
 
 ### Reconcile loop and status conditions
 
 ```mermaid
 stateDiagram-v2
     [*] --> Validating
-    Validating --> Failed: OSI schema invalid
+    Validating --> Failed: Ossie schema invalid
     Validating --> Binding: Validated=True
     Binding --> Binding_note
     state "flag DriftDetected, keep serving last good" as Binding_note
@@ -112,7 +114,7 @@ stateDiagram-v2
     Ready --> Validating: spec change or resync interval
 ```
 
-1. **Validate** (`internal/osi`): structural validation of the OSI block: unique names, relationships reference existing datasets and columns, metric expressions parse under the supported grammar, at least one `ANSI_SQL` (or `STARROCKS`) dialect per expression. Sets `Validated`.
+1. **Validate** (`internal/osi`): structural validation of the Apache Ossie block: unique names, relationships reference existing datasets and columns, metric expressions parse under the supported grammar, at least one `ANSI_SQL` (or `STARROCKS`) dialect per expression. Sets `Validated`.
 2. **Bind and drift-check** (`internal/starrocks` + `internal/catalog`): for every dataset, `DESC <catalog>.<db>.<table>` against live StarRocks. Missing table or missing referenced column sets `DriftDetected=True` with per-dataset detail in the message and stops publication of the new version; the previously published artifact keeps serving. Extra physical columns are not drift.
 3. **Compile** (`internal/planner/compile`): parse every metric into a typed AST (see planner), resolve the join graph, freeze everything into a `CompiledModel` JSON artifact. Compilation is pure: no I/O, same spec in, same artifact out. Sets `Compiled`.
 4. **Publish**: write the artifact to a ConfigMap owned by the CR, labeled `semantic.osi.io/model=<name>`, `semantic.osi.io/version=<modelVersion>`. Sets `Published`. The server's informer picks it up within seconds. Because the version is content-addressed, replaying the same spec is a no-op.
@@ -128,7 +130,7 @@ Deletion uses a finalizer to drop the operator-created views, then the owned Con
 
 - Metric aggregations: `SUM`, `COUNT`, `COUNT(DISTINCT ...)`, `AVG` over a `dataset.field` reference or a scalar expression of one dataset's fields.
 - Ratio metrics: `<agg term> / <agg term>`, with or without `NULLIF(denominator, 0)`; the emitter always wraps the denominator in `NULLIF(..., 0)`.
-- Joins: `INNER` (default) and `LEFT`, derived from OSI relationships. The join graph must be a tree rooted at fact datasets (star/snowflake); cycles are a validation error.
+- Joins: `INNER` (default) and `LEFT`, derived from Apache Ossie relationships. The join graph must be a tree rooted at fact datasets (star/snowflake); cycles are a validation error.
 - Dimensions: any dataset field, including computed expressions.
 - Filters: `=, !=, <, <=, >, >=, IN, NOT IN, BETWEEN, LIKE` against dataset fields, values parameterized through the emitter's literal encoder.
 - Time grain: `day, week, month, quarter, year` applied as `DATE_TRUNC('<grain>', <time field>)` to the model's time dimension (fields with `dimension.is_time: true`).
@@ -182,7 +184,7 @@ type Source interface {
 
 `internal/catalog/glue` implements it with the AWS SDK (IRSA in-cluster). Two consumers:
 
-- `osictl derive --database osi_demo --out model.yaml`: generates OSI dataset stubs (source, fields with ANSI_SQL expressions, inferred `is_time` for date/timestamp columns) and candidate relationships. Glue rarely carries real foreign keys, so inference is convention-based: a fact column `x_sk` whose name suffix matches another table's single-column primary-key-like column (`<prefix>_sk`) becomes a candidate join, emitted commented-out for a human to confirm. Humans then maintain only metrics, joins, and synonyms; field lists are regenerated.
+- `osictl derive --database osi_demo --out model.yaml`: generates Apache Ossie dataset stubs (source, fields with ANSI_SQL expressions, inferred `is_time` for date/timestamp columns) and candidate relationships. Glue rarely carries real foreign keys, so inference is convention-based: a fact column `x_sk` whose name suffix matches another table's single-column primary-key-like column (`<prefix>_sk`) becomes a candidate join, emitted commented-out for a human to confirm. Humans then maintain only metrics, joins, and synonyms; field lists are regenerated.
 - Controller resync (`spec.catalogSync.enabled`): refreshes dataset field lists from Glue on a timer, so new physical columns become available as dimensions without hand-editing. Metrics and relationships are never auto-modified.
 
 Drift detection is separate from derivation and always on: it introspects through StarRocks (`DESC`), because what matters at query time is what StarRocks can see.
@@ -228,7 +230,7 @@ sequenceDiagram
 Goal: show that the same LLM answering the same business questions is measurably more accurate and more consistent through the semantic layer than through raw text-to-SQL.
 
 - **Data**: synthetic TPC-DS subset (5 tables), deterministic seed, roughly 200k fact rows, written as Iceberg tables in Glue by executing DDL and batched INSERTs through StarRocks itself (StarRocks can create and insert into Iceberg external catalog tables). No Spark dependency. Idempotent: the loader checks row counts and skips completed tables.
-- **Model**: `demo/model/semanticmodel.yaml`, adapted from the OSI TPC-DS example, with `total_sales`, `total_profit`, `customer_lifetime_value`, `store_productivity`, `sales_by_brand`, plus governance (analyst role denied `customer.c_email_address`, row-filtered to one state) and BI views.
+- **Model**: `demo/model/semanticmodel.yaml`, adapted from the Apache Ossie TPC-DS example, with `total_sales`, `total_profit`, `customer_lifetime_value`, `store_productivity`, `sales_by_brand`, plus governance (analyst role denied `customer.c_email_address`, row-filtered to one state) and BI views.
 - **NL comparison** (`demo/nl`, Go, Bedrock Converse API): path A gives the LLM `SHOW CREATE TABLE` output and asks for StarRocks SQL; path B gives the LLM the MCP tools. Both execute; the CLI prints SQL, rows, and, when the question is in the benchmark set, ground truth. The interesting failures are ambiguous metrics: CLV (per what? distinct buyers or all customers?), store productivity (fan-out doubles employee counts), profit vs revenue confusion.
 - **Benchmark** (`bench/`): ~30 questions in `questions.yaml`, each with a ground-truth SQL (hand-written, reviewed) and 2 paraphrases. The harness runs each phrasing through both paths N times, compares numeric results within tolerance, and reports per-path accuracy, cross-paraphrase consistency, and hallucination rate (nonexistent columns/tables referenced, or query errors). Output is a markdown table; reproducible given the same model id and temperature 0.
 

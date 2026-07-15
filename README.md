@@ -1,8 +1,10 @@
 # osi-semantic-operator
 
-A Kubernetes operator that runs an [Open Semantic Interchange (OSI)](https://github.com/open-semantic-interchange/OSI) semantic layer on Amazon EKS, on top of an existing StarRocks cluster querying Apache Iceberg tables.
+A Kubernetes operator that runs an [Apache Ossie (incubating)](https://ossie.apache.org/) semantic layer on Amazon EKS, on top of an existing StarRocks cluster querying Apache Iceberg tables.
 
-You author a `SemanticModel` custom resource as OSI YAML. The operator validates it, checks its physical bindings against the live StarRocks/Iceberg schema, compiles it, and publishes it to a semantic planner. The planner turns semantic requests (metrics, dimensions, filters, time grain) into exactly one deterministic StarRocks SQL statement, with row and column governance applied at compile time. Three thin adapters serve the same planner: an MCP server for agents, a REST API for custom UIs, and governed StarRocks views for BI tools such as Apache Superset.
+> Apache Ossie is the vendor-neutral semantic-model standard formerly known as **Open Semantic Interchange (OSI)**; it entered the Apache Incubator in July 2026. The YAML spec is unchanged. Code identifiers in this repo retain the historical `osi` short name (the `semantic.osi.io` API group, the `spec.osi` block, and the `osictl` CLI) so existing deployments keep working.
+
+You author a `SemanticModel` custom resource as Apache Ossie YAML. The operator validates it, checks its physical bindings against the live StarRocks/Iceberg schema, compiles it, and publishes it to a semantic planner. The planner turns semantic requests (metrics, dimensions, filters, time grain) into exactly one deterministic StarRocks SQL statement, with row and column governance applied at compile time. Three thin adapters serve the same planner: an MCP server for agents, a REST API for custom UIs, and governed StarRocks views for BI tools such as Apache Superset.
 
 ## Why
 
@@ -16,7 +18,7 @@ You author a `SemanticModel` custom resource as OSI YAML. The operator validates
 ```mermaid
 flowchart LR
     subgraph authoring [Authoring / GitOps]
-        GIT[Git repo: SemanticModel CR<br/>OSI YAML] -->|ArgoCD / kubectl| CR[SemanticModel CR]
+        GIT[Git repo: SemanticModel CR<br/>Apache Ossie YAML] -->|ArgoCD / kubectl| CR[SemanticModel CR]
     end
 
     subgraph eks [EKS cluster]
@@ -49,15 +51,23 @@ flowchart LR
     UI[Custom UI] -->|JSON| REST
 ```
 
-Component responsibilities, request flows, the CRD lifecycle, and the governance model are specified in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The end-to-end deploy and test procedure is in [docs/RUNBOOK.md](docs/RUNBOOK.md).
+Documentation:
+
+- [docs/OVERVIEW.md](docs/OVERVIEW.md) — what this is, the gaps it fills, and why to use it.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — component responsibilities, request flows, the CRD lifecycle, and the governance model.
+- [docs/RUNBOOK.md](docs/RUNBOOK.md) — the end-to-end deploy and test procedure.
+- [docs/DEMO.md](docs/DEMO.md) — how to demo the solution and show its accuracy.
+- [docs/TEACHING.md](docs/TEACHING.md) — how to onboard metric authors, app/agent developers, and BI analysts.
+
+Examples: [demo/model/](demo/model/semanticmodel.yaml) is the runnable retail demo (with a data loader); [demo/flights/](demo/flights/README.md) is a second Glue-bound example adapted from the [Apache Ossie flights model](https://github.com/apache/ossie/blob/main/examples/flights.yaml).
 
 ## Components
 
 | Component | Binary | What it does |
 |---|---|---|
-| Operator | `cmd/manager` | Reconciles `SemanticModel` CRs: OSI validation, physical binding and drift check against live StarRocks/Iceberg schema, deterministic compile, publish to ConfigMap, governed view creation in StarRocks. |
+| Operator | `cmd/manager` | Reconciles `SemanticModel` CRs: Apache Ossie validation, physical binding and drift check against live StarRocks/Iceberg schema, deterministic compile, publish to ConfigMap, governed view creation in StarRocks. |
 | Semantic server | `cmd/server` | Stateless. Watches compiled-model ConfigMaps. Hosts the planner, compile-time governance, Valkey plan/result caches, the MCP adapter (streamable HTTP), and the REST adapter. |
-| CLI | `cmd/osictl` | Validate OSI YAML offline, derive dataset stubs from a Glue database (catalog auto-derivation), wrap OSI YAML into a CR and back (round-trip). |
+| CLI | `cmd/osictl` | Validate Apache Ossie YAML offline, derive dataset stubs from a Glue database (catalog auto-derivation), wrap Ossie YAML into a CR and back (round-trip). |
 
 The planner emits StarRocks SQL only, behind an `emitter.Dialect` interface so other engines can be added. The catalog sync is behind a `catalog.Source` interface with a Glue implementation. A MetricFlow integration point is documented but not built. See scope guardrails in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#extension-points).
 
@@ -112,7 +122,7 @@ helm install semantic-operator charts/semantic-operator \
 # 3. Load demo data (creates Iceberg tables in Glue via StarRocks, idempotent)
 make demo-data
 
-# 4. Apply the demo semantic model (OSI TPC-DS subset)
+# 4. Apply the demo semantic model (Apache Ossie TPC-DS subset)
 kubectl apply -f demo/model/semanticmodel.yaml
 kubectl get semanticmodels -n semantic-system   # wait for Validated/Compiled/Published
 
@@ -130,21 +140,16 @@ Every endpoint, credential, and catalog name above is a Helm value or environmen
 
 ## Demo: with and without the semantic layer
 
-The demo loads a TPC-DS subset (`store_sales` fact, `date_dim`, `customer`, `item`, `store` dimensions) as Iceberg tables in Glue, queried through the StarRocks external catalog. The data is synthetic, deterministic (fixed seed), and demo sized, so every benchmark question has a computable ground-truth answer.
+`demo/nl` answers a business question two ways on the same StarRocks cluster — raw LLM text-to-SQL vs. the semantic layer — and prints SQL, results, and correctness side by side. Ambiguous metrics (`customer_lifetime_value`, `store_productivity`) are where raw text-to-SQL invents a plausible formula that differs run to run and paraphrase to paraphrase; the semantic path is certified and deterministic. The `bench/` harness quantifies this: accuracy, paraphrase consistency, and hallucination rate.
 
-`demo/nl` answers a business question two ways using Amazon Bedrock:
-
-1. **Without semantic layer.** The LLM sees raw `SHOW CREATE TABLE` output and writes SQL directly against StarRocks.
-2. **With semantic layer.** The LLM calls the MCP tools (`list_metrics`, `list_dimensions`, `query_metric`) and the planner emits the SQL.
-
-Both statements execute on the same StarRocks cluster and the tool prints SQL, results, and correctness side by side. Ambiguous metrics are where the raw path fails: "customer lifetime value" or "store productivity" have exact certified definitions in the model, while raw text-to-SQL invents a plausible formula that differs run to run and paraphrase to paraphrase. The benchmark in `bench/` quantifies this over ~30 questions: accuracy, consistency across paraphrases, and hallucination rate. Results: [bench/RESULTS.md](bench/RESULTS.md).
+See [docs/DEMO.md](docs/DEMO.md) for how to run it and [bench/RESULTS.md](bench/RESULTS.md) for results.
 
 ## Repository layout
 
 ```
-api/v1alpha1/          CRD types (OSI model as Go structs)
+api/v1alpha1/          CRD types (Apache Ossie model as Go structs)
 controllers/           SemanticModel reconciler
-internal/osi/          OSI schema validation
+internal/osi/          Apache Ossie schema validation
 internal/planner/      semantic request -> logical plan
 internal/governance/   compile-time row/column policies
 internal/emitter/      Dialect interface; starrocks/ implementation
