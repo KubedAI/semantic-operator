@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant A as Agent (Bedrock LLM)
+    participant M as MCP adapter
+    participant P as Planner
+    participant V as Valkey
+    participant S as StarRocks
+
+    A->>M: query_metric(metric, dimensions, filters)
+    M->>P: Request + identity
+    P->>P: governance gate, compile
+    P->>V: plan cache get/set
+    P->>V: result cache get
+    alt miss
+        P->>S: emitted SQL
+        S-->>P: rows
+        P->>V: result cache set
+    end
+    P-->>M: rows + SQL + plan metadata
+    M-->>A: tool result (data + provenance)

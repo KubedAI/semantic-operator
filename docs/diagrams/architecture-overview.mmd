@@ -1,0 +1,33 @@
+flowchart LR
+    subgraph authoring [Authoring / GitOps]
+        GIT[Git repo: SemanticModel CR<br/>Apache Ossie YAML] -->|ArgoCD / kubectl| CR[SemanticModel CR]
+    end
+
+    subgraph eks [EKS cluster]
+        subgraph operator [semantic-operator]
+            CTRL[Controller]
+        end
+        CR --> CTRL
+        CTRL -->|validate + drift check| SR[(StarRocks FE/BE/CN<br/>existing)]
+        CTRL -->|publish compiled model| CM[ConfigMap<br/>compiled artifact vN]
+        CTRL -->|CREATE OR REPLACE VIEW| SR
+
+        subgraph server [semantic-server]
+            MCP[MCP adapter] --> PL[Planner + Governance]
+            REST[REST adapter] --> PL
+        end
+        CM -->|watch| PL
+        PL -->|plan + result cache| VK[(Valkey<br/>existing, optional)]
+        PL -->|StarRocks SQL| SR
+
+        SUP[Superset<br/>existing, optional] -->|MySQL protocol, governed views| SR
+    end
+
+    subgraph aws [AWS]
+        SR -->|external catalog| GLUE[Glue Data Catalog]
+        GLUE --- ICE[Iceberg tables on S3]
+        CTRL -->|catalog-source sync, IRSA| GLUE
+    end
+
+    AGENT[LLM agent / Bedrock] -->|MCP tools| MCP
+    UI[Custom UI] -->|JSON| REST

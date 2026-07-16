@@ -68,19 +68,19 @@ deploy: ## Install/upgrade the chart (override values on the command line)
 	  --namespace semantic-system --create-namespace \
 	  --set image.repository=$(IMAGE_BASE) --set image.tag=$(TAG)
 
-## Demo and benchmark (see docs/RUNBOOK.md for required env)
+## Demo and benchmark (see examples/starrocks/retail/README.md for required env)
 
 .PHONY: demo-data
 demo-data: ## Load the TPC-DS subset as Iceberg tables through StarRocks
-	go run ./demo/data
+	go run ./examples/starrocks/retail/data
 
 .PHONY: demo-nl
 demo-nl: ## Answer QUESTION both ways (raw text-to-SQL vs semantic layer)
-	go run ./demo/nl -question "$(QUESTION)"
+	go run ./examples/starrocks/retail/nl -question "$(QUESTION)"
 
 .PHONY: bench
-bench: ## Run the accuracy benchmark and write bench/RESULTS.md
-	go run ./bench/runner -out bench/RESULTS.md
+bench: ## Run the accuracy benchmark and write the retail example RESULTS.md
+	go run ./examples/starrocks/retail/bench/runner -out examples/starrocks/retail/bench/RESULTS.md
 
 .PHONY: help
 help:

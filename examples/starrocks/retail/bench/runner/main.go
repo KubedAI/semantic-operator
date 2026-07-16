@@ -1,10 +1,10 @@
-// bench/runner executes the accuracy benchmark: every question and its
+// This runner executes the accuracy benchmark: every question and its
 // paraphrases through both paths, compared against hand-written ground
 // truth executed on the same StarRocks cluster. Output is a markdown
 // report. Reproducibility: fixed demo data seed, temperature 0, and the
 // model id is recorded in the report.
 //
-// Env: same as demo/nl.
+// Env: same as the nl comparison (examples/starrocks/retail/nl).
 package main
 
 import (
@@ -46,8 +46,8 @@ type pathStats struct {
 }
 
 func main() {
-	qfile := flag.String("questions", "bench/questions.yaml", "question set")
-	out := flag.String("out", "bench/RESULTS.md", "markdown report path")
+	qfile := flag.String("questions", "examples/starrocks/retail/bench/questions.yaml", "question set")
+	out := flag.String("out", "examples/starrocks/retail/bench/RESULTS.md", "markdown report path")
 	limit := flag.Int("limit", 0, "run only the first N questions (0 = all)")
 	paths := flag.String("paths", "both", "raw | semantic | both")
 	flag.Parse()

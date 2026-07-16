@@ -46,9 +46,10 @@ internal/starrocks/    MySQL-protocol client + schema introspection
 internal/nlbench/       NL comparison / benchmark support
 internal/observability/ tracing + metrics
 charts/semantic-operator/  Helm chart (crds/, templates/, values.yaml)
-demo/                  data/ loader, model/ CR, nl/ comparison, flights/ example, superset/
-bench/                 accuracy benchmark harness (runner/, questions.yaml, RESULTS.md)
-docs/                  OVERVIEW, ARCHITECTURE, RUNBOOK, DEMO, TEACHING
+examples/              use cases by engine; starrocks/retail/ (data, model, nl, bench, superset)
+                       and starrocks/flights/ (model-only). See examples/README.md
+docs/                  OVERVIEW, ARCHITECTURE, DEVELOPER, EXTENDING-ENGINES, ROADMAP;
+                       diagrams/ (mermaid sources), img/ (hand-authored SVGs)
 hack/                  tools.go (build-time tool deps)
 ```
 
@@ -64,10 +65,10 @@ make helm-lint    # lint the chart
 # Images (registry/tags are variables; nothing hardcoded to an account)
 make docker-build docker-push REGISTRY=<acct>.dkr.ecr.us-west-2.amazonaws.com
 
-# Demo / benchmark (need a live cluster; see docs/RUNBOOK.md for env)
+# Demo / benchmark (need a live cluster; see examples/starrocks/retail/README.md for env)
 make demo-data                                  # load TPC-DS subset as Iceberg tables
 make demo-nl QUESTION="..."                     # answer both ways: raw text-to-SQL vs semantic layer
-make bench                                       # write bench/RESULTS.md
+make bench                                       # write examples/starrocks/retail/bench/RESULTS.md
 ```
 
 Plain Go also works: `go build ./...`, `go test ./...`, `go vet ./...`.
@@ -102,14 +103,18 @@ Tests live next to code (`*_test.go`): `controllers/`, `internal/cache/`, `inter
 - The planner emits **StarRocks SQL only**. Don't add other-engine SQL outside the
   `emitter.Dialect` interface.
 
-## Current working-tree state (as of 2026-07-14)
+## Current working-tree state (as of 2026-07-15)
 
 Recent commits built out: operator core (CRD, validator, planner, governance, cache, controller,
 MCP/REST adapters) → packaging (Makefile, Dockerfile, CI, Helm) → demo + NL comparison + benchmark.
 
-Uncommitted at last session (docs expansion, not yet committed):
-- Modified: `README.md`, `charts/semantic-operator/Chart.yaml`, `docs/ARCHITECTURE.md`
-- Untracked: `demo/flights/`, `docs/DEMO.md`, `docs/OVERVIEW.md`, `docs/TEACHING.md`
+Docs + layout were then consolidated for external review:
+- `demo/` and `bench/` moved under `examples/starrocks/retail/` (+ `examples/starrocks/flights/`).
+- Docs reduced to three guides + per-example: `OVERVIEW` (absorbed TEACHING), `ARCHITECTURE`,
+  `DEVELOPER` (absorbed RUNBOOK's deploy/operate); `RUNBOOK.md`/`DEMO.md`/`TEACHING.md` deleted,
+  their end-to-end content folded into `examples/starrocks/retail/README.md`. Added `docs/ROADMAP.md`.
+- Mermaid diagrams removed from README/ARCHITECTURE; replaced with hand-authored `docs/img/*.svg`,
+  with sources preserved in `docs/diagrams/*.mmd`.
 
-If continuing: these are documentation/demo additions. Review with `git diff` / `git status`
+If continuing: review with `git diff` / `git status`
 before committing.

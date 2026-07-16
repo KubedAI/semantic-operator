@@ -1,8 +1,8 @@
 # Flights example (Apache Ossie → semantic_model, Glue-bound)
 
 A second, distinct-domain example that shows how an Apache Ossie model binds to
-physical tables in AWS Glue through this operator. Where the retail demo
-(`demo/model/semanticmodel.yaml`) is a full runnable end-to-end demo with a data
+physical tables in AWS Glue through this operator. Where the retail example
+(`examples/starrocks/retail/`) is a full runnable end-to-end demo with a data
 loader, this one is **model-only**: it is the semantic model itself, meant to
 show authoring and Glue binding.
 
@@ -47,7 +47,7 @@ airports table.
 Offline validation (no cluster needed):
 
 ```bash
-go run ./cmd/osictl validate -f demo/flights/semanticmodel.yaml
+go run ./cmd/osictl validate -f examples/starrocks/flights/semanticmodel.yaml
 # OK: ... (model flights_model, version <hash>)
 ```
 
@@ -61,8 +61,9 @@ go run ./cmd/osictl derive --database osi_flights --out flights-derived.yaml
 To run it end to end, create the `osi_flights` Glue database and the
 `flights / carriers / routes / airports` Iceberg tables (via StarRocks INSERTs,
 Spark, or your own pipeline), then `kubectl apply -f semanticmodel.yaml` and
-query it exactly like the retail demo (see `docs/RUNBOOK.md`). A loader is not
-included for this example.
+query it exactly like the retail example (see
+[`../retail/README.md`](../retail/README.md)). A loader is not included for this
+example.
 
 ## What it defines
 

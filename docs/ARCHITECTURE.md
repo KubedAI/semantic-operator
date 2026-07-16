@@ -6,40 +6,8 @@ This document is the build spec. The code implements what is written here; if th
 
 ## System overview
 
-```mermaid
-flowchart TB
-    subgraph gitops [GitOps]
-        Y[SemanticModel CR<br/>spec.osi is Apache Ossie YAML] -->|ArgoCD or kubectl| K8S[(Kubernetes API)]
-    end
-
-    subgraph op [semantic-operator Deployment]
-        R[Reconciler]
-    end
-
-    subgraph srv [semantic-server Deployment]
-        M[MCP adapter<br/>streamable HTTP]
-        RE[REST adapter]
-        P[Planner]
-        G[Governance]
-        C[Cache client]
-        M --> P
-        RE --> P
-        P --> G
-        P --> C
-    end
-
-    K8S -->|watch SemanticModel| R
-    R -->|1 validate Ossie| R
-    R -->|2 introspect schema| SRC[(StarRocks)]
-    R -->|3 publish compiled ConfigMap| K8S
-    R -->|4 create governed views| SRC
-    K8S -->|watch compiled ConfigMaps| P
-    C --> VK[(Valkey)]
-    P -->|SELECT| SRC
-    SRC -->|external catalog| GL[Glue Data Catalog + Iceberg on S3]
-    R -->|catalog-source sync, IRSA| GL
-    SUP[Superset] -->|MySQL protocol| SRC
-```
+![System overview](img/system-overview.svg)
+<!-- Diagram source: docs/diagrams/system-overview.mmd -->
 
 Two deployables, one CLI:
 
@@ -89,34 +57,22 @@ spec:
     enabled: false               # optional: refresh dataset fields from Glue on reconcile
     source: glue
 status:
-  modelVersion: 3f2a9c1b        # sha256(normalized spec)[:8], bumps on any spec change
+  modelVersion: 3f2a9c1b7e4d    # sha256(normalized spec)[:12], bumps on any spec change
   observedGeneration: 4
-  publishedConfigMap: semanticmodel-tpcds-retail-compiled
-  conditions: [Validated, Compiled, Published, DriftDetected]
+  publishedConfigMap: sm-tpcds-retail-compiled   # "sm-" + CR name + "-compiled"
+  conditions: [Validated, Compiled, Published, DriftDetected, ViewsReady]
 ```
 
 `dataset.source` in Apache Ossie is `db.schema.table` or a bare table name. The operator resolves it against `spec.connection`: a bare name becomes `<catalog>.<database>.<table>`; a qualified name is used as-is. This keeps the Ossie document portable while the CR pins the physical binding.
 
 ### Reconcile loop and status conditions
 
-```mermaid
-stateDiagram-v2
-    [*] --> Validating
-    Validating --> Failed: Ossie schema invalid
-    Validating --> Binding: Validated=True
-    Binding --> Binding_note
-    state "flag DriftDetected, keep serving last good" as Binding_note
-    Binding --> Compiling: bindings resolve
-    Compiling --> Failed: expression outside supported subset
-    Compiling --> Publishing: Compiled=True
-    Publishing --> Views: ConfigMap written, Published=True
-    Views --> Ready: CREATE OR REPLACE VIEW applied
-    Ready --> Validating: spec change or resync interval
-```
+![Reconcile loop and status conditions](img/reconcile-loop.svg)
+<!-- Diagram source: docs/diagrams/reconcile-loop.mmd -->
 
 1. **Validate** (`internal/osi`): structural validation of the Apache Ossie block: unique names, relationships reference existing datasets and columns, metric expressions parse under the supported grammar, at least one `ANSI_SQL` (or `STARROCKS`) dialect per expression. Sets `Validated`.
 2. **Bind and drift-check** (`internal/starrocks` + `internal/catalog`): for every dataset, `DESC <catalog>.<db>.<table>` against live StarRocks. Missing table or missing referenced column sets `DriftDetected=True` with per-dataset detail in the message and stops publication of the new version; the previously published artifact keeps serving. Extra physical columns are not drift.
-3. **Compile** (`internal/planner/compile`): parse every metric into a typed AST (see planner), resolve the join graph, freeze everything into a `CompiledModel` JSON artifact. Compilation is pure: no I/O, same spec in, same artifact out. Sets `Compiled`.
+3. **Compile** (`planner.Compile` in `internal/planner`): parse every metric into a typed AST (see planner), resolve the join graph, freeze everything into a `CompiledModel` JSON artifact. Compilation is pure: no I/O, same spec in, same artifact out. Sets `Compiled`.
 4. **Publish**: write the artifact to a ConfigMap owned by the CR, labeled `semantic.osi.io/model=<name>`, `semantic.osi.io/version=<modelVersion>`. Sets `Published`. The server's informer picks it up within seconds. Because the version is content-addressed, replaying the same spec is a no-op.
 5. **Views** (`internal/serving/views`): each `spec.views` entry is compiled through the same planner under its declared role and applied as `CREATE OR REPLACE VIEW <viewDatabase>.<name>` in the StarRocks default catalog (views over external catalog tables are supported by StarRocks). Views removed from the spec are dropped (the operator tracks view names it created in an annotation).
 
@@ -128,14 +84,14 @@ Deletion uses a finalizer to drop the operator-created views, then the owned Con
 
 ### Supported subset
 
-- Metric aggregations: `SUM`, `COUNT`, `COUNT(DISTINCT ...)`, `AVG` over a `dataset.field` reference or a scalar expression of one dataset's fields.
+- Metric aggregations: `SUM`, `COUNT`, `COUNT(DISTINCT ...)`, `AVG`, `MIN`, `MAX` over a `dataset.field` reference or a scalar expression of one dataset's fields.
 - Ratio metrics: `<agg term> / <agg term>`, with or without `NULLIF(denominator, 0)`; the emitter always wraps the denominator in `NULLIF(..., 0)`.
 - Joins: `INNER` (default) and `LEFT`, derived from Apache Ossie relationships. The join graph must be a tree rooted at fact datasets (star/snowflake); cycles are a validation error.
 - Dimensions: any dataset field, including computed expressions.
 - Filters: `=, !=, <, <=, >, >=, IN, NOT IN, BETWEEN, LIKE` against dataset fields, values parameterized through the emitter's literal encoder.
 - Time grain: `day, week, month, quarter, year` applied as `DATE_TRUNC('<grain>', <time field>)` to the model's time dimension (fields with `dimension.is_time: true`).
 
-The metric expression grammar (`internal/planner/expr`) is intentionally small: `Ratio := Term ('/' Term)? ; Term := Agg '(' ['DISTINCT'] Scalar ')' | 'NULLIF(' Term ',' number ')'`, where `Scalar` is a SQL scalar expression whose column references are `dataset.field`. Anything outside the grammar fails validation at reconcile time, not at query time.
+The metric expression grammar (`internal/planner/expr`) is intentionally small: `Ratio := Term ('/' Term)? ; Term := Agg '(' ['DISTINCT'] Scalar ')' | 'NULLIF(' Term ',' number ')'`, where `Agg` is one of `SUM COUNT AVG MIN MAX` and `Scalar` is a SQL scalar expression whose column references are `dataset.field`. Anything outside the grammar fails validation at reconcile time, not at query time.
 
 ### Planning algorithm
 
@@ -193,27 +149,8 @@ Drift detection is separate from derivation and always on: it introspects throug
 
 All three consumers hit the same planner and governance. None of them contains query logic.
 
-```mermaid
-sequenceDiagram
-    participant A as Agent (Bedrock LLM)
-    participant M as MCP adapter
-    participant P as Planner
-    participant V as Valkey
-    participant S as StarRocks
-
-    A->>M: query_metric(metric, dimensions, filters)
-    M->>P: Request + identity
-    P->>P: governance gate, compile
-    P->>V: plan cache get/set
-    P->>V: result cache get
-    alt miss
-        P->>S: emitted SQL
-        S-->>P: rows
-        P->>V: result cache set
-    end
-    P-->>M: rows + SQL + plan metadata
-    M-->>A: tool result (data + provenance)
-```
+![Serving request sequence](img/serving-sequence.svg)
+<!-- Diagram source: docs/diagrams/serving-sequence.mmd -->
 
 - **MCP** (`internal/serving/mcp`, official `modelcontextprotocol/go-sdk`, streamable HTTP, stateless): tools `list_metrics`, `list_dimensions` (both return names, descriptions, and `ai_context` synonyms so the LLM can ground user vocabulary), `query_metric(metric, dimensions?, filters?, grain?, limit?)`. Tool results include the emitted SQL for transparency.
 - **REST** (`internal/serving/rest`): `GET /v1/models`, `GET /v1/models/{m}/metrics`, `GET /v1/models/{m}/dimensions`, `POST /v1/models/{m}/query`, `POST /v1/models/{m}/sql` (dry-run: returns SQL without executing). JSON in and out.
@@ -230,15 +167,15 @@ sequenceDiagram
 Goal: show that the same LLM answering the same business questions is measurably more accurate and more consistent through the semantic layer than through raw text-to-SQL.
 
 - **Data**: synthetic TPC-DS subset (5 tables), deterministic seed, roughly 200k fact rows, written as Iceberg tables in Glue by executing DDL and batched INSERTs through StarRocks itself (StarRocks can create and insert into Iceberg external catalog tables). No Spark dependency. Idempotent: the loader checks row counts and skips completed tables.
-- **Model**: `demo/model/semanticmodel.yaml`, adapted from the Apache Ossie TPC-DS example, with `total_sales`, `total_profit`, `customer_lifetime_value`, `store_productivity`, `sales_by_brand`, plus governance (analyst role denied `customer.c_email_address`, row-filtered to one state) and BI views.
-- **NL comparison** (`demo/nl`, Go, Bedrock Converse API): path A gives the LLM `SHOW CREATE TABLE` output and asks for StarRocks SQL; path B gives the LLM the MCP tools. Both execute; the CLI prints SQL, rows, and, when the question is in the benchmark set, ground truth. The interesting failures are ambiguous metrics: CLV (per what? distinct buyers or all customers?), store productivity (fan-out doubles employee counts), profit vs revenue confusion.
-- **Benchmark** (`bench/`): ~30 questions in `questions.yaml`, each with a ground-truth SQL (hand-written, reviewed) and 2 paraphrases. The harness runs each phrasing through both paths N times, compares numeric results within tolerance, and reports per-path accuracy, cross-paraphrase consistency, and hallucination rate (nonexistent columns/tables referenced, or query errors). Output is a markdown table; reproducible given the same model id and temperature 0.
+- **Model**: `examples/starrocks/retail/model/semanticmodel.yaml`, adapted from the Apache Ossie TPC-DS example, with `total_sales`, `total_profit`, `customer_lifetime_value`, `store_productivity`, `sales_by_brand`, plus governance (analyst role denied `customer.c_email_address`, row-filtered to one state) and BI views.
+- **NL comparison** (`examples/starrocks/retail/nl`, Go, Bedrock Converse API): path A gives the LLM `SHOW CREATE TABLE` output and asks for StarRocks SQL; path B gives the LLM the MCP tools. Both execute; the CLI prints SQL, rows, and, when the question is in the benchmark set, ground truth. The interesting failures are ambiguous metrics: CLV (per what? distinct buyers or all customers?), store productivity (fan-out doubles employee counts), profit vs revenue confusion.
+- **Benchmark** (`examples/starrocks/retail/bench/`): ~30 questions in `questions.yaml`, each with a ground-truth SQL (hand-written, reviewed) and 2 paraphrases. The harness runs each phrasing through both paths N times, compares numeric results within tolerance, and reports per-path accuracy, cross-paraphrase consistency, and hallucination rate (nonexistent columns/tables referenced, or query errors). Output is a markdown table; reproducible given the same model id and temperature 0.
 
 ## Extension points
 
 Deliberately built as interfaces, deliberately not built out:
 
-- `emitter.Dialect`: add Trino/ClickHouse/DuckDB by implementing identifier quoting, literal rendering, and DATE_TRUNC mapping. Only `starrocks` ships.
+- `emitter.Dialect`: add Trino/ClickHouse/DuckDB by implementing identifier quoting, literal rendering, and DATE_TRUNC mapping. Only `starrocks` ships. Step-by-step guide: [EXTENDING-ENGINES.md](EXTENDING-ENGINES.md).
 - `catalog.Source`: add Unity/Polaris/Hive by implementing `ListTables`. Only `glue` ships.
 - Planner boundary: `planner.Planner` is an interface taking `(CompiledModel, Request)` and returning `(Plan, SQL)`. A MetricFlow-backed implementation could replace the built-in compiler behind the same MCP/REST/views adapters. Not built.
 - Not in scope: full MetricFlow semantics (multi-hop metrics, cumulative metrics, saved queries), multi-engine federation, a BI tool.

@@ -1,0 +1,32 @@
+flowchart TB
+    subgraph gitops [GitOps]
+        Y[SemanticModel CR<br/>spec.osi is Apache Ossie YAML] -->|ArgoCD or kubectl| K8S[(Kubernetes API)]
+    end
+
+    subgraph op [semantic-operator Deployment]
+        R[Reconciler]
+    end
+
+    subgraph srv [semantic-server Deployment]
+        M[MCP adapter<br/>streamable HTTP]
+        RE[REST adapter]
+        P[Planner]
+        G[Governance]
+        C[Cache client]
+        M --> P
+        RE --> P
+        P --> G
+        P --> C
+    end
+
+    K8S -->|watch SemanticModel| R
+    R -->|1 validate Ossie| R
+    R -->|2 introspect schema| SRC[(StarRocks)]
+    R -->|3 publish compiled ConfigMap| K8S
+    R -->|4 create governed views| SRC
+    K8S -->|watch compiled ConfigMaps| P
+    C --> VK[(Valkey, optional)]
+    P -->|SELECT| SRC
+    SRC -->|external catalog| GL[Glue Data Catalog + Iceberg on S3]
+    R -->|catalog-source sync, IRSA| GL
+    SUP[Superset, optional] -->|MySQL protocol| SRC

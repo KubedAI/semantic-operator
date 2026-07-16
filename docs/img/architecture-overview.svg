@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="640" viewBox="0 0 1160 640" role="img">
+  <rect x="1" y="1" width="1158" height="638" rx="14" fill="#fcfcfd" stroke="#e4e7ec" stroke-width="1.5"/>
+  <text x="580.0" y="34.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#1f2733" text-anchor="middle">osi-semantic-operator — architecture</text>
+  <rect x="20" y="232" width="240" height="132" rx="12" fill="none" stroke="#cfd5de" stroke-width="1.3" stroke-dasharray="6 5"/>
+  <text x="34.0" y="252.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#5b6472" text-anchor="start" font-style="italic">Authoring / GitOps</text>
+  <rect x="20" y="392" width="240" height="200" rx="12" fill="none" stroke="#cfd5de" stroke-width="1.3" stroke-dasharray="6 5"/>
+  <text x="34.0" y="412.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#5b6472" text-anchor="start" font-style="italic">Consumers</text>
+  <rect x="300" y="70" width="560" height="522" rx="12" fill="none" stroke="#cfd5de" stroke-width="1.3" stroke-dasharray="6 5"/>
+  <text x="314.0" y="90.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#5b6472" text-anchor="start" font-style="italic">EKS cluster</text>
+  <rect x="884" y="104" width="252" height="214" rx="12" fill="none" stroke="#cfd5de" stroke-width="1.3" stroke-dasharray="6 5"/>
+  <text x="898.0" y="124.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#5b6472" text-anchor="start" font-style="italic">AWS</text>
+  <rect x="42" y="262" width="196" height="78" rx="9" fill="#f3efff" stroke="#c3b1f0" stroke-width="1.5"/>
+  <text x="140.0" y="295.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#5a3fb2" text-anchor="middle">Git repo</text>
+  <text x="140.0" y="312.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5a3fb2" text-anchor="middle">SemanticModel CR</text>
+  <text x="140.0" y="325.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5a3fb2" text-anchor="middle">Apache Ossie YAML</text>
+  <rect x="42" y="420" width="196" height="66" rx="9" fill="#ffedef" stroke="#f2a4ab" stroke-width="1.5"/>
+  <text x="140.0" y="447.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#a63140" text-anchor="middle">LLM agent</text>
+  <text x="140.0" y="464.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#a63140" text-anchor="middle">Amazon Bedrock</text>
+  <rect x="42" y="504" width="196" height="58" rx="9" fill="#f2f4f7" stroke="#c7cdd7" stroke-width="1.5"/>
+  <text x="140.0" y="537.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#434b57" text-anchor="middle">Custom UI</text>
+  <rect x="330" y="108" width="224" height="66" rx="9" fill="#e9f0ff" stroke="#a8bdf0" stroke-width="1.5"/>
+  <text x="442.0" y="135.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2f52b3" text-anchor="middle">semantic-operator</text>
+  <text x="442.0" y="152.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#2f52b3" text-anchor="middle">Controller / reconciler</text>
+  <rect x="344" y="250" width="196" height="62" rx="9" fill="#f2f4f7" stroke="#c7cdd7" stroke-width="1.5"/>
+  <text x="442.0" y="275.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#434b57" text-anchor="middle">Compiled model</text>
+  <text x="442.0" y="292.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#434b57" text-anchor="middle">ConfigMap · versioned</text>
+  <rect x="330" y="402" width="236" height="90" rx="9" fill="#e3f8f2" stroke="#84ddca" stroke-width="1.5"/>
+  <text x="448.0" y="441.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#0a7d69" text-anchor="middle">semantic-server ×N</text>
+  <text x="448.0" y="458.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#0a7d69" text-anchor="middle">MCP + REST adapters</text>
+  <text x="448.0" y="471.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#0a7d69" text-anchor="middle">Planner + Governance</text>
+  <rect x="648" y="140" width="196" height="74" rx="9" fill="#eef1f6" stroke="#b8c2d1" stroke-width="1.5"/>
+  <text x="746.0" y="171.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3b4757" text-anchor="middle">StarRocks</text>
+  <text x="746.0" y="188.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#3b4757" text-anchor="middle">FE / BE / CN · existing</text>
+  <rect x="648" y="250" width="196" height="54" rx="9" fill="#ffedef" stroke="#f2a4ab" stroke-width="1.5"/>
+  <text x="746.0" y="281.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#a63140" text-anchor="middle">Superset · optional</text>
+  <rect x="648" y="360" width="196" height="54" rx="9" fill="#fff5e3" stroke="#f0cd86" stroke-width="1.5"/>
+  <text x="746.0" y="391.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#8a6210" text-anchor="middle">Valkey · optional</text>
+  <rect x="902" y="142" width="214" height="54" rx="9" fill="#fdefe3" stroke="#f2b58a" stroke-width="1.5"/>
+  <text x="1009.0" y="173.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#a1521c" text-anchor="middle">Glue Data Catalog</text>
+  <rect x="902" y="236" width="214" height="54" rx="9" fill="#fdefe3" stroke="#f2b58a" stroke-width="1.5"/>
+  <text x="1009.0" y="267.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#a1521c" text-anchor="middle">Iceberg tables on S3</text>
+  <line x1="238.0" y1="301.0" x2="325.5" y2="148.8" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="330.0,141.0 330.0,149.0 323.1,145.0" fill="#6b7280"/>
+  <rect x="228.8" y="207.0" width="110.4" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="284.0" y="218.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">kubectl / ArgoCD</text>
+  <line x1="442.0" y1="174.0" x2="442.0" y2="241.0" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="442.0,250.0 438.0,243.1 446.0,243.1" fill="#6b7280"/>
+  <rect x="415.6" y="198.0" width="52.8" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="442.0" y="209.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">publish</text>
+  <line x1="442.0" y1="312.0" x2="447.4" y2="393.0" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="448.0,402.0 443.5,395.4 451.5,394.8" fill="#6b7280"/>
+  <rect x="425.0" y="343.0" width="40.0" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="445.0" y="354.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">watch</text>
+  <line x1="554.0" y1="127.8" x2="640.0" y2="172.8" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="648.0,177.0 640.0,177.3 643.7,170.2" fill="#6b7280"/>
+  <rect x="545.8" y="138.4" width="110.4" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="601.0" y="149.9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">validate · views</text>
+  <line x1="566.0" y1="429.0" x2="645.0" y2="201.8" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="648.0,193.3 649.5,201.1 641.9,198.5" fill="#6b7280"/>
+  <rect x="580.6" y="297.1" width="52.8" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="607.0" y="308.6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">one SQL</text>
+  <line x1="566.0" y1="447.0" x2="640.7" y2="392.3" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="648.0,387.0 644.8,394.3 640.0,387.9" fill="#6b7280"/>
+  <rect x="542.2" y="403.0" width="129.6" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="607.0" y="414.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">plan / result cache</text>
+  <line x1="648.0" y1="277.0" x2="738.4" y2="218.9" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="746.0,214.0 742.3,221.1 738.0,214.4" fill="#6b7280"/>
+  <rect x="677.0" y="231.5" width="40.0" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="697.0" y="243.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">MySQL</text>
+  <line x1="844.0" y1="177.0" x2="893.1" y2="170.2" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="902.0,169.0 895.7,173.9 894.6,166.0" fill="#6b7280"/>
+  <rect x="817.8" y="159.0" width="110.4" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="873.0" y="170.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">external catalog</text>
+  <line x1="1009.0" y1="196.0" x2="1009.0" y2="227.0" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="1009.0,236.0 1005.0,229.1 1013.0,229.1" fill="#6b7280"/>
+  <line x1="238.0" y1="453.0" x2="321.3" y2="431.3" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="330.0,429.0 324.3,434.6 322.3,426.9" fill="#6b7280"/>
+  <rect x="251.2" y="427.0" width="65.6" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="284.0" y="438.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">MCP tools</text>
+  <line x1="238.0" y1="533.0" x2="322.7" y2="472.1" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="330.0,466.8 326.7,474.1 322.0,467.6" fill="#6b7280"/>
+  <rect x="244.8" y="485.9" width="78.4" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="284.0" y="497.4" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">REST / JSON</text>
+  <path d="M 442 108 C 442 86, 1009 86, 1009 142" fill="none" stroke="#6b7280" stroke-width="1.6" stroke-dasharray="6 5"/>
+  <polygon points="1009.0,142.0 1005.0,135.1 1013.0,135.1" fill="#6b7280"/>
+  <text x="700.0" y="82.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">catalog sync · IRSA</text>
+</svg>

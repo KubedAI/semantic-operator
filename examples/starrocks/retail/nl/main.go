@@ -1,4 +1,4 @@
-// demo/nl answers one business question two ways and prints the SQL and
+// This tool answers one business question two ways and prints the SQL and
 // results side by side: raw text-to-SQL (LLM sees table DDL) versus the
 // semantic layer (LLM selects certified metrics via MCP).
 //

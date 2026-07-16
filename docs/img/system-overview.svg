@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="620" viewBox="0 0 900 620" role="img">
+  <rect x="1" y="1" width="898" height="618" rx="14" fill="#fcfcfd" stroke="#e4e7ec" stroke-width="1.5"/>
+  <text x="450.0" y="34.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#1f2733" text-anchor="middle">System overview</text>
+  <rect x="46" y="196" width="262" height="132" rx="12" fill="none" stroke="#cfd5de" stroke-width="1.3" stroke-dasharray="6 5"/>
+  <text x="60.0" y="216.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#5b6472" text-anchor="start" font-style="italic">semantic-operator</text>
+  <rect x="512" y="150" width="344" height="290" rx="12" fill="none" stroke="#cfd5de" stroke-width="1.3" stroke-dasharray="6 5"/>
+  <text x="526.0" y="170.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#5b6472" text-anchor="start" font-style="italic">semantic-server</text>
+  <rect x="54" y="78" width="232" height="62" rx="9" fill="#f3efff" stroke="#c3b1f0" stroke-width="1.5"/>
+  <text x="170.0" y="103.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#5a3fb2" text-anchor="middle">SemanticModel CR</text>
+  <text x="170.0" y="120.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#5a3fb2" text-anchor="middle">spec.osi = Apache Ossie YAML</text>
+  <rect x="360" y="84" width="190" height="50" rx="9" fill="#eef1f6" stroke="#b8c2d1" stroke-width="1.5"/>
+  <text x="455.0" y="113.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3b4757" text-anchor="middle">Kubernetes API</text>
+  <rect x="78" y="232" width="198" height="66" rx="9" fill="#e9f0ff" stroke="#a8bdf0" stroke-width="1.5"/>
+  <text x="177.0" y="259.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#2f52b3" text-anchor="middle">Reconciler</text>
+  <text x="177.0" y="276.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#2f52b3" text-anchor="middle">validate · compile · publish</text>
+  <rect x="536" y="188" width="138" height="50" rx="9" fill="#e3f8f2" stroke="#84ddca" stroke-width="1.5"/>
+  <text x="605.0" y="217.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#0a7d69" text-anchor="middle">MCP adapter</text>
+  <rect x="690" y="188" width="150" height="50" rx="9" fill="#e3f8f2" stroke="#84ddca" stroke-width="1.5"/>
+  <text x="765.0" y="217.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#0a7d69" text-anchor="middle">REST adapter</text>
+  <rect x="556" y="268" width="268" height="50" rx="9" fill="#e3f8f2" stroke="#84ddca" stroke-width="1.5"/>
+  <text x="690.0" y="297.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#0a7d69" text-anchor="middle">Planner</text>
+  <rect x="536" y="344" width="150" height="48" rx="9" fill="#e3f8f2" stroke="#84ddca" stroke-width="1.5"/>
+  <text x="611.0" y="372.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#0a7d69" text-anchor="middle">Governance</text>
+  <rect x="700" y="344" width="140" height="48" rx="9" fill="#fff5e3" stroke="#f0cd86" stroke-width="1.5"/>
+  <text x="770.0" y="372.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#8a6210" text-anchor="middle">Cache client</text>
+  <rect x="356" y="470" width="198" height="62" rx="9" fill="#eef1f6" stroke="#b8c2d1" stroke-width="1.5"/>
+  <text x="455.0" y="495.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3b4757" text-anchor="middle">StarRocks</text>
+  <text x="455.0" y="512.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#3b4757" text-anchor="middle">FE / BE / CN</text>
+  <rect x="700" y="470" width="140" height="54" rx="9" fill="#fff5e3" stroke="#f0cd86" stroke-width="1.5"/>
+  <text x="770.0" y="501.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#8a6210" text-anchor="middle">Valkey · optional</text>
+  <rect x="330" y="556" width="292" height="48" rx="9" fill="#fdefe3" stroke="#f2b58a" stroke-width="1.5"/>
+  <text x="476.0" y="584.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#a1521c" text-anchor="middle">Glue Data Catalog + Iceberg on S3</text>
+  <line x1="286.0" y1="109.0" x2="351.0" y2="109.0" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="360.0,109.0 353.1,113.0 353.1,105.0" fill="#6b7280"/>
+  <rect x="303.0" y="95.0" width="40.0" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="323.0" y="106.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">apply</text>
+  <line x1="413.2" y1="134.0" x2="185.3" y2="228.6" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="177.0,232.0 181.9,225.7 184.9,233.0" fill="#6b7280"/>
+  <rect x="275.1" y="169.0" width="40.0" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="295.1" y="180.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">watch</text>
+  <line x1="276.0" y1="251.8" x2="447.5" y2="138.9" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="455.0,134.0 451.4,141.2 447.0,134.5" fill="#6b7280"/>
+  <rect x="329.5" y="178.9" width="72.0" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="365.5" y="190.4" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">publish CM</text>
+  <line x1="496.8" y1="134.0" x2="682.6" y2="262.9" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="690.0,268.0 682.0,267.3 686.6,260.8" fill="#6b7280"/>
+  <rect x="531.8" y="187.0" width="123.2" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="593.4" y="198.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">watch compiled CMs</text>
+  <line x1="605.0" y1="238.0" x2="681.5" y2="265.0" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="690.0,268.0 682.1,269.5 684.8,261.9" fill="#6b7280"/>
+  <line x1="765.0" y1="238.0" x2="698.4" y2="264.7" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="690.0,268.0 694.9,261.7 697.9,269.1" fill="#6b7280"/>
+  <line x1="631.0" y1="318.0" x2="616.5" y2="336.9" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="611.0,344.0 612.1,336.1 618.4,341.0" fill="#6b7280"/>
+  <line x1="749.0" y1="318.0" x2="764.3" y2="337.0" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="770.0,344.0 762.5,341.1 768.8,336.1" fill="#6b7280"/>
+  <line x1="770.0" y1="392.0" x2="770.0" y2="461.0" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="770.0,470.0 766.0,463.1 774.0,463.1" fill="#6b7280"/>
+  <line x1="177.0" y1="298.0" x2="350.0" y2="494.2" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="356.0,501.0 348.4,498.4 354.4,493.2" fill="#6b7280"/>
+  <rect x="204.9" y="385.5" width="123.2" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="266.5" y="397.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">introspect · views</text>
+  <line x1="556.0" y1="304.0" x2="459.7" y2="462.3" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="455.0,470.0 455.2,462.0 462.0,466.2" fill="#6b7280"/>
+  <rect x="482.3" y="373.0" width="46.4" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="505.5" y="384.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">SELECT</text>
+  <line x1="455.0" y1="532.0" x2="470.1" y2="549.2" stroke="#6b7280" stroke-width="1.6"/>
+  <polygon points="476.0,556.0 468.4,553.4 474.4,548.2" fill="#6b7280"/>
+  <rect x="410.3" y="530.0" width="110.4" height="15" rx="4" fill="#fcfcfd" opacity="0.92"/>
+  <text x="465.5" y="541.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#5b6472" text-anchor="middle">external catalog</text>
+</svg>

@@ -1,6 +1,6 @@
 # Benchmark question set. Each question has two paraphrases and a
 # hand-written ground-truth SQL whose definition matches the certified
-# metric in demo/model/semanticmodel.yaml. $DB. expands to the configured
+# metric in ../model/semanticmodel.yaml. $DB. expands to the configured
 # `catalog`.`database`. prefix at run time. Ground truth executes on the
 # same StarRocks cluster, so comparisons are engine-identical.
 #

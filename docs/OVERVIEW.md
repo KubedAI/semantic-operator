@@ -40,4 +40,68 @@ Verified on a live EKS deployment (StarRocks + Iceberg/Glue + Valkey):
 - Governance denial (analyst → PII column) returns **HTTP 403** at compile time.
 - The BI view path and the REST path return **identical numbers**.
 
-See [DEMO.md](DEMO.md) to show this, [TEACHING.md](TEACHING.md) to onboard users, and [ARCHITECTURE.md](ARCHITECTURE.md) for how it works.
+See the [retail example](../examples/starrocks/retail/README.md) to run and show this, the onboarding guide below to bring people on, and [ARCHITECTURE.md](ARCHITECTURE.md) for how it works.
+
+---
+
+## Onboarding by role
+
+> **The LLM selects; the compiler writes.**
+
+Three different people touch this system. Everyone chooses only *certified metrics
+and dimensions*; a deterministic planner turns that choice into exactly one
+governed SQL statement. Nobody hand-writes analytical SQL. Everything else hangs
+on that idea.
+
+### A. The metric author (data engineer)
+
+Owns the `SemanticModel` CR — the only role that edits Apache Ossie YAML.
+
+1. Start from the worked example: [`examples/starrocks/retail/model/semanticmodel.yaml`](../examples/starrocks/retail/model/semanticmodel.yaml).
+2. Learn the authoring loop:
+   ```bash
+   osictl validate -f model.yaml        # offline, instant feedback — no cluster
+   kubectl apply -f model.yaml          # or git push, and ArgoCD applies it
+   kubectl -n semantic-system get semanticmodels -w   # Validated / Compiled / Published / DriftDetected
+   ```
+3. You maintain only **metrics, joins, and synonyms**; physical field lists come
+   from Glue via `osictl derive --database <db> --out model.yaml` (candidate joins
+   are emitted commented-out for a human to confirm; metrics and relationships are
+   never auto-modified).
+4. Golden rules: a metric is a *certified definition* (disagreements about
+   "revenue" are resolved in the CR, once); drift is *detected*, not silently
+   served; the `spec.osi` block round-trips byte-for-byte as portable Apache Ossie.
+
+### B. The AI / app developer (consumer)
+
+Never edits the model; consumes the planner.
+
+- **Contract:** request `{metrics, dimensions, filters, identity}` → response
+  `{columns, rows, sql, requestHash, ...}`.
+- **Agents (MCP):** point the MCP client at `/mcp`. Tools are self-describing —
+  `list_metrics`, `list_dimensions` (names, descriptions, `ai_context` synonyms so
+  the model grounds user vocabulary), and `query_metric(...)` (returns data *and*
+  the emitted SQL). The agent learns the model by calling these; you do not
+  prompt-stuff the schema.
+- **Apps (REST):** `POST /v1/models/{m}/query`, and `POST /v1/models/{m}/sql` for a
+  dry-run that returns SQL without executing.
+- Pass identity (`X-Semantic-Role` for REST); governance is enforced server-side —
+  a forbidden field is a 403, not an empty result.
+
+### C. The BI analyst (Superset)
+
+Touches no YAML at all.
+
+- Connect Superset to StarRocks over MySQL protocol.
+- Use the governed `semantic_views.*` views (e.g. `sales_by_category_year`), **not**
+  the raw Iceberg tables.
+- The one rule: the view already computed the metric correctly (including
+  fan-out-safe ratios). Building your own aggregate over raw tables is how you get
+  the wrong number. See [examples/starrocks/retail/superset/README.md](../examples/starrocks/retail/superset/README.md).
+
+### Suggested path
+
+Everyone: read this doc → run the with/without demo in the
+[retail example](../examples/starrocks/retail/README.md) → branch by role above.
+Authors finish with `osictl validate` on a metric of their own; consumers with one
+successful `query_metric`; analysts with one governed view in a Superset chart.

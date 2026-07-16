@@ -1,4 +1,4 @@
-// demo/data loads a deterministic, demo-sized TPC-DS subset as Iceberg
+// This loader creates a deterministic, demo-sized TPC-DS subset as Iceberg
 // tables in the Glue catalog by executing DDL and batched INSERTs through
 // the existing StarRocks external catalog. No Spark required.
 //
@@ -69,9 +69,9 @@ func main() {
 	}
 
 	// The external catalog must already exist (it fronts Glue + S3 and its
-	// creation carries account-specific config; see docs/RUNBOOK.md).
+	// creation carries account-specific config; see the retail example README).
 	if _, _, err := cli.Query(ctx, fmt.Sprintf("SHOW DATABASES FROM `%s`", catalog)); err != nil {
-		log.Fatalf("external catalog %q not usable: %v\nCreate it first; see docs/RUNBOOK.md section 4.", catalog, err)
+		log.Fatalf("external catalog %q not usable: %v\nCreate it first; see examples/starrocks/retail/README.md (StarRocks external catalog setup).", catalog, err)
 	}
 
 	must(cli.Exec(ctx, fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`.`%s`", catalog, db)))

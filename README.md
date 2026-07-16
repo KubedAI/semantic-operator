@@ -15,58 +15,25 @@ You author a `SemanticModel` custom resource as Apache Ossie YAML. The operator 
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    subgraph authoring [Authoring / GitOps]
-        GIT[Git repo: SemanticModel CR<br/>Apache Ossie YAML] -->|ArgoCD / kubectl| CR[SemanticModel CR]
-    end
-
-    subgraph eks [EKS cluster]
-        subgraph operator [semantic-operator]
-            CTRL[Controller]
-        end
-        CR --> CTRL
-        CTRL -->|validate + drift check| SR[(StarRocks FE/BE/CN<br/>existing)]
-        CTRL -->|publish compiled model| CM[ConfigMap<br/>compiled artifact vN]
-        CTRL -->|CREATE OR REPLACE VIEW| SR
-
-        subgraph server [semantic-server]
-            MCP[MCP adapter] --> PL[Planner + Governance]
-            REST[REST adapter] --> PL
-        end
-        CM -->|watch| PL
-        PL -->|plan + result cache| VK[(Valkey<br/>existing)]
-        PL -->|StarRocks SQL| SR
-
-        SUP[Superset<br/>existing] -->|MySQL protocol, governed views| SR
-    end
-
-    subgraph aws [AWS]
-        SR -->|external catalog| GLUE[Glue Data Catalog]
-        GLUE --- ICE[Iceberg tables on S3]
-        CTRL -->|catalog-source sync, IRSA| GLUE
-    end
-
-    AGENT[LLM agent / Bedrock] -->|MCP tools| MCP
-    UI[Custom UI] -->|JSON| REST
-```
+![Architecture overview](docs/img/architecture-overview.svg)
+<!-- Diagram source: docs/diagrams/architecture-overview.mmd -->
 
 Documentation:
 
-- [docs/OVERVIEW.md](docs/OVERVIEW.md) — what this is, the gaps it fills, and why to use it.
+- [docs/OVERVIEW.md](docs/OVERVIEW.md) — what this is, the gaps it fills, why to use it, and role-based onboarding.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — component responsibilities, request flows, the CRD lifecycle, and the governance model.
-- [docs/RUNBOOK.md](docs/RUNBOOK.md) — the end-to-end deploy and test procedure.
-- [docs/DEMO.md](docs/DEMO.md) — how to demo the solution and show its accuracy.
-- [docs/TEACHING.md](docs/TEACHING.md) — how to onboard metric authors, app/agent developers, and BI analysts.
+- [docs/DEVELOPER.md](docs/DEVELOPER.md) — code hierarchy, package layering, the two binaries, where engine-specific code lives, and **how to deploy & operate**.
+- [docs/EXTENDING-ENGINES.md](docs/EXTENDING-ENGINES.md) — step-by-step for adding a query engine (Trino/ClickHouse/DuckDB).
+- [docs/ROADMAP.md](docs/ROADMAP.md) — planned work and follow-ups.
 
-Examples: [demo/model/](demo/model/semanticmodel.yaml) is the runnable retail demo (with a data loader); [demo/flights/](demo/flights/README.md) is a second Glue-bound example adapted from the [Apache Ossie flights model](https://github.com/apache/ossie/blob/main/examples/flights.yaml).
+Examples ([examples/](examples/README.md)): [examples/starrocks/retail/](examples/starrocks/retail/README.md) is the runnable reference demo (data loader, model, NL comparison, benchmark, Superset); [examples/starrocks/flights/](examples/starrocks/flights/README.md) is a second Glue-bound example adapted from the [Apache Ossie flights model](https://github.com/apache/ossie/blob/main/examples/flights.yaml). Running an example end to end is documented in its own README.
 
 ## Components
 
 | Component | Binary | What it does |
 |---|---|---|
 | Operator | `cmd/manager` | Reconciles `SemanticModel` CRs: Apache Ossie validation, physical binding and drift check against live StarRocks/Iceberg schema, deterministic compile, publish to ConfigMap, governed view creation in StarRocks. |
-| Semantic server | `cmd/server` | Stateless. Watches compiled-model ConfigMaps. Hosts the planner, compile-time governance, Valkey plan/result caches, the MCP adapter (streamable HTTP), and the REST adapter. |
+| Semantic server | `cmd/server` | Stateless. Watches compiled-model ConfigMaps. Hosts the planner, compile-time governance, optional Valkey plan/result caches, the MCP adapter (streamable HTTP), and the REST adapter. |
 | CLI | `cmd/osictl` | Validate Apache Ossie YAML offline, derive dataset stubs from a Glue database (catalog auto-derivation), wrap Ossie YAML into a CR and back (round-trip). |
 
 The planner emits StarRocks SQL only, behind an `emitter.Dialect` interface so other engines can be added. The catalog sync is behind a `catalog.Source` interface with a Glue implementation. A MetricFlow integration point is documented but not built. See scope guardrails in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#extension-points).
@@ -86,7 +53,7 @@ Semantic request in, one SQL statement out:
 ```
 
 ```sql
-/* semantic-layer model=tpcds_retail_model version=3f2a9c1b request=7d0e... */
+/* semantic-layer model=tpcds_retail_model version=3f2a9c1b7e4d request=7d0e1f8a... */
 SELECT `item`.`i_category` AS `item.i_category`,
        SUM(`store_sales`.`ss_ext_sales_price`) AS `total_sales`
 FROM `iceberg`.`osi_demo`.`store_sales` AS `store_sales`
@@ -103,65 +70,67 @@ Same request, same SQL, every time. Every emitted statement carries the model na
 
 ## Quickstart
 
-Prerequisites: an EKS cluster with StarRocks (shared-data, external Iceberg catalog on Glue), Valkey, and Superset already running; `kubectl`, `helm`, `docker`, Go 1.24+, AWS credentials with ECR/Glue/Bedrock access.
+Prerequisites: a Kubernetes/EKS cluster with an **existing StarRocks** cluster (shared-data, external Iceberg catalog on Glue) — the only required runtime dependency besides Kubernetes. **Valkey** (caching) and **Superset** (BI views) are optional. Tooling: `kubectl`, `helm`, `docker`, Go 1.26+, AWS credentials with ECR/Glue/S3 access (Bedrock only for the NL demo).
 
 ```bash
 # 1. Build and push images to ECR (region/account from environment)
 make ecr-login docker-build docker-push \
   REGISTRY=<acct>.dkr.ecr.us-west-2.amazonaws.com
 
-# 2. Install the operator, planner, and adapters
+# 2. Install the operator and semantic server
 helm install semantic-operator charts/semantic-operator \
   --namespace semantic-system --create-namespace \
   --set image.repository=<acct>.dkr.ecr.us-west-2.amazonaws.com/osi-semantic-operator \
   --set image.tag=0.1.0 \
   --set starrocks.host=starrocks-fe.starrocks.svc.cluster.local \
-  --set valkey.addr=valkey.valkey.svc.cluster.local:6379 \
+  --set valkey.addr=valkey.valkey.svc.cluster.local:6379 \   # optional; omit to disable caching
   --set aws.region=us-west-2
 
 # 3. Load demo data (creates Iceberg tables in Glue via StarRocks, idempotent)
 make demo-data
 
 # 4. Apply the demo semantic model (Apache Ossie TPC-DS subset)
-kubectl apply -f demo/model/semanticmodel.yaml
+kubectl apply -f examples/starrocks/retail/model/semanticmodel.yaml
 kubectl get semanticmodels -n semantic-system   # wait for Validated/Compiled/Published
 
 # 5. Run the natural-language comparison (raw text-to-SQL vs semantic layer)
 make demo-nl QUESTION="What was total sales by category in 2001?"
 
-# 6. Wire up Superset (governed views are already in StarRocks)
-#    follow demo/superset/README.md
+# 6. (Optional) Wire up Superset — governed views are already in StarRocks
+#    follow examples/starrocks/retail/superset/README.md
 
 # 7. Run the accuracy benchmark
 make bench
 ```
 
-Every endpoint, credential, and catalog name above is a Helm value or environment variable. Nothing is hardcoded. See [charts/semantic-operator/values.yaml](charts/semantic-operator/values.yaml). The full copy-paste procedure, including the one-time StarRocks external catalog setup for Glue and troubleshooting, is [docs/RUNBOOK.md](docs/RUNBOOK.md).
+Every endpoint, credential, and catalog name above is a Helm value or environment variable. Nothing is hardcoded. See [charts/semantic-operator/values.yaml](charts/semantic-operator/values.yaml). Deploy & operate details live in [docs/DEVELOPER.md](docs/DEVELOPER.md#deploy--operate); the full end-to-end for this demo, including the one-time StarRocks external catalog setup for Glue and troubleshooting, is [examples/starrocks/retail/README.md](examples/starrocks/retail/README.md).
 
 ## Demo: with and without the semantic layer
 
-`demo/nl` answers a business question two ways on the same StarRocks cluster — raw LLM text-to-SQL vs. the semantic layer — and prints SQL, results, and correctness side by side. Ambiguous metrics (`customer_lifetime_value`, `store_productivity`) are where raw text-to-SQL invents a plausible formula that differs run to run and paraphrase to paraphrase; the semantic path is certified and deterministic. The `bench/` harness quantifies this: accuracy, paraphrase consistency, and hallucination rate.
+The retail example answers a business question two ways on the same StarRocks cluster — raw LLM text-to-SQL vs. the semantic layer — and prints SQL, results, and correctness side by side. Ambiguous metrics (`customer_lifetime_value`, `store_productivity`) are where raw text-to-SQL invents a plausible formula that differs run to run and paraphrase to paraphrase; the semantic path is certified and deterministic. The benchmark harness quantifies this: accuracy, paraphrase consistency, and hallucination rate.
 
-See [docs/DEMO.md](docs/DEMO.md) for how to run it and [bench/RESULTS.md](bench/RESULTS.md) for results.
+See [examples/starrocks/retail/README.md](examples/starrocks/retail/README.md) for how to run it and [examples/starrocks/retail/bench/RESULTS.md](examples/starrocks/retail/bench/RESULTS.md) for results.
 
 ## Repository layout
 
 ```
 api/v1alpha1/          CRD types (Apache Ossie model as Go structs)
 controllers/           SemanticModel reconciler
+cmd/                   manager, server, osictl binaries
 internal/osi/          Apache Ossie schema validation
-internal/planner/      semantic request -> logical plan
-internal/governance/   compile-time row/column policies
+internal/planner/      semantic request -> logical plan -> SQL; expr/ grammar
+internal/governance/   compile-time row/column/metric policies
 internal/emitter/      Dialect interface; starrocks/ implementation
-internal/catalog/      Source interface; glue/ implementation
-internal/cache/        Valkey plan + result caches
-internal/serving/      mcp/, rest/, views/ adapters
+internal/catalog/      Source interface; glue/ implementation; derive.go
+internal/cache/        Valkey plan + result caches (optional)
+internal/serving/      shared query service; mcp/, rest/, views/ adapters
 internal/starrocks/    MySQL-protocol client, schema introspection
-cmd/                   manager, server, osictl
-charts/semantic-operator/
-demo/                  data loader, SemanticModel CR, NL comparison, Superset
-bench/                 accuracy benchmark harness
-docs/                  ARCHITECTURE.md, RUNBOOK.md
+internal/nlbench/      NL comparison / benchmark support
+internal/observability/ tracing + metrics
+charts/semantic-operator/  Helm chart (crds/, templates/, values.yaml)
+examples/              use cases by engine: starrocks/retail, starrocks/flights
+hack/                  build-time tool dependencies
+docs/                  OVERVIEW, ARCHITECTURE, DEVELOPER, EXTENDING-ENGINES, ROADMAP
 ```
 
 ## License

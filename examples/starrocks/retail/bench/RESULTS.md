@@ -1,7 +1,7 @@
 # Benchmark results
 
 Not yet generated in this checkout. Run the benchmark against a deployed
-stack (see docs/RUNBOOK.md sections 6-9 for prerequisites):
+stack (see [../README.md](../README.md) §6–§8 for prerequisites):
 
 ```bash
 make bench

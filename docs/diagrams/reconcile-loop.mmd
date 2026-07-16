@@ -1,0 +1,12 @@
+stateDiagram-v2
+    [*] --> Validating
+    Validating --> Failed: Ossie schema invalid
+    Validating --> Binding: Validated=True
+    Binding --> Binding_note
+    state "flag DriftDetected, keep serving last good" as Binding_note
+    Binding --> Compiling: bindings resolve
+    Compiling --> Failed: expression outside supported subset
+    Compiling --> Publishing: Compiled=True
+    Publishing --> Views: ConfigMap written, Published=True
+    Views --> Ready: CREATE OR REPLACE VIEW applied
+    Ready --> Validating: spec change or resync interval
