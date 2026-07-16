@@ -1,10 +1,22 @@
 # osi-semantic-operator
 
-A Kubernetes operator that runs an [Apache Ossie (incubating)](https://ossie.apache.org/) semantic layer on Amazon EKS, on top of an existing StarRocks cluster querying Apache Iceberg tables.
+**Certified business metrics → deterministic, governed SQL.** A Kubernetes operator and stateless server that turn a versioned semantic model into *exactly one* safe SQL statement per request — so AI agents, BI tools, and apps all answer the same question the same correct way.
 
-> Apache Ossie is the vendor-neutral semantic-model standard formerly known as **Open Semantic Interchange (OSI)**; it entered the Apache Incubator in July 2026. The YAML spec is unchanged. Code identifiers in this repo retain the historical `osi` short name (the `semantic.osi.io` API group, the `spec.osi` block, and the `osictl` CLI) so existing deployments keep working.
+## The problem it solves
 
-You author a `SemanticModel` custom resource as Apache Ossie YAML. The operator validates it, checks its physical bindings against the live StarRocks/Iceberg schema, compiles it, and publishes it to a semantic planner. The planner turns semantic requests (metrics, dimensions, filters, time grain) into exactly one deterministic StarRocks SQL statement, with row and column governance applied at compile time. Three thin adapters serve the same planner: an MCP server for agents, a REST API for custom UIs, and governed StarRocks views for BI tools.
+Point an LLM at your warehouse and it writes raw SQL. Ask the same question twice and you get different queries; ask for ambiguous business logic ("customer lifetime value", "sales per employee") and it invents a plausible-but-wrong formula — a fan-out join silently multiplies the denominator and the answer is confidently incorrect. And governance bolted on *after* the query is easy to get wrong.
+
+## What it does
+
+You define metrics, dimensions, and joins **once** as a versioned `SemanticModel` custom resource ([Apache Ossie](https://ossie.apache.org/) YAML) under GitOps. The operator validates it against your live StarRocks/Iceberg schema, compiles it deterministically, and serves it three ways from a single planner:
+
+- an **MCP server** for AI agents,
+- a **REST API** for apps and custom UIs,
+- **governed SQL views** for BI tools.
+
+The rule that makes it safe: **the LLM never writes SQL.** It only *selects* certified metrics and dimensions; a compiler turns that selection into one StarRocks SQL statement, with row/column governance applied *before* the query is emitted — an unauthorized request fails to compile, it never leaks.
+
+> **Naming.** This implements **Apache Ossie (incubating)**, the semantic-model standard formerly called Open Semantic Interchange (OSI). The `osi` short name survives only in code identifiers (the `semantic.osi.io` API group, `spec.osi`, and the `osictl` CLI).
 
 ## Why
 
@@ -15,7 +27,7 @@ You author a `SemanticModel` custom resource as Apache Ossie YAML. The operator 
 
 ## Architecture
 
-![Architecture overview](docs/img/architecture-overview.svg)
+![Architecture overview](docs/img/architecture-overview.png)
 <!-- Diagram source: docs/diagrams/architecture-overview.mmd -->
 
 Documentation:

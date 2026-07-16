@@ -6,7 +6,7 @@ can be regenerated or redrawn.
 
 | Source | Rendered image | Used in |
 |---|---|---|
-| `architecture-overview.mmd` | `../img/architecture-overview.svg` | `README.md` |
+| `architecture-overview.mmd` | `../img/architecture-overview.png` | `README.md` |
 | `system-overview.mmd` | `../img/system-overview.svg` | `docs/ARCHITECTURE.md` |
 | `reconcile-loop.mmd` | `../img/reconcile-loop.svg` | `docs/ARCHITECTURE.md` |
 | `serving-sequence.mmd` | `../img/serving-sequence.svg` | `docs/ARCHITECTURE.md` |
