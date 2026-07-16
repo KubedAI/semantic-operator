@@ -32,7 +32,7 @@
   <text x="746.0" y="171.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#3b4757" text-anchor="middle">StarRocks</text>
   <text x="746.0" y="188.0" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10.5" font-weight="400" fill="#3b4757" text-anchor="middle">FE / BE / CN · existing</text>
   <rect x="648" y="250" width="196" height="54" rx="9" fill="#ffedef" stroke="#f2a4ab" stroke-width="1.5"/>
-  <text x="746.0" y="281.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#a63140" text-anchor="middle">Superset · optional</text>
+  <text x="746.0" y="281.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#a63140" text-anchor="middle">BI tool · optional</text>
   <rect x="648" y="360" width="196" height="54" rx="9" fill="#fff5e3" stroke="#f0cd86" stroke-width="1.5"/>
   <text x="746.0" y="391.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" font-weight="700" fill="#8a6210" text-anchor="middle">Valkey · optional</text>
   <rect x="902" y="142" width="214" height="54" rx="9" fill="#fdefe3" stroke="#f2b58a" stroke-width="1.5"/>

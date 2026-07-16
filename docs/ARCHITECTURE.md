@@ -154,7 +154,7 @@ All three consumers hit the same planner and governance. None of them contains q
 
 - **MCP** (`internal/serving/mcp`, official `modelcontextprotocol/go-sdk`, streamable HTTP, stateless): tools `list_metrics`, `list_dimensions` (both return names, descriptions, and `ai_context` synonyms so the LLM can ground user vocabulary), `query_metric(metric, dimensions?, filters?, grain?, limit?)`. Tool results include the emitted SQL for transparency.
 - **REST** (`internal/serving/rest`): `GET /v1/models`, `GET /v1/models/{m}/metrics`, `GET /v1/models/{m}/dimensions`, `POST /v1/models/{m}/query`, `POST /v1/models/{m}/sql` (dry-run: returns SQL without executing). JSON in and out.
-- **BI views** (`internal/serving/views`, executed by the operator): each `spec.views` entry becomes a StarRocks logical view whose body is planner output. Superset connects to StarRocks over MySQL protocol and sees `semantic_views.sales_by_category_year` as a table of certified numbers. Analysts cannot mis-aggregate a ratio metric because the view already computed it.
+- **BI views** (`internal/serving/views`, executed by the operator): each `spec.views` entry becomes a StarRocks logical view whose body is planner output. Any BI tool connects to StarRocks over MySQL protocol and sees `semantic_views.sales_by_category_year` as a table of certified numbers. Analysts cannot mis-aggregate a ratio metric because the view already computed it.
 
 ## Observability
 

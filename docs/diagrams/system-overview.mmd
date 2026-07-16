@@ -29,4 +29,4 @@ flowchart TB
     P -->|SELECT| SRC
     SRC -->|external catalog| GL[Glue Data Catalog + Iceberg on S3]
     R -->|catalog-source sync, IRSA| GL
-    SUP[Superset, optional] -->|MySQL protocol| SRC
+    SUP[BI tool, optional] -->|MySQL protocol| SRC

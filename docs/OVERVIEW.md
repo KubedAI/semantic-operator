@@ -12,7 +12,7 @@ You define metrics, dimensions, and joins once as an Apache Ossie `SemanticModel
 
 - an **MCP server** for LLM agents,
 - a **REST API** for apps, and
-- **governed SQL views** for BI tools like Apache Superset.
+- **governed SQL views** for BI tools (any MySQL-protocol client).
 
 The key idea: **the LLM never writes SQL.** It only selects certified metrics and dimensions; a deterministic compiler turns that selection into exactly one SQL statement, with row/column governance applied *before* the query is emitted.
 
@@ -88,20 +88,22 @@ Never edits the model; consumes the planner.
 - Pass identity (`X-Semantic-Role` for REST); governance is enforced server-side —
   a forbidden field is a 403, not an empty result.
 
-### C. The BI analyst (Superset)
+### C. The BI analyst (any BI tool)
 
 Touches no YAML at all.
 
-- Connect Superset to StarRocks over MySQL protocol.
+- Connect your BI tool to StarRocks over MySQL protocol (StarRocks speaks the
+  MySQL wire protocol, so most BI tools connect natively).
 - Use the governed `semantic_views.*` views (e.g. `sales_by_category_year`), **not**
   the raw Iceberg tables.
 - The one rule: the view already computed the metric correctly (including
   fan-out-safe ratios). Building your own aggregate over raw tables is how you get
-  the wrong number. See [examples/starrocks/retail/superset/README.md](../examples/starrocks/retail/superset/README.md).
+  the wrong number. The naive-vs-governed contrast is shown in
+  [the retail example](../examples/starrocks/retail/README.md#5-with-vs-without-the-semantic-layer-the-money-shot).
 
 ### Suggested path
 
 Everyone: read this doc → run the with/without demo in the
 [retail example](../examples/starrocks/retail/README.md) → branch by role above.
 Authors finish with `osictl validate` on a metric of their own; consumers with one
-successful `query_metric`; analysts with one governed view in a Superset chart.
+successful `query_metric`; analysts with one governed view in a BI chart.

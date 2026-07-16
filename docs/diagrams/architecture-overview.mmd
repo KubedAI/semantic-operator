@@ -20,7 +20,7 @@ flowchart LR
         PL -->|plan + result cache| VK[(Valkey<br/>existing, optional)]
         PL -->|StarRocks SQL| SR
 
-        SUP[Superset<br/>existing, optional] -->|MySQL protocol, governed views| SR
+        SUP[BI tool<br/>existing, optional] -->|MySQL protocol, governed views| SR
     end
 
     subgraph aws [AWS]

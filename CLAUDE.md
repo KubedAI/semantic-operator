@@ -46,7 +46,7 @@ internal/starrocks/    MySQL-protocol client + schema introspection
 internal/nlbench/       NL comparison / benchmark support
 internal/observability/ tracing + metrics
 charts/semantic-operator/  Helm chart (crds/, templates/, values.yaml)
-examples/              use cases by engine; starrocks/retail/ (data, model, nl, bench, superset)
+examples/              use cases by engine; starrocks/retail/ (data, model, nl, bench)
                        and starrocks/flights/ (model-only). See examples/README.md
 docs/                  OVERVIEW, ARCHITECTURE, DEVELOPER, EXTENDING-ENGINES, ROADMAP;
                        diagrams/ (mermaid sources), img/ (hand-authored SVGs)

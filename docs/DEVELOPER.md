@@ -122,7 +122,7 @@ importing the concrete client.
 | Path | What |
 |---|---|
 | `charts/semantic-operator/` | Helm chart: `crds/`, `templates/` (manager + server Deployments, RBAC, SAs), `values.yaml`. |
-| `examples/` | Use cases grouped by engine. `starrocks/retail/` is the runnable reference example (`data/` loader, `model/` CR, `nl/` comparison, `bench/` harness, `superset/`); `starrocks/flights/` is a second, model-only Glue-bound example. See [examples/README.md](../examples/README.md). |
+| `examples/` | Use cases grouped by engine. `starrocks/retail/` is the runnable reference example (`data/` loader, `model/` CR, `nl/` comparison, `bench/` harness); `starrocks/flights/` is a second, model-only Glue-bound example. See [examples/README.md](../examples/README.md). |
 | `hack/` | `tools.go` — build-time tool dependencies. |
 | `docs/` | These documents. |
 
@@ -248,8 +248,8 @@ accuracy demo — lives in that example's README (start with
 
 **Prerequisites.** An EKS (or any Kubernetes) cluster with an **existing
 StarRocks** cluster reachable over the FE MySQL endpoint, fronting Iceberg via a
-Glue external catalog. Valkey and Superset are **optional** (see the topology
-table above). On your workstation: Go 1.26+, Docker, `kubectl`, Helm 3, and AWS
+Glue external catalog. Valkey is **optional** (see the topology table above);
+any MySQL-protocol BI tool can read the governed views without extra components. On your workstation: Go 1.26+, Docker, `kubectl`, Helm 3, and AWS
 credentials with ECR/Glue/S3 access (Bedrock only if you run the NL demo).
 
 ```bash

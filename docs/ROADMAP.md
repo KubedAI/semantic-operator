@@ -17,6 +17,18 @@ grouped by theme; nothing here is required for the current StarRocks deployment.
   keep each example's end-to-end in *its* README; the three top-level guides
   (`OVERVIEW`, `ARCHITECTURE`, `DEVELOPER`) stay engine-agnostic.
 
+## Faster onboarding
+
+- [ ] **Local `kind` quickstart** — a one-command local stack (kind + StarRocks
+  FE/BE + Valkey) so users can try the operator without an EKS cluster or AWS
+  account. The open design question is the lake: the current demo binds to an
+  **AWS Glue** external catalog on S3, which `kind` can't provide. Options to
+  resolve first: (a) point StarRocks at a **local Iceberg REST catalog + MinIO**
+  (S3-compatible) instead of Glue, via the existing `catalog.Source` seam, or
+  (b) a `kind` profile that uses **StarRocks-native tables** (no external
+  catalog) for the demo data. Either is a self-contained example, not a doc tweak.
+- [ ] **Prebuilt public images** so the quickstart can skip `docker build`.
+
 ## More examples
 
 - [ ] **ClickHouse example** (`examples/clickhouse/<usecase>/`) once the

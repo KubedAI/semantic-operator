@@ -8,7 +8,7 @@ top-level directories without disturbing the existing ones.
 ```
 examples/
   starrocks/
-    retail/     # runnable end-to-end: TPC-DS subset, loader, model, NL demo, benchmark, Superset
+    retail/     # runnable end-to-end: TPC-DS subset, loader, model, NL demo, benchmark
     flights/    # model-only: a second Glue-bound domain, shows authoring + binding
 ```
 

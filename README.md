@@ -4,14 +4,14 @@ A Kubernetes operator that runs an [Apache Ossie (incubating)](https://ossie.apa
 
 > Apache Ossie is the vendor-neutral semantic-model standard formerly known as **Open Semantic Interchange (OSI)**; it entered the Apache Incubator in July 2026. The YAML spec is unchanged. Code identifiers in this repo retain the historical `osi` short name (the `semantic.osi.io` API group, the `spec.osi` block, and the `osictl` CLI) so existing deployments keep working.
 
-You author a `SemanticModel` custom resource as Apache Ossie YAML. The operator validates it, checks its physical bindings against the live StarRocks/Iceberg schema, compiles it, and publishes it to a semantic planner. The planner turns semantic requests (metrics, dimensions, filters, time grain) into exactly one deterministic StarRocks SQL statement, with row and column governance applied at compile time. Three thin adapters serve the same planner: an MCP server for agents, a REST API for custom UIs, and governed StarRocks views for BI tools such as Apache Superset.
+You author a `SemanticModel` custom resource as Apache Ossie YAML. The operator validates it, checks its physical bindings against the live StarRocks/Iceberg schema, compiles it, and publishes it to a semantic planner. The planner turns semantic requests (metrics, dimensions, filters, time grain) into exactly one deterministic StarRocks SQL statement, with row and column governance applied at compile time. Three thin adapters serve the same planner: an MCP server for agents, a REST API for custom UIs, and governed StarRocks views for BI tools.
 
 ## Why
 
 - **Determinism.** An LLM writing raw SQL produces different queries for the same question, and confidently wrong queries for ambiguous ones. The planner is a compiler: the same semantic request always yields the same SQL. The LLM only selects certified metrics and dimensions; it never writes SQL.
 - **Compile-time governance.** Row and column policies are applied inside the planner before SQL is emitted. An unauthorized request fails to compile. There is no post-hoc filtering to get wrong.
 - **Decoupling.** Business logic (metric definitions, join graph, synonyms) lives in a versioned CR under GitOps. Physical schema lives in the Iceberg catalog. The catalog-source sync derives dataset bindings and field lists from AWS Glue, so humans maintain only metrics, joins, and synonyms.
-- **StarRocks fits.** A join-graph semantic layer needs an engine that executes star-schema joins fast over lake data. StarRocks queries Iceberg through an external catalog with vectorized execution and join optimizations, speaks MySQL protocol (so Superset connects natively), and supports logical views over external catalog tables (so governed metric views are plain views).
+- **StarRocks fits.** A join-graph semantic layer needs an engine that executes star-schema joins fast over lake data. StarRocks queries Iceberg through an external catalog with vectorized execution and join optimizations, speaks MySQL protocol (so BI tools connect natively), and supports logical views over external catalog tables (so governed metric views are plain views).
 
 ## Architecture
 
@@ -26,7 +26,7 @@ Documentation:
 - [docs/EXTENDING-ENGINES.md](docs/EXTENDING-ENGINES.md) — step-by-step for adding a query engine (Trino/ClickHouse/DuckDB).
 - [docs/ROADMAP.md](docs/ROADMAP.md) — planned work and follow-ups.
 
-Examples ([examples/](examples/README.md)): [examples/starrocks/retail/](examples/starrocks/retail/README.md) is the runnable reference demo (data loader, model, NL comparison, benchmark, Superset); [examples/starrocks/flights/](examples/starrocks/flights/README.md) is a second Glue-bound example adapted from the [Apache Ossie flights model](https://github.com/apache/ossie/blob/main/examples/flights.yaml). Running an example end to end is documented in its own README.
+Examples ([examples/](examples/README.md)): [examples/starrocks/retail/](examples/starrocks/retail/README.md) is the runnable reference demo (data loader, model, NL comparison, benchmark); [examples/starrocks/flights/](examples/starrocks/flights/README.md) is a second Glue-bound example adapted from the [Apache Ossie flights model](https://github.com/apache/ossie/blob/main/examples/flights.yaml). Running an example end to end is documented in its own README.
 
 ## Components
 
@@ -70,7 +70,13 @@ Same request, same SQL, every time. Every emitted statement carries the model na
 
 ## Quickstart
 
-Prerequisites: a Kubernetes/EKS cluster with an **existing StarRocks** cluster (shared-data, external Iceberg catalog on Glue) — the only required runtime dependency besides Kubernetes. **Valkey** (caching) and **Superset** (BI views) are optional. Tooling: `kubectl`, `helm`, `docker`, Go 1.26+, AWS credentials with ECR/Glue/S3 access (Bedrock only for the NL demo).
+You need a Kubernetes cluster with:
+
+- **StarRocks** (FE + BE, shared-data mode) — the only required runtime dependency. On EKS, deploy it with the [StarRocks on EKS stack](https://awslabs.github.io/data-on-eks/docs/datastacks/databases/starrocks-on-eks) from Data on EKS.
+- **Valkey** — optional (plan/result caching). Enable the Valkey add-on in the same [Data on EKS](https://awslabs.github.io/data-on-eks/) stack, or skip it to run without a cache.
+- **A Glue/Iceberg external catalog in StarRocks** — a one-time `CREATE EXTERNAL CATALOG` so StarRocks can read Iceberg tables on S3 through AWS Glue. This is the only manual data step; the demo **database and tables** are then created for you by `make demo-data`. Run the catalog statement once — [how](examples/starrocks/retail/README.md#1-create-the-starrocks-external-catalog-for-glueiceberg-once).
+
+Then, from a checkout:
 
 ```bash
 # 1. Build and push images to ECR (region/account from environment)
@@ -105,17 +111,19 @@ make demo-data
 kubectl apply -f examples/starrocks/retail/model/semanticmodel.yaml
 kubectl get semanticmodels -n semantic-system   # wait for Validated/Published, Drift=False
 
-# 6. Run the natural-language comparison (raw text-to-SQL vs semantic layer; needs Bedrock)
+# 6. Run the natural-language comparison (raw text-to-SQL vs semantic layer; needs an LLM)
 make demo-nl QUESTION="What was total sales by category in 2001?"
 
-# 7. (Optional) Wire up Superset — governed views are already in StarRocks
-#    follow examples/starrocks/retail/superset/README.md
-
-# 8. Run the accuracy benchmark (needs Bedrock)
+# 7. Run the accuracy benchmark (needs an LLM)
 make bench
+
+# Governed views are already in StarRocks (semantic_views.*). Point any
+# MySQL-protocol BI tool at them to see certified numbers — no extra setup.
 ```
 
 Every endpoint, credential, and catalog name above is a Helm value or environment variable. Nothing is hardcoded. See [charts/semantic-operator/values.yaml](charts/semantic-operator/values.yaml). Deploy & operate details live in [docs/DEVELOPER.md](docs/DEVELOPER.md#deploy--operate); the full end-to-end for this demo, including the one-time StarRocks external catalog setup for Glue and troubleshooting, is [examples/starrocks/retail/README.md](examples/starrocks/retail/README.md).
+
+> **Which LLM?** The semantic layer itself is **model- and provider-agnostic** — it exposes an MCP server and a REST API, and *never* calls an LLM. Any MCP-capable agent (Anthropic API, OpenAI, Bedrock, or a **self-hosted model on GPU** behind a serving endpoint such as vLLM/TGI/Ollama) can drive it. Only the bundled NL demo and benchmark harness (`internal/nlbench`) are wired to Amazon Bedrock's Converse API for reproducibility; point them at a different endpoint by implementing the small `Complete`/`RunToolLoop` seam in `internal/nlbench`.
 
 ## Demo: with and without the semantic layer
 

@@ -11,7 +11,6 @@ here.
 - **Data loader:** [`data/`](data/) — deterministic ~204k-row loader, no Spark.
 - **NL comparison:** [`nl/`](nl/) — raw text-to-SQL vs. semantic layer, same question.
 - **Benchmark:** [`bench/`](bench/) — accuracy / consistency / hallucination harness.
-- **Superset:** [`superset/`](superset/README.md) — governed views in a BI tool.
 
 > **Deploy the operator and server first.** This example assumes the
 > `semantic-operator` and `semantic-server` are already installed on your
@@ -26,8 +25,8 @@ here.
 | StarRocks (FE MySQL endpoint) + a Glue/Iceberg external catalog | **Yes** | stores and queries the demo tables |
 | The `semantic-operator` + `semantic-server` running | **Yes** | reconcile the model, serve queries |
 | Valkey | No | plan/result caching only; the server runs correctly without it |
-| Amazon Bedrock (a Claude model enabled in your region) | Only for §6/§7 | the natural-language comparison and benchmark call an LLM |
-| Apache Superset | Only for §7 (BI view demo) | everything else is `curl`/`mysql`-driven |
+| An LLM endpoint (this harness uses Amazon Bedrock) | Only for §6/§7 | the natural-language comparison and benchmark call an LLM; the layer itself is provider-agnostic (see the note in §6) |
+| A BI tool (any MySQL-protocol client) | Optional | reads the governed `semantic_views.*`; the §5 side-by-side uses the `mysql` CLI, so no BI tool is required |
 
 On your workstation: Go 1.26+, `kubectl` (kubeconfig pointing at the cluster),
 `mysql` client, `jq`, AWS credentials for Glue/S3 (and Bedrock if running §6/§7).
@@ -176,15 +175,19 @@ make demo-nl QUESTION="What is our customer lifetime value?"
 make demo-nl QUESTION="Average revenue per customer over their history?"   # paraphrase
 ```
 
-## 7. Superset (optional BI view demo)
+> **Any LLM, not just Bedrock.** The semantic layer never calls an LLM — it
+> exposes MCP and REST. This demo harness (`nl/`, `bench/`) happens to use Amazon
+> Bedrock's Converse API for reproducibility, but any MCP-capable agent — the
+> Anthropic or OpenAI APIs, or a **self-hosted model on GPU** (vLLM/TGI/Ollama)
+> behind a serving endpoint — can drive the same `list_metrics` / `query_metric`
+> tools. To retarget the harness, implement the small `Complete` / `RunToolLoop`
+> seam in `internal/nlbench`.
 
-Follow [`superset/README.md`](superset/README.md): connect Superset to StarRocks
-over MySQL protocol, register the `semantic_views.*` datasets, and put the naive
-fan-out query next to the governed view in SQL Lab. Analysts see certified
-numbers and cannot re-derive a ratio metric incorrectly, because the view already
-computed it through the planner.
+Any MySQL-protocol **BI tool** can also read the governed `semantic_views.*`
+directly — §5 already shows the naive-vs-governed contrast using the `mysql` CLI,
+so no BI tool is required to see it.
 
-## 8. Benchmark
+## 7. Benchmark
 
 ```bash
 make bench          # ~30 questions × 3 phrasings × 2 paths → bench/RESULTS.md
