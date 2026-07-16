@@ -289,12 +289,13 @@ export VALKEY=valkey-primary.valkey.svc.cluster.local:6379   # omit to run witho
 **4. Install the operator + server:**
 
 ```bash
+# $VALKEY may be empty — that --set line simply disables caching.
 helm upgrade --install semantic-operator charts/semantic-operator \
   --namespace semantic-system --create-namespace \
   --set image.repository=$REGISTRY/osi-semantic-operator \
   --set image.tag=0.1.0 \
   --set starrocks.host=$SR_FE \
-  --set valkey.addr=$VALKEY \        # leave empty to disable caching
+  --set valkey.addr=$VALKEY \
   --set aws.region=$AWS_REGION
 # If StarRocks has a root password:
 #   kubectl -n semantic-system create secret generic starrocks-auth --from-literal=password=<pw>

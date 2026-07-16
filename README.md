@@ -77,29 +77,41 @@ Prerequisites: a Kubernetes/EKS cluster with an **existing StarRocks** cluster (
 make ecr-login docker-build docker-push \
   REGISTRY=<acct>.dkr.ecr.us-west-2.amazonaws.com
 
-# 2. Install the operator and semantic server
+# 2. Install the operator and semantic server.
+#    valkey.addr is optional — omit that --set line to run without caching.
 helm install semantic-operator charts/semantic-operator \
   --namespace semantic-system --create-namespace \
   --set image.repository=<acct>.dkr.ecr.us-west-2.amazonaws.com/osi-semantic-operator \
   --set image.tag=0.1.0 \
   --set starrocks.host=starrocks-fe.starrocks.svc.cluster.local \
-  --set valkey.addr=valkey.valkey.svc.cluster.local:6379 \   # optional; omit to disable caching
+  --set valkey.addr=valkey.valkey.svc.cluster.local:6379 \
   --set aws.region=us-west-2
 
-# 3. Load demo data (creates Iceberg tables in Glue via StarRocks, idempotent)
+# 3. Point your workstation at the cluster. The make demo-*/bench targets run
+#    locally and reach StarRocks + the server over these port-forwards, so set
+#    the env vars they read. (STARROCKS_HOST is required; MCP_ENDPOINT + Bedrock
+#    are needed only for the NL demo and benchmark.)
+kubectl -n <starrocks-ns> port-forward svc/<fe-service> 9030:9030 &
+kubectl -n semantic-system port-forward svc/semantic-operator-server 8090:8090 &
+export STARROCKS_HOST=127.0.0.1
+export MCP_ENDPOINT=http://localhost:8090/mcp
+export AWS_REGION=us-west-2
+export BEDROCK_MODEL_ID=<your enabled Bedrock Claude model id>   # NL demo + bench only
+
+# 4. Load demo data (creates Iceberg tables in Glue via StarRocks, idempotent)
 make demo-data
 
-# 4. Apply the demo semantic model (Apache Ossie TPC-DS subset)
+# 5. Apply the demo semantic model (Apache Ossie TPC-DS subset)
 kubectl apply -f examples/starrocks/retail/model/semanticmodel.yaml
-kubectl get semanticmodels -n semantic-system   # wait for Validated/Compiled/Published
+kubectl get semanticmodels -n semantic-system   # wait for Validated/Published, Drift=False
 
-# 5. Run the natural-language comparison (raw text-to-SQL vs semantic layer)
+# 6. Run the natural-language comparison (raw text-to-SQL vs semantic layer; needs Bedrock)
 make demo-nl QUESTION="What was total sales by category in 2001?"
 
-# 6. (Optional) Wire up Superset — governed views are already in StarRocks
+# 7. (Optional) Wire up Superset — governed views are already in StarRocks
 #    follow examples/starrocks/retail/superset/README.md
 
-# 7. Run the accuracy benchmark
+# 8. Run the accuracy benchmark (needs Bedrock)
 make bench
 ```
 
