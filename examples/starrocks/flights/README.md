@@ -55,7 +55,7 @@ Derive dataset stubs from your own Glue flights database instead of hand-writing
 fields:
 
 ```bash
-go run ./cmd/osictl derive --database osi_flights --out flights-derived.yaml
+go run ./cmd/osictl derive -database osi_flights > flights-derived.yaml
 ```
 
 To run it end to end, create the `osi_flights` Glue database and the

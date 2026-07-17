@@ -33,6 +33,7 @@ The rule that makes it safe: **the LLM never writes SQL.** It only *selects* cer
 Documentation:
 
 - [docs/OVERVIEW.md](docs/OVERVIEW.md) — what this is, the gaps it fills, why to use it, and role-based onboarding.
+- [docs/AUTHORING.md](docs/AUTHORING.md) — author a semantic model step by step: generate a template with `osictl derive`, then add joins, metrics, and business meaning.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — component responsibilities, request flows, the CRD lifecycle, and the governance model.
 - [docs/DEVELOPER.md](docs/DEVELOPER.md) — code hierarchy, package layering, the two binaries, where engine-specific code lives, and **how to deploy & operate**.
 - [docs/EXTENDING-ENGINES.md](docs/EXTENDING-ENGINES.md) — step-by-step for adding a query engine (Trino/ClickHouse/DuckDB).

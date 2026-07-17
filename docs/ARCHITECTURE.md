@@ -140,7 +140,7 @@ type Source interface {
 
 `internal/catalog/glue` implements it with the AWS SDK (IRSA in-cluster). Two consumers:
 
-- `osictl derive --database osi_demo --out model.yaml`: generates Apache Ossie dataset stubs (source, fields with ANSI_SQL expressions, inferred `is_time` for date/timestamp columns) and candidate relationships. Glue rarely carries real foreign keys, so inference is convention-based: a fact column `x_sk` whose name suffix matches another table's single-column primary-key-like column (`<prefix>_sk`) becomes a candidate join, emitted commented-out for a human to confirm. Humans then maintain only metrics, joins, and synonyms; field lists are regenerated.
+- `osictl derive -database osi_demo > model.yaml`: generates Apache Ossie dataset stubs (source, fields with ANSI_SQL expressions, inferred `is_time` for date/timestamp columns) and candidate relationships. Glue rarely carries real foreign keys, so inference is convention-based: a fact column `x_sk` whose name suffix matches another table's single-column primary-key-like column (`<prefix>_sk`) becomes a candidate join, emitted commented-out for a human to confirm. Humans then maintain only metrics, joins, and synonyms; field lists are regenerated.
 - Controller resync (`spec.catalogSync.enabled`): refreshes dataset field lists from Glue on a timer, so new physical columns become available as dimensions without hand-editing. Metrics and relationships are never auto-modified.
 
 Drift detection is separate from derivation and always on: it introspects through StarRocks (`DESC`), because what matters at query time is what StarRocks can see.
