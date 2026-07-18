@@ -10,11 +10,11 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/vara-bonthu/osi-semantic-operator/internal/cache"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/emitter"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/governance"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/observability"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/planner"
+	"github.com/KubedAI/ossie-semantic-operator/internal/cache"
+	"github.com/KubedAI/ossie-semantic-operator/internal/emitter"
+	"github.com/KubedAI/ossie-semantic-operator/internal/governance"
+	"github.com/KubedAI/ossie-semantic-operator/internal/observability"
+	"github.com/KubedAI/ossie-semantic-operator/internal/planner"
 )
 
 // QueryExecutor is the read-only StarRocks surface the service needs.

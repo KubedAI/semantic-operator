@@ -9,7 +9,7 @@ How to go from raw tables in your catalog to a certified `SemanticModel`. Start 
 ```
 spec:
   connection: { catalog, database }     # where the physical tables live
-  osi:
+  ossie:
     datasets:      [...]                 # logical tables and fields (mostly generated)
     relationships: [...]                 # the join graph (you confirm)
     metrics:       [...]                 # certified definitions (you write)
@@ -23,16 +23,16 @@ The mechanical parts (datasets, fields, candidate joins) are generated. You supp
 
 ## Step 1. Generate the scaffold
 
-`osictl derive` reads your catalog (Glue today) and writes a full, schema-valid `SemanticModel`. Datasets and fields come from the catalog, with `is_time` flagged on date and timestamp columns. `metrics`, `relationships`, `primary_key`, synonyms, governance, and views are left as clearly marked `TODO` placeholders, with a worked metric example. Candidate joins are inferred from key-name conventions and left commented out for you to confirm. It needs AWS credentials and Glue read access. No cluster.
+`ossiectl derive` reads your catalog (Glue today) and writes a full, schema-valid `SemanticModel`. Datasets and fields come from the catalog, with `is_time` flagged on date and timestamp columns. `metrics`, `relationships`, `primary_key`, synonyms, governance, and views are left as clearly marked `TODO` placeholders, with a worked metric example. Candidate joins are inferred from key-name conventions and left commented out for you to confirm. It needs AWS credentials and Glue read access. No cluster.
 
 ```bash
-go run ./cmd/osictl derive -region us-west-2 -database <your_glue_db> -out model.yaml
+go run ./cmd/ossiectl derive -region us-west-2 -database <your_glue_db> -out model.yaml
 # writes to stdout if -out is omitted
 ```
 
 Flags: `-region` (or `$AWS_REGION`), `-database` (required), `-catalog` (the StarRocks external-catalog name, default `iceberg`), and `-model`, `-name`, `-namespace` for identifiers.
 
-The generated file passes `osictl validate` as is, because empty metrics and relationships are legal. It grows richer as you fill in the placeholders.
+The generated file passes `ossiectl validate` as is, because empty metrics and relationships are legal. It grows richer as you fill in the placeholders.
 
 > No Glue? Hand-write `datasets` instead. `derive` is a convenience, not a requirement. A catalog-agnostic `information_schema` source is on the [roadmap](ROADMAP.md).
 
@@ -48,7 +48,7 @@ The generated file passes `osictl validate` as is, because empty metrics and rel
 #    to_columns: [i_item_sk]
 ```
 
-Move the correct ones into `spec.osi.relationships` and uncomment them. Each edge is many-to-one. `from` is the fact or child, `to` is the dimension or parent. Add `join_type: LEFT` where you need it. The default is `INNER`. The join graph must be a tree (star or snowflake). Cycles are a validation error.
+Move the correct ones into `spec.ossie.relationships` and uncomment them. Each edge is many-to-one. `from` is the fact or child, `to` is the dimension or parent. Add `join_type: LEFT` where you need it. The default is `INNER`. The join graph must be a tree (star or snowflake). Cycles are a validation error.
 
 ## Step 3. Define metrics (the certified part)
 
@@ -65,7 +65,7 @@ metrics:
         expression: "SUM(store_sales.ss_ext_sales_price) / NULLIF(SUM(store.s_number_employees), 0)" }]
 ```
 
-The metric grammar is small, and `osictl validate` checks it.
+The metric grammar is small, and `ossiectl validate` checks it.
 
 - Aggregations: `SUM`, `COUNT`, `COUNT(DISTINCT ...)`, `AVG`, `MIN`, `MAX` over a `dataset.field` reference. Every column must be qualified as `dataset.field`.
 - Ratios: `<agg> / <agg>`, optionally with `NULLIF(denominator, 0)`. The emitter wraps the denominator in `NULLIF` anyway.
@@ -116,7 +116,7 @@ views:
 ## Step 7. Validate and deploy
 
 ```bash
-go run ./cmd/osictl validate -f model.yaml        # offline, instant, no cluster
+go run ./cmd/ossiectl validate -f model.yaml        # offline, instant, no cluster
 kubectl apply -f model.yaml                        # or git push, then ArgoCD
 kubectl -n semantic-system get semanticmodels -w   # Validated, Published, Drift=False
 ```

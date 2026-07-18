@@ -15,14 +15,14 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/vara-bonthu/osi-semantic-operator/internal/cache"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/emitter"
-	_ "github.com/vara-bonthu/osi-semantic-operator/internal/emitter/starrocks"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/observability"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/serving"
-	mcpadapter "github.com/vara-bonthu/osi-semantic-operator/internal/serving/mcp"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/serving/rest"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/starrocks"
+	"github.com/KubedAI/ossie-semantic-operator/internal/cache"
+	"github.com/KubedAI/ossie-semantic-operator/internal/emitter"
+	_ "github.com/KubedAI/ossie-semantic-operator/internal/emitter/starrocks"
+	"github.com/KubedAI/ossie-semantic-operator/internal/observability"
+	"github.com/KubedAI/ossie-semantic-operator/internal/serving"
+	mcpadapter "github.com/KubedAI/ossie-semantic-operator/internal/serving/mcp"
+	"github.com/KubedAI/ossie-semantic-operator/internal/serving/rest"
+	"github.com/KubedAI/ossie-semantic-operator/internal/starrocks"
 )
 
 var version = "dev" // set via -ldflags

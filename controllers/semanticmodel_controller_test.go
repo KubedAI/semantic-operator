@@ -14,10 +14,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	semanticv1alpha1 "github.com/vara-bonthu/osi-semantic-operator/api/v1alpha1"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/emitter"
-	_ "github.com/vara-bonthu/osi-semantic-operator/internal/emitter/starrocks"
-	sr "github.com/vara-bonthu/osi-semantic-operator/internal/starrocks"
+	semanticv1alpha1 "github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/ossie-semantic-operator/internal/emitter"
+	_ "github.com/KubedAI/ossie-semantic-operator/internal/emitter/starrocks"
+	sr "github.com/KubedAI/ossie-semantic-operator/internal/starrocks"
 )
 
 // fakeStarRocks serves canned DESC output and records DDL.
@@ -65,7 +65,7 @@ func demoCR() *semanticv1alpha1.SemanticModel {
 		ObjectMeta: metav1.ObjectMeta{Name: "retail", Namespace: "default"},
 		Spec: semanticv1alpha1.SemanticModelSpec{
 			Connection: semanticv1alpha1.ConnectionSpec{Catalog: "iceberg", Database: "osi_demo"},
-			OSI: semanticv1alpha1.OSIModel{
+			Ossie: semanticv1alpha1.OssieModel{
 				Name: "retail_model",
 				Datasets: []semanticv1alpha1.Dataset{
 					{Name: "store_sales", Source: "store_sales", PrimaryKey: []string{"ss_item_sk", "ss_ticket_number"}, Fields: []semanticv1alpha1.Field{
@@ -195,7 +195,7 @@ func TestReconcileFlagsDriftAndBlocksPublish(t *testing.T) {
 func TestReconcileInvalidSpecSetsValidatedFalse(t *testing.T) {
 	scheme := testScheme(t)
 	cr := demoCR()
-	cr.Spec.OSI.Metrics[0].Expression.Dialects[0].Expression = "SUM(bare_column)"
+	cr.Spec.Ossie.Metrics[0].Expression.Dialects[0].Expression = "SUM(bare_column)"
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).
 		WithStatusSubresource(&semanticv1alpha1.SemanticModel{}).Build()
 	d, _ := emitter.Get("starrocks")

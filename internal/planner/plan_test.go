@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vara-bonthu/osi-semantic-operator/api/v1alpha1"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/emitter"
-	_ "github.com/vara-bonthu/osi-semantic-operator/internal/emitter/starrocks"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/governance"
+	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/ossie-semantic-operator/internal/emitter"
+	_ "github.com/KubedAI/ossie-semantic-operator/internal/emitter/starrocks"
+	"github.com/KubedAI/ossie-semantic-operator/internal/governance"
 )
 
 func testDialect(t *testing.T) emitter.Dialect {
@@ -35,7 +35,7 @@ func metric(name, e string) v1alpha1.Metric {
 func testSpec() *v1alpha1.SemanticModelSpec {
 	return &v1alpha1.SemanticModelSpec{
 		Connection: v1alpha1.ConnectionSpec{Catalog: "iceberg", Database: "osi_demo"},
-		OSI: v1alpha1.OSIModel{
+		Ossie: v1alpha1.OssieModel{
 			Name: "tpcds_retail_model",
 			Datasets: []v1alpha1.Dataset{
 				{Name: "store_sales", Source: "store_sales", PrimaryKey: []string{"ss_item_sk", "ss_ticket_number"}, Fields: []v1alpha1.Field{
@@ -382,7 +382,7 @@ func TestSpecVersionChangesWithSpec(t *testing.T) {
 	if SpecVersion(s1) != SpecVersion(s2) {
 		t.Fatal("same spec must hash the same")
 	}
-	s2.OSI.Metrics[0].Description = "changed"
+	s2.Ossie.Metrics[0].Description = "changed"
 	if SpecVersion(s1) == SpecVersion(s2) {
 		t.Fatal("changed spec must change version")
 	}

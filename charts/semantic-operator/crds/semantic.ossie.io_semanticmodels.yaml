@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
-  name: semanticmodels.semantic.osi.io
+  name: semanticmodels.semantic.ossie.io
 spec:
-  group: semantic.osi.io
+  group: semantic.ossie.io
   names:
     kind: SemanticModel
     listKind: SemanticModelList
@@ -152,7 +152,7 @@ spec:
                 required:
                 - roles
                 type: object
-              osi:
+              ossie:
                 description: OSI is the semantic model definition, following the OSI
                   core spec.
                 properties:
@@ -476,7 +476,7 @@ spec:
                 type: array
             required:
             - connection
-            - osi
+            - ossie
             type: object
           status:
             description: SemanticModelStatus defines the observed state of SemanticModel.

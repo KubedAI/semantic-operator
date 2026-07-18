@@ -56,12 +56,12 @@ back upward. This discipline keeps the planner pure and the engines pluggable.
                         │                      │
                         ▼                      ▼
         ┌──────────────────── DOMAIN CORE (pure, offline-testable) ───────────────────┐
-        │  internal/planner  ·  internal/governance  ·  internal/osi  ·  api/v1alpha1  │
+        │  internal/planner  ·  internal/governance  ·  internal/ossie  ·  api/v1alpha1  │
         └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 The domain core imports no SDKs. No AWS, no MySQL driver, no controller-runtime.
-That is why `internal/planner`, `internal/osi`, and `internal/governance` have
+That is why `internal/planner`, `internal/ossie`, and `internal/governance` have
 fast, offline, table-driven unit tests. The engine and cloud coupling lives
 entirely in the adapter layer.
 
@@ -77,7 +77,7 @@ Grouped by layer, binaries at the top, types at the bottom.
 |---|---|---|
 | `cmd/manager/` | `manager` | The operator. Reconciles `SemanticModel` resources, publishes compiled-model ConfigMaps, and creates governed views. Uses controller-runtime. |
 | `cmd/server/` | `server` | The stateless semantic server. Watches ConfigMaps. Hosts the planner, governance, the MCP and REST adapters, and the caches. Scales horizontally. |
-| `cmd/osictl/` | `osictl` | CLI. Offline model validation, model-template generation from Glue, and resource round-trip. No cluster required for validate. |
+| `cmd/ossiectl/` | `ossiectl` | CLI. Offline model validation, model-template generation from Glue, and resource round-trip. No cluster required for validate. |
 
 Each `main.go` is thin. Read env, construct clients, wire interfaces, run. All
 configuration is env or flags. Nothing is compiled in.
@@ -87,7 +87,7 @@ configuration is env or flags. Nothing is compiled in.
 | Path | Contents |
 |---|---|
 | `api/v1alpha1/` | The CRD types (Apache Ossie model as Go structs). `semanticmodel_types.go` (spec and status), `helpers.go` (lookups, dialect preference), `ai_context.go` (LLM grounding fields), `groupversion_info.go`, `zz_generated.deepcopy.go` (generated, do not hand-edit). |
-| `internal/osi/` | `validate.go`. Apache Ossie schema validation, the structural checks before compile. |
+| `internal/ossie/` | `validate.go`. Apache Ossie schema validation, the structural checks before compile. |
 | `internal/planner/` | The compiler. `model.go` (CompiledModel), `plan.go` (semantic request to logical plan), `plan_sql.go` (logical plan to SQL via a Dialect), `expr/expr.go` (expression handling). This is the heart, and it is pure. |
 | `internal/governance/` | `governance.go`. Compile-time row and column policies. Applied inside the planner before SQL is emitted, so an unauthorized request fails to compile. |
 
@@ -150,7 +150,7 @@ what makes the server stateless and horizontally scalable.
 ```
 
 - `manager` imports `controllers`, `internal/starrocks`, `internal/emitter`, and
-  `internal/catalog` (for derivation via `osictl` and reconcile). It is the only
+  `internal/catalog` (for derivation via `ossiectl` and reconcile). It is the only
   writer of compiled artifacts.
 - `server` imports `internal/serving`, `internal/cache`, `internal/starrocks`, and
   `internal/emitter`. It is read-only against models (it consumes ConfigMaps) and
@@ -194,7 +194,7 @@ workloads to infrastructure you already run.
         Helm chart: semantic-operator
         ├── manager Deployment   (1 replica, leader-elected)     ← operator
         ├── server  Deployment   (N replicas, ClusterIP Service) ← semantic server
-        ├── CRD  semanticmodels.semantic.osi.io
+        ├── CRD  semanticmodels.semantic.ossie.io
         ├── RBAC (Role/Binding) + 2 ServiceAccounts (IRSA-annotatable)
         │
         ├── depends on ── StarRocks   (EXISTING, required)   FE MySQL endpoint
@@ -261,8 +261,8 @@ kubectl config current-context   # must be the target cluster
 
 ```bash
 make test     # go vet + all unit and smoke tests
-make build    # bin/manager, bin/server, bin/osictl
-go run ./cmd/osictl validate -f examples/starrocks/retail/model/semanticmodel.yaml
+make build    # bin/manager, bin/server, bin/ossiectl
+go run ./cmd/ossiectl validate -f examples/starrocks/retail/model/semanticmodel.yaml
 ```
 
 **2. Build and push images:**
@@ -290,7 +290,7 @@ export VALKEY=valkey-primary.valkey.svc.cluster.local:6379   # omit to run witho
 # $VALKEY may be empty. That --set line simply disables caching.
 helm upgrade --install semantic-operator charts/semantic-operator \
   --namespace semantic-system --create-namespace \
-  --set image.repository=$REGISTRY/osi-semantic-operator \
+  --set image.repository=$REGISTRY/ossie-semantic-operator \
   --set image.tag=0.1.0 \
   --set starrocks.host=$SR_FE \
   --set valkey.addr=$VALKEY \
@@ -326,13 +326,13 @@ pods are Ready. The server's `/readyz` pings StarRocks. If a pod is not Ready,
 | Change how a request compiles to SQL | `internal/planner/` (`plan.go`, `plan_sql.go`) | add a golden-SQL test in `plan_test.go` |
 | Add or adjust a row or column policy | `internal/governance/governance.go` | it is compile-time. Assert the plan fails or filters |
 | Support a new query engine | `internal/emitter/<engine>/` and `internal/<engine>/` | see [EXTENDING-ENGINES.md](EXTENDING-ENGINES.md) |
-| Support a new catalog (Unity, Polaris, Hive) | `internal/catalog/<source>/` implementing `catalog.Source` | wire into `osictl` and the reconciler |
+| Support a new catalog (Unity, Polaris, Hive) | `internal/catalog/<source>/` implementing `catalog.Source` | wire into `ossiectl` and the reconciler |
 | Change reconcile or drift behavior | `controllers/semanticmodel_controller.go` | table-test with a fake `StarRocksClient` |
 | Add an API surface beyond MCP and REST | `internal/serving/<adapter>/` calling `serving.Service` | reuse the shared serving path (plan, execute, report) |
 | Change a deployment default | `charts/semantic-operator/values.yaml` and templates | `make helm-lint` |
 
 **Do not** add other-engine SQL outside `emitter.Dialect`, and **do not** rename
-the `osi` identifiers (the `semantic.osi.io` API group, `spec.osi`, `osictl`).
+the `osi` identifiers (the `semantic.ossie.io` API group, `spec.ossie`, `ossiectl`).
 They are intentional backward-compat despite the OSI to Apache Ossie rename. See
 [CLAUDE.md](../CLAUDE.md) for the full guardrails.
 
@@ -343,7 +343,7 @@ They are intentional backward-compat despite the OSI to Apache Ossie rename. See
 The domain core is offline and fast. You rarely need a cluster to make progress.
 
 ```bash
-make build        # bin/manager, bin/server, bin/osictl
+make build        # bin/manager, bin/server, bin/ossiectl
 make test         # go vet ./... && go test ./... -count=1   (offline, fast)
 make cover        # coverage profile
 make generate     # REQUIRED after editing api/. Regenerates deepcopy + CRD
@@ -362,6 +362,6 @@ documented in each example's README.
 
 **The one rule that keeps this working.** If you catch yourself importing an SDK
 (AWS, the MySQL driver, controller-runtime) into `internal/planner`,
-`internal/osi`, or `internal/governance`, stop. That coupling belongs in the
+`internal/ossie`, or `internal/governance`, stop. That coupling belongs in the
 adapter layer behind an interface. Keeping the core pure is what makes the tests
 fast and the engines swappable.

@@ -16,11 +16,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	semanticv1alpha1 "github.com/vara-bonthu/osi-semantic-operator/api/v1alpha1"
-	"github.com/vara-bonthu/osi-semantic-operator/controllers"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/emitter"
-	_ "github.com/vara-bonthu/osi-semantic-operator/internal/emitter/starrocks"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/starrocks"
+	semanticv1alpha1 "github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/ossie-semantic-operator/controllers"
+	"github.com/KubedAI/ossie-semantic-operator/internal/emitter"
+	_ "github.com/KubedAI/ossie-semantic-operator/internal/emitter/starrocks"
+	"github.com/KubedAI/ossie-semantic-operator/internal/starrocks"
 )
 
 var scheme = runtime.NewScheme()
@@ -65,7 +65,7 @@ func main() {
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "semantic-operator.semantic.osi.io",
+		LeaderElectionID:       "semantic-operator.semantic.ossie.io",
 	})
 	if err != nil {
 		log.Error(err, "starting manager")

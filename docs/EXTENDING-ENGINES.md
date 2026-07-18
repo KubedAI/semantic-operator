@@ -37,7 +37,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vara-bonthu/osi-semantic-operator/internal/emitter"
+	"github.com/KubedAI/ossie-semantic-operator/internal/emitter"
 )
 
 type Dialect struct{}
@@ -153,8 +153,8 @@ db, err := dbclient.Open(ctx, dialectName, cfg)
 Register the dialect with a blank import next to the existing StarRocks one (`cmd/server/main.go:20`).
 
 ```go
-_ "github.com/vara-bonthu/osi-semantic-operator/internal/emitter/starrocks"
-_ "github.com/vara-bonthu/osi-semantic-operator/internal/emitter/trino"
+_ "github.com/KubedAI/ossie-semantic-operator/internal/emitter/starrocks"
+_ "github.com/KubedAI/ossie-semantic-operator/internal/emitter/trino"
 ```
 
 Do the same in `cmd/manager/main.go` for the reconciler's `StarRocks` field, the drift-check client.
@@ -168,9 +168,9 @@ Do the same in `cmd/manager/main.go` for the reconciler's `StarRocks` field, the
 - **Determinism, caching, MCP and REST, drift-check.** All engine-agnostic. They sit above the two seams.
 - **Iceberg.** Nothing to do. If the engine reads the same Glue and Iceberg catalog (Trino's Iceberg and Glue connector reads the exact tables StarRocks does), the lake comes along automatically.
 
-## Optional: catalog derivation for `osictl`
+## Optional: catalog derivation for `ossiectl`
 
-`osictl` can derive dataset stubs from a live catalog via `catalog.Source` (`ListTables`). The shipped implementation is Glue. Trino, ClickHouse, and DuckDB pointed at Glue and Iceberg can reuse the Glue source as is. For an engine-portable alternative, implement a `catalog.Source` over `information_schema.columns` (the same query as `DescribeTable`, scoped to a schema) so derivation works without Glue. This is optional. Models can also be authored by hand.
+`ossiectl` can derive dataset stubs from a live catalog via `catalog.Source` (`ListTables`). The shipped implementation is Glue. Trino, ClickHouse, and DuckDB pointed at Glue and Iceberg can reuse the Glue source as is. For an engine-portable alternative, implement a `catalog.Source` over `information_schema.columns` (the same query as `DescribeTable`, scoped to a schema) so derivation works without Glue. This is optional. Models can also be authored by hand.
 
 ## Checklist
 
@@ -178,7 +178,7 @@ Do the same in `cmd/manager/main.go` for the reconciler's `StarRocks` field, the
 - [ ] Dialect golden-SQL test
 - [ ] `internal/<engine>/client.go` with `Query`, `Exec`, `DescribeTable`
 - [ ] A `SQL_DIALECT`-driven client factory, and update both `main.go` wirings and blank imports
-- [ ] (Optional) an `information_schema` `catalog.Source` for `osictl` derivation
+- [ ] (Optional) an `information_schema` `catalog.Source` for `ossiectl` derivation
 - [ ] Add `<engine>` to the `DialectExpression` enum in `api/v1alpha1/semanticmodel_types.go` if models will carry engine-specific expressions, then `make generate`
 - [ ] Helm: surface the engine's connection env vars in `charts/semantic-operator/values.yaml`
 

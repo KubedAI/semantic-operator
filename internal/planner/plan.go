@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/vara-bonthu/osi-semantic-operator/internal/emitter"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/governance"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/planner/expr"
+	"github.com/KubedAI/ossie-semantic-operator/internal/emitter"
+	"github.com/KubedAI/ossie-semantic-operator/internal/governance"
+	"github.com/KubedAI/ossie-semantic-operator/internal/planner/expr"
 )
 
 // Request is a semantic query: metrics by dimensions, filtered, at a grain.

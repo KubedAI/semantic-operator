@@ -1,8 +1,8 @@
 # Demo SemanticModel: OSI TPC-DS retail subset, adapted from
 # https://github.com/open-semantic-interchange/OSI/blob/main/examples/tpcds_semantic_model.yaml
-# to the tables loaded by the retail data loader (../data). spec.osi is a plain OSI semantic_model
-# entry; osictl unwrap extracts it as an OSI document.
-apiVersion: semantic.osi.io/v1alpha1
+# to the tables loaded by the retail data loader (../data). spec.ossie is a plain OSI semantic_model
+# entry; ossiectl unwrap extracts it as an OSI document.
+apiVersion: semantic.ossie.io/v1alpha1
 kind: SemanticModel
 metadata:
   name: tpcds-retail
@@ -12,7 +12,7 @@ spec:
     catalog: iceberg        # StarRocks external catalog fronting Glue
     database: osi_demo
     viewDatabase: semantic_views
-  osi:
+  ossie:
     name: tpcds_retail_model
     description: TPC-DS retail semantic model for sales and customer analytics
     ai_context:

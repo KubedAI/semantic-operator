@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vara-bonthu/osi-semantic-operator/internal/starrocks"
+	"github.com/KubedAI/ossie-semantic-operator/internal/starrocks"
 )
 
 const seed = 20260702 // fixed: data and benchmark ground truth are reproducible

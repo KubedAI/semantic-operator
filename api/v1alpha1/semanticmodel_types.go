@@ -16,23 +16,23 @@ const (
 
 // Labels and keys used on published ConfigMaps.
 const (
-	LabelModel        = "semantic.osi.io/model"
-	LabelVersion      = "semantic.osi.io/version"
+	LabelModel        = "semantic.ossie.io/model"
+	LabelVersion      = "semantic.ossie.io/version"
 	CompiledModelKey  = "compiled-model.json"
 	ManagedByValue    = "semantic-operator"
-	AnnotationOwnedViews = "semantic.osi.io/owned-views"
+	AnnotationOwnedViews = "semantic.ossie.io/owned-views"
 )
 
 // SemanticModelSpec defines the desired state of SemanticModel.
-// The osi block is an OSI (Open Semantic Interchange) semantic_model entry,
-// structurally unmodified so it round-trips as OSI YAML. governance and views
-// are operator extensions kept outside the OSI document.
+// The ossie block is an Apache Ossie semantic_model entry, structurally
+// unmodified so it round-trips as Ossie YAML. governance and views are
+// operator extensions kept outside the Ossie document.
 type SemanticModelSpec struct {
-	// Connection pins the OSI model's dataset sources to a StarRocks external catalog.
+	// Connection pins the Ossie model's dataset sources to a StarRocks external catalog.
 	Connection ConnectionSpec `json:"connection"`
 
-	// OSI is the semantic model definition, following the OSI core spec.
-	OSI OSIModel `json:"osi"`
+	// Ossie is the semantic model definition, following the Ossie core spec.
+	Ossie OssieModel `json:"ossie"`
 
 	// Governance defines compile-time row/column/metric access policies.
 	// +optional
@@ -59,8 +59,8 @@ type ConnectionSpec struct {
 	ViewDatabase string `json:"viewDatabase,omitempty"`
 }
 
-// OSIModel mirrors one entry of the OSI `semantic_model` list.
-type OSIModel struct {
+// OssieModel mirrors one entry of the Ossie `semantic_model` list.
+type OssieModel struct {
 	Name        string `json:"name"`
 	// +optional
 	Description string `json:"description,omitempty"`
@@ -77,7 +77,7 @@ type OSIModel struct {
 	CustomExtensions []CustomExtension `json:"custom_extensions,omitempty"`
 }
 
-// Dataset is an OSI logical dataset bound to a physical table.
+// Dataset is an Ossie logical dataset bound to a physical table.
 type Dataset struct {
 	Name string `json:"name"`
 	// Source is the physical binding: bare table name (resolved against

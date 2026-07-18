@@ -6,7 +6,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
 
-// AIContext is the decoded form of an OSI ai_context value, which the spec
+// AIContext is the decoded form of an Ossie ai_context value, which the spec
 // allows to be either a plain string or a structured object.
 type AIContext struct {
 	Instructions string   `json:"instructions,omitempty"`
@@ -14,7 +14,7 @@ type AIContext struct {
 	Examples     []string `json:"examples,omitempty"`
 }
 
-// DecodeAIContext tolerantly decodes an OSI ai_context JSON value. A plain
+// DecodeAIContext tolerantly decodes an Ossie ai_context JSON value. A plain
 // string becomes Instructions. Unknown object keys are ignored. A nil input
 // or undecodable value yields an empty context, never an error: ai_context is
 // advisory metadata and must not fail validation.

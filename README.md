@@ -1,4 +1,4 @@
-# osi-semantic-operator
+# ossie-semantic-operator
 
 Define a business metric once. Every AI agent, BI tool, and app then gets the same correct answer. The LLM never writes SQL.
 
@@ -26,7 +26,7 @@ The operator checks the model against your live database schema and compiles it.
 
 An agent picks a certified metric and some dimensions. It does not write SQL. A compiler turns that choice into one SQL statement and runs it. The same request always gives the same SQL. Access rules are applied while the SQL is built, so a request a user is not allowed to make fails before it reaches the database.
 
-> Naming: this implements Apache Ossie (incubating), the metric standard once called Open Semantic Interchange (OSI). The old `osi` name stays only in code: the `semantic.osi.io` API group, `spec.osi`, and the `osictl` CLI.
+> Naming: this implements Apache Ossie (incubating), the metric standard once called Open Semantic Interchange (OSI). Identifiers use the `ossie` name throughout: the `semantic.ossie.io` API group, the `spec.ossie` block, and the `ossiectl` CLI.
 
 ## Architecture
 
@@ -50,7 +50,7 @@ Examples are in [examples/](examples/README.md). Start with [starrocks/retail](e
 |---|---|---|
 | Operator | `cmd/manager` | Reconciles `SemanticModel` resources. Validates the model, checks it against the live database, compiles it, publishes the result, and creates the governed views. |
 | Server | `cmd/server` | Stateless. Answers queries. Runs the compiler, applies governance, and hosts the MCP and REST APIs. Caches in Valkey when one is configured. |
-| CLI (`osictl`) | `cmd/osictl` | Validate a model offline, generate a model template from a Glue database, and convert between Ossie YAML and the resource format. |
+| CLI (`ossiectl`) | `cmd/ossiectl` | Validate a model offline, generate a model template from a Glue database, and convert between Ossie YAML and the resource format. |
 
 Why StarRocks: it runs star-schema joins fast over Iceberg tables on S3, it speaks the MySQL protocol so BI tools connect to it directly, and it supports views over external tables. Other engines plug in behind the `emitter.Dialect` interface. Catalog access sits behind the `catalog.Source` interface, with a Glue implementation today. See [ARCHITECTURE](docs/ARCHITECTURE.md#extension-points) for the scope guardrails.
 
@@ -103,7 +103,7 @@ make ecr-login docker-build docker-push \
 #    valkey.addr is optional. Omit that --set line to run without caching.
 helm install semantic-operator charts/semantic-operator \
   --namespace semantic-system --create-namespace \
-  --set image.repository=<acct>.dkr.ecr.us-west-2.amazonaws.com/osi-semantic-operator \
+  --set image.repository=<acct>.dkr.ecr.us-west-2.amazonaws.com/ossie-semantic-operator \
   --set image.tag=0.1.0 \
   --set starrocks.host=starrocks-fe.starrocks.svc.cluster.local \
   --set valkey.addr=valkey.valkey.svc.cluster.local:6379 \
@@ -151,8 +151,8 @@ See the [retail example](examples/starrocks/retail/README.md) to run it, and [RE
 ```
 api/v1alpha1/          CRD types (Apache Ossie model as Go structs)
 controllers/           SemanticModel reconciler
-cmd/                   manager, server, osictl binaries
-internal/osi/          Apache Ossie schema validation
+cmd/                   manager, server, ossiectl binaries
+internal/ossie/          Apache Ossie schema validation
 internal/planner/      semantic request -> logical plan -> SQL; expr/ grammar
 internal/governance/   compile-time row/column/metric policies
 internal/emitter/      Dialect interface; starrocks/ implementation

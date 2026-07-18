@@ -2,7 +2,7 @@
 
 image:
   # Base repository; the chart appends /manager and /server.
-  # Example: 123456789012.dkr.ecr.us-west-2.amazonaws.com/osi-semantic-operator
+  # Example: 123456789012.dkr.ecr.us-west-2.amazonaws.com/ossie-semantic-operator
   repository: ""
   tag: "latest"
   pullPolicy: IfNotPresent

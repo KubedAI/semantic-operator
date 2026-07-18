@@ -4,7 +4,7 @@ Guidance for Claude Code (and other AI agents) working in this repository.
 
 ## What this project is
 
-`osi-semantic-operator` is a **Kubernetes operator + stateless semantic server** written in Go.
+`ossie-semantic-operator` is a **Kubernetes operator + stateless semantic server** written in Go.
 It runs an **Apache Ossie (incubating)** semantic layer — the standard formerly called
 **Open Semantic Interchange (OSI)** — on Amazon EKS, on top of an existing **StarRocks**
 cluster that queries **Apache Iceberg** tables through an AWS **Glue** external catalog.
@@ -16,13 +16,14 @@ turns semantic requests (metrics, dimensions, filters, time grain) into **exactl
 StarRocks SQL statement, with row/column governance applied **at compile time**. An LLM only
 selects certified metrics/dimensions — it never writes SQL.
 
-> Naming note: the standard was renamed OSI → Apache Ossie (July 2026). Code identifiers keep
-> the historical `osi` short name on purpose: the `semantic.osi.io` API group, the `spec.osi`
-> block, and the `osictl` CLI. Do not rename these — existing deployments depend on them.
+> Naming note: the standard was renamed OSI → Apache Ossie (July 2026), and this repo follows it.
+> Identifiers use the `ossie` name throughout: the `semantic.ossie.io` API group, the `spec.ossie`
+> block, `internal/ossie`, and the `ossiectl` CLI. The demo Glue database is still `osi_demo`
+> (demo data, not a project identifier).
 
 ## Module & toolchain
 
-- Go module: `github.com/vara-bonthu/osi-semantic-operator` (Go 1.26).
+- Go module: `github.com/KubedAI/ossie-semantic-operator` (Go 1.26).
 - Kubebuilder/controller-runtime operator (`sigs.k8s.io/controller-runtime`).
 - Key deps: AWS SDK v2 (Glue, Bedrock), `go-sql-driver/mysql` (StarRocks MySQL protocol),
   `redis/go-redis` (Valkey), `modelcontextprotocol/go-sdk` (MCP), OpenTelemetry, Prometheus.
@@ -34,8 +35,8 @@ api/v1alpha1/          CRD types (Apache Ossie model as Go structs); ai_context.
 controllers/           SemanticModel reconciler (semanticmodel_controller.go)
 cmd/manager/           Operator binary (reconciles CRs)
 cmd/server/            Stateless semantic server (planner + governance + adapters)
-cmd/osictl/            CLI: offline validate, Glue stub derivation, CR round-trip
-internal/osi/          Apache Ossie schema validation
+cmd/ossiectl/            CLI: offline validate, Glue stub derivation, CR round-trip
+internal/ossie/          Apache Ossie schema validation
 internal/planner/      semantic request -> logical plan; planner/expr/ expression handling
 internal/governance/   compile-time row/column policies
 internal/emitter/      Dialect interface; emitter/starrocks/ implementation
@@ -56,7 +57,7 @@ hack/                  tools.go (build-time tool deps)
 ## Common commands (via Makefile)
 
 ```bash
-make build        # compile bin/manager, bin/server, bin/osictl
+make build        # compile bin/manager, bin/server, bin/ossiectl
 make test         # go vet ./... && go test ./... -count=1
 make cover        # coverage profile
 make generate     # regenerate deepcopy + CRD manifests after editing api/ (REQUIRED after CRD type changes)
@@ -74,7 +75,7 @@ make bench                                       # write examples/starrocks/reta
 Plain Go also works: `go build ./...`, `go test ./...`, `go vet ./...`.
 
 Tests live next to code (`*_test.go`): `controllers/`, `internal/cache/`, `internal/planner/`,
-`internal/planner/expr/`, `internal/osi/`. Prefer running the whole suite; it's fast and offline.
+`internal/planner/expr/`, `internal/ossie/`. Prefer running the whole suite; it's fast and offline.
 
 ## Architecture essentials
 
@@ -97,8 +98,8 @@ Tests live next to code (`*_test.go`): `controllers/`, `internal/cache/`, `inter
 
 - After changing anything in `api/`, run `make generate` and commit the regenerated
   `zz_generated.deepcopy.go` and `charts/semantic-operator/crds/`.
-- Keep the `osi` identifiers (API group `semantic.osi.io`, `spec.osi`, `osictl`) — they are
-  intentional backward-compat, not stale naming.
+- Keep identifiers consistent under the `ossie` name: API group `semantic.ossie.io`, `spec.ossie`,
+  package `internal/ossie`, and the `ossiectl` CLI.
 - Match surrounding Go style; this is idiomatic controller-runtime + stdlib code.
 - The planner emits **StarRocks SQL only**. Don't add other-engine SQL outside the
   `emitter.Dialect` interface.

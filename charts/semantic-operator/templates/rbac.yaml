@@ -28,10 +28,10 @@ metadata:
   name: {{ include "semantic-operator.name" . }}-manager
   labels: {{- include "semantic-operator.labels" . | nindent 4 }}
 rules:
-  - apiGroups: [semantic.osi.io]
+  - apiGroups: [semantic.ossie.io]
     resources: [semanticmodels]
     verbs: [get, list, watch, update, patch]
-  - apiGroups: [semantic.osi.io]
+  - apiGroups: [semantic.ossie.io]
     resources: [semanticmodels/status, semanticmodels/finalizers]
     verbs: [get, update, patch]
   - apiGroups: [""]

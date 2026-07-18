@@ -9,8 +9,8 @@ import (
 
 	"github.com/gobwas/glob"
 
-	"github.com/vara-bonthu/osi-semantic-operator/api/v1alpha1"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/planner/expr"
+	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/ossie-semantic-operator/internal/planner/expr"
 )
 
 // ErrUnauthorized marks policy violations. Adapters map it to 403.

@@ -2,7 +2,7 @@ package v1alpha1
 
 // DialectPreference is the order in which expression dialects are selected
 // for compilation. STARROCKS is an operator extension dialect; ANSI_SQL is
-// the OSI default and is passed through to StarRocks unchanged.
+// the Ossie default and is passed through to StarRocks unchanged.
 var DialectPreference = []string{"STARROCKS", "ANSI_SQL"}
 
 // Select returns the expression body for the most preferred dialect present.
@@ -18,7 +18,7 @@ func (e Expression) Select() (string, bool) {
 }
 
 // FindDataset returns the dataset with the given logical name.
-func (m *OSIModel) FindDataset(name string) *Dataset {
+func (m *OssieModel) FindDataset(name string) *Dataset {
 	for i := range m.Datasets {
 		if m.Datasets[i].Name == name {
 			return &m.Datasets[i]
@@ -38,7 +38,7 @@ func (d *Dataset) FindField(name string) *Field {
 }
 
 // FindMetric returns the metric with the given name.
-func (m *OSIModel) FindMetric(name string) *Metric {
+func (m *OssieModel) FindMetric(name string) *Metric {
 	for i := range m.Metrics {
 		if m.Metrics[i].Name == name {
 			return &m.Metrics[i]

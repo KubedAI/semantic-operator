@@ -20,12 +20,12 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/vara-bonthu/osi-semantic-operator/api/v1alpha1"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/planner"
+	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/ossie-semantic-operator/internal/planner"
 )
 
 // Store holds the compiled models currently published by the operator,
-// keyed by OSI model name. It is updated by a ConfigMap informer and read
+// keyed by Ossie model name. It is updated by a ConfigMap informer and read
 // by every request, so reads take an RLock only.
 type Store struct {
 	mu     sync.RWMutex

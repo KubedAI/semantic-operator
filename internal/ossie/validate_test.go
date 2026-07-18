@@ -1,10 +1,10 @@
-package osi
+package ossie
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/vara-bonthu/osi-semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
 )
 
 func field(name, expr string, isTime bool) v1alpha1.Field {
@@ -23,7 +23,7 @@ func field(name, expr string, isTime bool) v1alpha1.Field {
 func validSpec() *v1alpha1.SemanticModelSpec {
 	return &v1alpha1.SemanticModelSpec{
 		Connection: v1alpha1.ConnectionSpec{Catalog: "iceberg", Database: "osi_demo"},
-		OSI: v1alpha1.OSIModel{
+		Ossie: v1alpha1.OssieModel{
 			Name: "test_model",
 			Datasets: []v1alpha1.Dataset{
 				{
@@ -104,25 +104,25 @@ func wantErr(t *testing.T, spec *v1alpha1.SemanticModelSpec, substr string) {
 
 func TestValidateDuplicateDataset(t *testing.T) {
 	s := validSpec()
-	s.OSI.Datasets = append(s.OSI.Datasets, s.OSI.Datasets[0])
+	s.Ossie.Datasets = append(s.Ossie.Datasets, s.Ossie.Datasets[0])
 	wantErr(t, s, "duplicate name")
 }
 
 func TestValidateUnknownRelationshipDataset(t *testing.T) {
 	s := validSpec()
-	s.OSI.Relationships[0].To = "nope"
+	s.Ossie.Relationships[0].To = "nope"
 	wantErr(t, s, `to dataset "nope" does not exist`)
 }
 
 func TestValidateColumnCountMismatch(t *testing.T) {
 	s := validSpec()
-	s.OSI.Relationships[0].ToColumns = []string{"a", "b"}
+	s.Ossie.Relationships[0].ToColumns = []string{"a", "b"}
 	wantErr(t, s, "same length")
 }
 
 func TestValidateCycle(t *testing.T) {
 	s := validSpec()
-	s.OSI.Relationships = append(s.OSI.Relationships, v1alpha1.Relationship{
+	s.Ossie.Relationships = append(s.Ossie.Relationships, v1alpha1.Relationship{
 		Name: "back", From: "date_dim", To: "store_sales",
 		FromColumns: []string{"d_date_sk"}, ToColumns: []string{"ss_sold_date_sk"},
 	})
@@ -131,20 +131,20 @@ func TestValidateCycle(t *testing.T) {
 
 func TestValidateBadMetricExpression(t *testing.T) {
 	s := validSpec()
-	s.OSI.Metrics[0].Expression.Dialects[0].Expression = "SUM(ss_ext_sales_price)"
+	s.Ossie.Metrics[0].Expression.Dialects[0].Expression = "SUM(ss_ext_sales_price)"
 	wantErr(t, s, "dataset.field")
 }
 
 func TestValidateMetricUnknownField(t *testing.T) {
 	s := validSpec()
-	s.OSI.Metrics[0].Expression.Dialects[0].Expression = "SUM(store_sales.nope)"
+	s.Ossie.Metrics[0].Expression.Dialects[0].Expression = "SUM(store_sales.nope)"
 	wantErr(t, s, `unknown field "nope"`)
 }
 
 func TestValidateRatioDenominatorNeedsPK(t *testing.T) {
 	s := validSpec()
-	s.OSI.Datasets[2].PrimaryKey = nil
-	s.OSI.Metrics[1].Expression.Dialects[0].Expression =
+	s.Ossie.Datasets[2].PrimaryKey = nil
+	s.Ossie.Metrics[1].Expression.Dialects[0].Expression =
 		"SUM(store_sales.ss_ext_sales_price) / NULLIF(SUM(customer.c_customer_sk), 0)"
 	wantErr(t, s, "no primary_key")
 }

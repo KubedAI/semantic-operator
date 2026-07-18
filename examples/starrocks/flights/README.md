@@ -47,7 +47,7 @@ airports table.
 Offline validation (no cluster needed):
 
 ```bash
-go run ./cmd/osictl validate -f examples/starrocks/flights/semanticmodel.yaml
+go run ./cmd/ossiectl validate -f examples/starrocks/flights/semanticmodel.yaml
 # OK: ... (model flights_model, version <hash>)
 ```
 
@@ -57,7 +57,7 @@ metrics, relationships, synonyms, and governance are emitted as `TODO`
 placeholders to fill in):
 
 ```bash
-go run ./cmd/osictl derive -region us-west-2 -database osi_flights -out flights-derived.yaml
+go run ./cmd/ossiectl derive -region us-west-2 -database osi_flights -out flights-derived.yaml
 # writes to stdout if -out is omitted
 ```
 

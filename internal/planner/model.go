@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/vara-bonthu/osi-semantic-operator/api/v1alpha1"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/planner/expr"
+	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/ossie-semantic-operator/internal/planner/expr"
 )
 
 // CompiledModel is the frozen, JSON-serializable artifact the operator
@@ -82,10 +82,10 @@ func SpecVersion(spec *v1alpha1.SemanticModelSpec) string {
 }
 
 // Compile freezes a validated spec into a CompiledModel. It assumes
-// osi.ValidateSpec passed; errors here indicate planner-subset violations.
+// ossie.ValidateSpec passed; errors here indicate planner-subset violations.
 func Compile(spec *v1alpha1.SemanticModelSpec, namespace, resource string) (*CompiledModel, error) {
 	cm := &CompiledModel{
-		Name:        spec.OSI.Name,
+		Name:        spec.Ossie.Name,
 		Version:     SpecVersion(spec),
 		Namespace:   namespace,
 		Resource:    resource,
@@ -93,11 +93,11 @@ func Compile(spec *v1alpha1.SemanticModelSpec, namespace, resource string) (*Com
 		Datasets:    map[string]*CompiledDataset{},
 		Metrics:     map[string]*CompiledMetric{},
 		Governance:  spec.Governance,
-		Description: spec.OSI.Description,
-		AIContext:   v1alpha1.DecodeAIContext(spec.OSI.AIContext),
+		Description: spec.Ossie.Description,
+		AIContext:   v1alpha1.DecodeAIContext(spec.Ossie.AIContext),
 	}
-	for i := range spec.OSI.Datasets {
-		d := &spec.OSI.Datasets[i]
+	for i := range spec.Ossie.Datasets {
+		d := &spec.Ossie.Datasets[i]
 		cat, db, table, err := ResolveSource(d.Source, spec.Connection)
 		if err != nil {
 			return nil, fmt.Errorf("dataset %q: %w", d.Name, err)
@@ -133,8 +133,8 @@ func Compile(spec *v1alpha1.SemanticModelSpec, namespace, resource string) (*Com
 		cm.Datasets[d.Name] = cd
 		cm.DatasetOrder = append(cm.DatasetOrder, d.Name)
 	}
-	for i := range spec.OSI.Relationships {
-		r := &spec.OSI.Relationships[i]
+	for i := range spec.Ossie.Relationships {
+		r := &spec.Ossie.Relationships[i]
 		jt := r.JoinType
 		if jt == "" {
 			jt = "INNER"
@@ -144,8 +144,8 @@ func Compile(spec *v1alpha1.SemanticModelSpec, namespace, resource string) (*Com
 			FromColumns: r.FromColumns, ToColumns: r.ToColumns, JoinType: jt,
 		})
 	}
-	for i := range spec.OSI.Metrics {
-		m := &spec.OSI.Metrics[i]
+	for i := range spec.Ossie.Metrics {
+		m := &spec.Ossie.Metrics[i]
 		body, ok := m.Expression.Select()
 		if !ok {
 			return nil, fmt.Errorf("metric %q: no usable dialect expression", m.Name)
@@ -164,7 +164,7 @@ func Compile(spec *v1alpha1.SemanticModelSpec, namespace, resource string) (*Com
 	return cm, nil
 }
 
-// ResolveSource resolves an OSI dataset source against the CR connection.
+// ResolveSource resolves an Ossie dataset source against the CR connection.
 // Accepted forms: "table", "database.table", "catalog.database.table".
 func ResolveSource(source string, conn v1alpha1.ConnectionSpec) (catalog, database, table string, err error) {
 	parts := strings.Split(source, ".")

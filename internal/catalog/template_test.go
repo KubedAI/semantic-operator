@@ -8,9 +8,9 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/vara-bonthu/osi-semantic-operator/api/v1alpha1"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/catalog"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/osi"
+	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/ossie-semantic-operator/internal/catalog"
+	"github.com/KubedAI/ossie-semantic-operator/internal/ossie"
 )
 
 func sampleTables() []catalog.Table {
@@ -42,7 +42,7 @@ func sampleTables() []catalog.Table {
 }
 
 // TestRenderTemplate_ValidOutOfBox is the key guarantee: the generated scaffold
-// parses and passes osi.ValidateSpec with no edits, so `osictl validate`
+// parses and passes ossie.ValidateSpec with no edits, so `ossiectl validate`
 // succeeds immediately on a freshly derived file.
 func TestRenderTemplate_ValidOutOfBox(t *testing.T) {
 	var buf bytes.Buffer
@@ -61,18 +61,18 @@ func TestRenderTemplate_ValidOutOfBox(t *testing.T) {
 	if err := yaml.UnmarshalStrict(buf.Bytes(), &cr); err != nil {
 		t.Fatalf("generated template is not parseable YAML: %v\n---\n%s", err, buf.String())
 	}
-	if err := osi.ValidateSpec(&cr.Spec); err != nil {
+	if err := ossie.ValidateSpec(&cr.Spec); err != nil {
 		t.Fatalf("generated template failed validation: %v\n---\n%s", err, buf.String())
 	}
 
-	if cr.Spec.OSI.Name != "tpcds_3tb_model" {
-		t.Errorf("osi.name = %q, want tpcds_3tb_model", cr.Spec.OSI.Name)
+	if cr.Spec.Ossie.Name != "tpcds_3tb_model" {
+		t.Errorf("osi.name = %q, want tpcds_3tb_model", cr.Spec.Ossie.Name)
 	}
 	if cr.Spec.Connection.Catalog != "glue" || cr.Spec.Connection.Database != "tpcds_3tb" {
 		t.Errorf("connection = %+v, want catalog=glue database=tpcds_3tb", cr.Spec.Connection)
 	}
-	if len(cr.Spec.OSI.Datasets) != 3 {
-		t.Fatalf("datasets = %d, want 3", len(cr.Spec.OSI.Datasets))
+	if len(cr.Spec.Ossie.Datasets) != 3 {
+		t.Fatalf("datasets = %d, want 3", len(cr.Spec.Ossie.Datasets))
 	}
 }
 
@@ -89,7 +89,7 @@ func TestRenderTemplate_TimeDimensionAndFields(t *testing.T) {
 		t.Fatalf("parse: %v", err)
 	}
 
-	dateDim := cr.Spec.OSI.FindDataset("date_dim")
+	dateDim := cr.Spec.Ossie.FindDataset("date_dim")
 	if dateDim == nil {
 		t.Fatal("date_dim dataset missing")
 	}
@@ -98,7 +98,7 @@ func TestRenderTemplate_TimeDimensionAndFields(t *testing.T) {
 		t.Errorf("d_date should have dimension.is_time=true, got %+v", dDate)
 	}
 
-	store := cr.Spec.OSI.FindDataset("store")
+	store := cr.Spec.Ossie.FindDataset("store")
 	if store == nil {
 		t.Fatal("store dataset missing")
 	}
@@ -131,14 +131,14 @@ func TestRenderTemplate_EdgeCases(t *testing.T) {
 	if err := yaml.UnmarshalStrict(buf.Bytes(), &cr); err != nil {
 		t.Fatalf("edge-case template is not parseable YAML: %v\n---\n%s", err, buf.String())
 	}
-	if err := osi.ValidateSpec(&cr.Spec); err != nil {
+	if err := ossie.ValidateSpec(&cr.Spec); err != nil {
 		t.Fatalf("edge-case template failed validation: %v\n---\n%s", err, buf.String())
 	}
-	odd := cr.Spec.OSI.FindDataset("odd_table")
+	odd := cr.Spec.Ossie.FindDataset("odd_table")
 	if odd == nil || odd.FindField("weird col") == nil {
 		t.Errorf("quoted field name %q not round-tripped", "weird col")
 	}
-	if empty := cr.Spec.OSI.FindDataset("empty_table"); empty == nil || len(empty.Fields) != 0 {
+	if empty := cr.Spec.Ossie.FindDataset("empty_table"); empty == nil || len(empty.Fields) != 0 {
 		t.Errorf("empty_table should exist with zero fields, got %+v", empty)
 	}
 }

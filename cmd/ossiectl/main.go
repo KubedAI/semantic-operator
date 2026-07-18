@@ -1,13 +1,13 @@
-// osictl: offline tooling for SemanticModel resources.
+// ossiectl: offline tooling for SemanticModel resources.
 //
-//	osictl validate -f model.yaml          validate a SemanticModel CR
-//	osictl derive   -region us-west-2 -database osi_demo [-out model.yaml]
+//	ossiectl validate -f model.yaml          validate a SemanticModel CR
+//	ossiectl derive   -region us-west-2 -database osi_demo [-out model.yaml]
 //	                                       scaffold an Ossie SemanticModel from a Glue
 //	                                       database (fields populated; metrics/joins/
 //	                                       governance emitted as TODO placeholders)
-//	osictl unwrap   -f cr.yaml             extract the OSI document from a CR
-//	osictl wrap     -f osi.yaml -name x -namespace ns -catalog c -database d
-//	                                       wrap an OSI document into a CR
+//	ossiectl unwrap   -f cr.yaml             extract the Ossie document from a CR
+//	ossiectl wrap     -f osi.yaml -name x -namespace ns -catalog c -database d
+//	                                       wrap an Ossie document into a CR
 package main
 
 import (
@@ -18,17 +18,17 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/vara-bonthu/osi-semantic-operator/api/v1alpha1"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/catalog"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/catalog/glue"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/osi"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/planner"
+	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/ossie-semantic-operator/internal/catalog"
+	"github.com/KubedAI/ossie-semantic-operator/internal/catalog/glue"
+	"github.com/KubedAI/ossie-semantic-operator/internal/ossie"
+	"github.com/KubedAI/ossie-semantic-operator/internal/planner"
 )
 
-// osiDocument is the top-level OSI file shape: version + semantic_model list.
-type osiDocument struct {
+// ossieDocument is the top-level Ossie file shape: version + semantic_model list.
+type ossieDocument struct {
 	Version       string              `json:"version,omitempty"`
-	SemanticModel []v1alpha1.OSIModel `json:"semantic_model"`
+	SemanticModel []v1alpha1.OssieModel `json:"semantic_model"`
 }
 
 func main() {
@@ -55,7 +55,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: osictl <validate|derive|unwrap|wrap> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: ossiectl <validate|derive|unwrap|wrap> [flags]")
 	os.Exit(2)
 }
 
@@ -74,13 +74,13 @@ func cmdValidate(args []string) error {
 	if err := yaml.UnmarshalStrict(raw, &cr); err != nil {
 		return fmt.Errorf("parsing CR: %w", err)
 	}
-	if err := osi.ValidateSpec(&cr.Spec); err != nil {
+	if err := ossie.ValidateSpec(&cr.Spec); err != nil {
 		return err
 	}
 	if _, err := planner.Compile(&cr.Spec, cr.Namespace, cr.Name); err != nil {
 		return fmt.Errorf("compile check: %w", err)
 	}
-	fmt.Printf("OK: %s (model %s, version %s)\n", *file, cr.Spec.OSI.Name, planner.SpecVersion(&cr.Spec))
+	fmt.Printf("OK: %s (model %s, version %s)\n", *file, cr.Spec.Ossie.Name, planner.SpecVersion(&cr.Spec))
 	return nil
 }
 
@@ -88,7 +88,7 @@ func cmdDerive(args []string) error {
 	fs := flag.NewFlagSet("derive", flag.ExitOnError)
 	region := fs.String("region", os.Getenv("AWS_REGION"), "AWS region")
 	database := fs.String("database", "", "Glue database")
-	modelName := fs.String("model", "derived_model", "OSI model name")
+	modelName := fs.String("model", "derived_model", "Ossie model name")
 	crName := fs.String("name", "derived-model", "CR metadata.name")
 	namespace := fs.String("namespace", "semantic-system", "CR namespace")
 	cat := fs.String("catalog", "iceberg", "StarRocks external catalog name")
@@ -131,7 +131,7 @@ func cmdDerive(args []string) error {
 		return err
 	}
 	if *out != "" {
-		fmt.Fprintf(os.Stderr, "wrote %s — fill the TODO placeholders, then: osictl validate -f %s\n", *out, *out)
+		fmt.Fprintf(os.Stderr, "wrote %s — fill the TODO placeholders, then: ossiectl validate -f %s\n", *out, *out)
 	}
 	return nil
 }
@@ -139,7 +139,7 @@ func cmdDerive(args []string) error {
 func cmdUnwrap(args []string) error {
 	fs := flag.NewFlagSet("unwrap", flag.ExitOnError)
 	file := fs.String("f", "", "SemanticModel CR file")
-	osiVersion := fs.String("osi-version", "0.2.0.dev0", "OSI spec version stamp")
+	ossieVersion := fs.String("ossie-version", "0.2.0.dev0", "Ossie spec version stamp")
 	_ = fs.Parse(args)
 	if *file == "" {
 		return fmt.Errorf("-f is required")
@@ -152,7 +152,7 @@ func cmdUnwrap(args []string) error {
 	if err := yaml.Unmarshal(raw, &cr); err != nil {
 		return err
 	}
-	doc := osiDocument{Version: *osiVersion, SemanticModel: []v1alpha1.OSIModel{cr.Spec.OSI}}
+	doc := ossieDocument{Version: *ossieVersion, SemanticModel: []v1alpha1.OssieModel{cr.Spec.Ossie}}
 	out, err := yaml.Marshal(&doc)
 	if err != nil {
 		return err
@@ -163,7 +163,7 @@ func cmdUnwrap(args []string) error {
 
 func cmdWrap(args []string) error {
 	fs := flag.NewFlagSet("wrap", flag.ExitOnError)
-	file := fs.String("f", "", "OSI document file (version + semantic_model list)")
+	file := fs.String("f", "", "Ossie document file (version + semantic_model list)")
 	name := fs.String("name", "", "CR metadata.name")
 	namespace := fs.String("namespace", "semantic-system", "CR namespace")
 	cat := fs.String("catalog", "", "StarRocks external catalog name")
@@ -176,7 +176,7 @@ func cmdWrap(args []string) error {
 	if err != nil {
 		return err
 	}
-	var doc osiDocument
+	var doc ossieDocument
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
 		return err
 	}
@@ -186,7 +186,7 @@ func cmdWrap(args []string) error {
 	cr := v1alpha1.SemanticModel{
 		Spec: v1alpha1.SemanticModelSpec{
 			Connection: v1alpha1.ConnectionSpec{Catalog: *cat, Database: *database},
-			OSI:        doc.SemanticModel[0],
+			Ossie:        doc.SemanticModel[0],
 		},
 	}
 	cr.APIVersion = v1alpha1.GroupVersion.String()

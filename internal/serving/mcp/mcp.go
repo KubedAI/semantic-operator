@@ -10,9 +10,9 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/vara-bonthu/osi-semantic-operator/internal/governance"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/planner"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/serving"
+	"github.com/KubedAI/ossie-semantic-operator/internal/governance"
+	"github.com/KubedAI/ossie-semantic-operator/internal/planner"
+	"github.com/KubedAI/ossie-semantic-operator/internal/serving"
 )
 
 // RoleHeader mirrors the REST adapter's identity header.
@@ -67,8 +67,8 @@ type listModelsOut struct {
 // NewServer builds the MCP server over the shared service.
 func NewServer(svc *serving.Service, version string) *sdk.Server {
 	srv := sdk.NewServer(&sdk.Implementation{
-		Name:    "osi-semantic-layer",
-		Title:   "OSI Semantic Layer",
+		Name:    "ossie-semantic-layer",
+		Title:   "Ossie Semantic Layer",
 		Version: version,
 	}, nil)
 

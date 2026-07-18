@@ -14,7 +14,7 @@ All engine-specific code lives behind `emitter.Dialect` and a small query client
 
 - **Trino, ClickHouse, and DuckDB dialects** (`emitter.Dialect`). About 40 lines each. The per-engine deltas are already written up.
 - **A `SQL_DIALECT`-driven client factory** (`internal/dbclient`). Today `SQL_DIALECT` selects the emitter but the DB client is still constructed directly. One factory would let a single env var pick both.
-- **More `catalog.Source` implementations.** Unity, Polaris, Hive, or a portable `information_schema` source. The last one also lets `osictl derive` work without Glue.
+- **More `catalog.Source` implementations.** Unity, Polaris, Hive, or a portable `information_schema` source. The last one also lets `ossiectl derive` work without Glue.
 
 ## More examples
 

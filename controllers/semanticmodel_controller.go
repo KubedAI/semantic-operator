@@ -1,4 +1,4 @@
-// Package controllers reconciles SemanticModel resources: validate the OSI
+// Package controllers reconciles SemanticModel resources: validate the Ossie
 // document, bind and drift-check physical schema through StarRocks, compile
 // deterministically, publish the artifact ConfigMap, and materialize
 // governed views. Reconciliation is level-triggered and idempotent, so it
@@ -22,15 +22,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	semanticv1alpha1 "github.com/vara-bonthu/osi-semantic-operator/api/v1alpha1"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/emitter"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/osi"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/planner"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/serving/views"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/starrocks"
+	semanticv1alpha1 "github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/ossie-semantic-operator/internal/emitter"
+	"github.com/KubedAI/ossie-semantic-operator/internal/ossie"
+	"github.com/KubedAI/ossie-semantic-operator/internal/planner"
+	"github.com/KubedAI/ossie-semantic-operator/internal/serving/views"
+	"github.com/KubedAI/ossie-semantic-operator/internal/starrocks"
 )
 
-const finalizer = "semantic.osi.io/views-cleanup"
+const finalizer = "semantic.ossie.io/views-cleanup"
 
 // StarRocksClient is the slice of the StarRocks client the controller needs;
 // mocked in the smoke test.
@@ -51,9 +51,9 @@ type SemanticModelReconciler struct {
 	ResyncPeriod time.Duration
 }
 
-// +kubebuilder:rbac:groups=semantic.osi.io,resources=semanticmodels,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=semantic.osi.io,resources=semanticmodels/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=semantic.osi.io,resources=semanticmodels/finalizers,verbs=update
+// +kubebuilder:rbac:groups=semantic.ossie.io,resources=semanticmodels,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=semantic.ossie.io,resources=semanticmodels/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=semantic.ossie.io,resources=semanticmodels/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile drives a SemanticModel through Validated -> Compiled ->
@@ -80,13 +80,13 @@ func (r *SemanticModelReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	sm.Status.ModelVersion = version
 	sm.Status.ObservedGeneration = sm.Generation
 
-	// 1. Validate the OSI document and planner subset. Pure, no I/O.
-	if err := osi.ValidateSpec(&sm.Spec); err != nil {
+	// 1. Validate the Ossie document and planner subset. Pure, no I/O.
+	if err := ossie.ValidateSpec(&sm.Spec); err != nil {
 		r.setCondition(&sm, semanticv1alpha1.ConditionValidated, metav1.ConditionFalse, "ValidationFailed", truncate(err.Error()))
 		log.Error(err, "validation failed")
 		return ctrl.Result{}, r.Status().Update(ctx, &sm)
 	}
-	r.setCondition(&sm, semanticv1alpha1.ConditionValidated, metav1.ConditionTrue, "OK", "OSI document and planner subset checks passed")
+	r.setCondition(&sm, semanticv1alpha1.ConditionValidated, metav1.ConditionTrue, "OK", "Ossie document and planner subset checks passed")
 
 	// 2. Compile. Pure; failures here are spec bugs, not infrastructure.
 	compiled, err := planner.Compile(&sm.Spec, sm.Namespace, sm.Name)
@@ -235,7 +235,7 @@ func (r *SemanticModelReconciler) decorate(cm *corev1.ConfigMap, sm *semanticv1a
 		cm.Labels = map[string]string{}
 	}
 	cm.Labels["app.kubernetes.io/managed-by"] = semanticv1alpha1.ManagedByValue
-	cm.Labels[semanticv1alpha1.LabelModel] = sm.Spec.OSI.Name
+	cm.Labels[semanticv1alpha1.LabelModel] = sm.Spec.Ossie.Name
 	cm.Labels[semanticv1alpha1.LabelVersion] = version
 	cm.Data = map[string]string{semanticv1alpha1.CompiledModelKey: string(blob)}
 }

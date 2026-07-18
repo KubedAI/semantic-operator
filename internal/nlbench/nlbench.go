@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vara-bonthu/osi-semantic-operator/internal/starrocks"
+	"github.com/KubedAI/ossie-semantic-operator/internal/starrocks"
 )
 
 // PathResult is the outcome of one path answering one question.

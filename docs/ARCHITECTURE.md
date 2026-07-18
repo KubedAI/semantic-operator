@@ -2,7 +2,7 @@
 
 This document is the build spec. The code implements what is written here. If the code and this document disagree, fix one of them.
 
-> Naming: this operator implements **Apache Ossie (incubating)**, the semantic-model standard formerly known as Open Semantic Interchange (OSI). Prose below says "Apache Ossie" or "Ossie". Code identifiers keep the historical `osi` short name (the `semantic.osi.io` API group, the `spec.osi` block, `internal/osi`, and the `osictl` CLI), so existing deployments are unaffected.
+> Naming: this operator implements **Apache Ossie (incubating)**, the semantic-model standard formerly known as Open Semantic Interchange (OSI). Prose below says "Apache Ossie" or "Ossie". Identifiers use the `ossie` name: the `semantic.ossie.io` API group, the `spec.ossie` block, `internal/ossie`, and the `ossiectl` CLI.
 
 ## System overview
 
@@ -13,16 +13,16 @@ Two deployables, one CLI.
 
 - **semantic-operator** (`cmd/manager`). A controller-runtime manager. It owns the write path: CR validation, schema drift detection, compilation, artifact publication, and governed view DDL.
 - **semantic-server** (`cmd/server`). Stateless serving. It owns the read path: the MCP and REST adapters over a shared planner, with governance and Valkey caching. It scales horizontally. All state is in ConfigMaps (compiled models) and Valkey (caches).
-- **osictl** (`cmd/osictl`). Offline validation, Glue-based model derivation, and Apache Ossie YAML to CR wrapping and unwrapping.
+- **ossiectl** (`cmd/ossiectl`). Offline validation, Glue-based model derivation, and Apache Ossie YAML to CR wrapping and unwrapping.
 
 The split matters for GitOps. The operator is the only writer, reconciliation is level-triggered and idempotent, and the server never mutates anything. So ArgoCD can own the resources and nothing fights it.
 
-## CRD: semantic.osi.io/v1alpha1 SemanticModel
+## CRD: semantic.ossie.io/v1alpha1 SemanticModel
 
-The spec has three sections. `osi` is the Apache Ossie semantic model, verbatim. `governance` and `views` are operator extensions that Ossie does not define. They are kept outside the `osi` block so the Ossie document round-trips byte-for-byte through `osictl`.
+The spec has three sections. `ossie` is the Apache Ossie semantic model, verbatim. `governance` and `views` are operator extensions that Ossie does not define. They are kept outside the `ossie` block so the Ossie document round-trips byte-for-byte through `ossiectl`.
 
 ```yaml
-apiVersion: semantic.osi.io/v1alpha1
+apiVersion: semantic.ossie.io/v1alpha1
 kind: SemanticModel
 metadata:
   name: tpcds-retail
@@ -30,7 +30,7 @@ spec:
   connection:                    # which StarRocks external catalog the sources live in
     catalog: iceberg             # StarRocks external catalog name (Helm default, overridable per CR)
     database: osi_demo
-  osi:                           # Apache Ossie (OSI v0.2) semantic_model entry, unmodified structure
+  ossie:                           # Apache Ossie (OSI v0.2) semantic_model entry, unmodified structure
     name: tpcds_retail_model
     description: ...
     ai_context: {...}
@@ -70,10 +70,10 @@ status:
 ![Reconcile loop and status conditions](img/reconcile-loop.svg)
 <!-- Diagram source: docs/diagrams/reconcile-loop.mmd -->
 
-1. **Validate** (`internal/osi`). Structural validation of the Apache Ossie block. It checks unique names, that relationships reference existing datasets and columns, that metric expressions parse under the supported grammar, and that each expression has at least one `ANSI_SQL` or `STARROCKS` dialect. Sets `Validated`.
+1. **Validate** (`internal/ossie`). Structural validation of the Apache Ossie block. It checks unique names, that relationships reference existing datasets and columns, that metric expressions parse under the supported grammar, and that each expression has at least one `ANSI_SQL` or `STARROCKS` dialect. Sets `Validated`.
 2. **Bind and drift-check** (`internal/starrocks` and `internal/catalog`). For every dataset it runs `DESC <catalog>.<db>.<table>` against live StarRocks. A missing table or a missing referenced column sets `DriftDetected=True`, with per-dataset detail in the message, and stops publication of the new version. The previously published artifact keeps serving. Extra physical columns are not drift.
 3. **Compile** (`planner.Compile` in `internal/planner`). Parse every metric into a typed AST (see planner), resolve the join graph, and freeze everything into a `CompiledModel` JSON artifact. Compilation is pure. No I/O, same spec in, same artifact out. Sets `Compiled`.
-4. **Publish**. Write the artifact to a ConfigMap owned by the CR, labeled `semantic.osi.io/model=<name>` and `semantic.osi.io/version=<modelVersion>`. Sets `Published`. The server's informer picks it up within seconds. Because the version is content-addressed, replaying the same spec is a no-op.
+4. **Publish**. Write the artifact to a ConfigMap owned by the CR, labeled `semantic.ossie.io/model=<name>` and `semantic.ossie.io/version=<modelVersion>`. Sets `Published`. The server's informer picks it up within seconds. Because the version is content-addressed, replaying the same spec is a no-op.
 5. **Views** (`internal/serving/views`). Each `spec.views` entry is compiled through the same planner under its declared role and applied as `CREATE OR REPLACE VIEW <viewDatabase>.<name>` in the StarRocks default catalog. StarRocks supports views over external catalog tables. Views removed from the spec are dropped. The operator tracks the view names it created in an annotation.
 
 Deletion uses a finalizer to drop the operator-created views, then Kubernetes garbage-collects the owned ConfigMap.
@@ -140,7 +140,7 @@ type Source interface {
 
 `internal/catalog/glue` implements it with the AWS SDK (IRSA in-cluster). Two consumers use it.
 
-- `osictl derive -region <r> -database osi_demo -out model.yaml` (writes to stdout if `-out` is omitted). It generates a full, schema-valid Apache Ossie `SemanticModel` scaffold. Datasets get a `source`, and fields get ANSI_SQL identity expressions with inferred `is_time` for date and timestamp columns. Candidate relationships and `TODO` placeholders for the human-owned parts (`primary_key`, `metrics`, `relationships`, synonyms, governance, views) are included. Glue rarely carries real foreign keys, so relationship inference is convention-based. A fact column `x_sk` whose name suffix matches another table's single-column primary-key-like column (`<prefix>_sk`) becomes a candidate join, emitted commented-out for a human to confirm. The emitted `spec.osi` block validates against the Ossie [`osi-schema.json`](https://github.com/apache/ossie/blob/main/core-spec/osi-schema.json). `join_type` on a relationship is the one operator extension beyond the core schema. Humans then maintain only metrics, joins, and synonyms. Field lists are regenerated.
+- `ossiectl derive -region <r> -database osi_demo -out model.yaml` (writes to stdout if `-out` is omitted). It generates a full, schema-valid Apache Ossie `SemanticModel` scaffold. Datasets get a `source`, and fields get ANSI_SQL identity expressions with inferred `is_time` for date and timestamp columns. Candidate relationships and `TODO` placeholders for the human-owned parts (`primary_key`, `metrics`, `relationships`, synonyms, governance, views) are included. Glue rarely carries real foreign keys, so relationship inference is convention-based. A fact column `x_sk` whose name suffix matches another table's single-column primary-key-like column (`<prefix>_sk`) becomes a candidate join, emitted commented-out for a human to confirm. The emitted `spec.ossie` block validates against the Ossie [`osi-schema.json`](https://github.com/apache/ossie/blob/main/core-spec/osi-schema.json). `join_type` on a relationship is the one operator extension beyond the core schema. Humans then maintain only metrics, joins, and synonyms. Field lists are regenerated.
 - Controller resync (`spec.catalogSync.enabled`). Refreshes dataset field lists from Glue on a timer, so new physical columns become available as dimensions without hand-editing. Metrics and relationships are never auto-modified.
 
 Drift detection is separate from derivation and always on. It introspects through StarRocks (`DESC`), because what matters at query time is what StarRocks can see.

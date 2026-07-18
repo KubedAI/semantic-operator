@@ -1,4 +1,4 @@
-// Package expr parses the bounded OSI metric expression grammar:
+// Package expr parses the bounded Ossie metric expression grammar:
 //
 //	MetricExpr := Term ( '/' Denom )?
 //	Denom      := Term | 'NULLIF' '(' Term ',' Number ')'

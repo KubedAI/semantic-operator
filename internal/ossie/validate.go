@@ -1,16 +1,16 @@
-// Package osi validates SemanticModel specs against the OSI structure and
+// Package osi validates SemanticModel specs against the Ossie structure and
 // the planner's supported subset. Validation is pure: no I/O, so the same
 // spec always validates the same way (physical drift is checked separately
 // by the controller against live StarRocks).
-package osi
+package ossie
 
 import (
 	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/vara-bonthu/osi-semantic-operator/api/v1alpha1"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/planner/expr"
+	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/ossie-semantic-operator/internal/planner/expr"
 )
 
 // ValidateSpec checks the whole spec. It returns an aggregate error listing
@@ -19,7 +19,7 @@ func ValidateSpec(spec *v1alpha1.SemanticModelSpec) error {
 	var errs []error
 	add := func(format string, a ...any) { errs = append(errs, fmt.Errorf(format, a...)) }
 
-	m := &spec.OSI
+	m := &spec.Ossie
 	if m.Name == "" {
 		add("osi.name is required")
 	}

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vara-bonthu/osi-semantic-operator/internal/emitter"
+	"github.com/KubedAI/ossie-semantic-operator/internal/emitter"
 )
 
 // Dialect emits StarRocks (MySQL-family) SQL.

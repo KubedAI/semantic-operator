@@ -1,6 +1,6 @@
 flowchart TB
     subgraph gitops [GitOps]
-        Y[SemanticModel CR<br/>spec.osi is Apache Ossie YAML] -->|ArgoCD or kubectl| K8S[(Kubernetes API)]
+        Y[SemanticModel CR<br/>spec.ossie is Apache Ossie YAML] -->|ArgoCD or kubectl| K8S[(Kubernetes API)]
     end
 
     subgraph op [semantic-operator Deployment]

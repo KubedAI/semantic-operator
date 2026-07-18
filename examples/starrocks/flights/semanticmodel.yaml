@@ -8,7 +8,7 @@
 # metrics), so this file is a faithful re-expression of that flights domain in
 # the form our validator and planner consume. It is illustrative (model only):
 # it binds to a Glue database `osi_flights` that you would create with your own
-# flight tables, or derive stubs with `osictl derive -database osi_flights`.
+# flight tables, or derive stubs with `ossiectl derive -database osi_flights`.
 #
 # Glue binding: `spec.connection` pins catalog=iceberg (the StarRocks external
 # catalog fronting Glue) and database=osi_flights. Each `dataset.source` is a
@@ -16,7 +16,7 @@
 # orig_airport and dest_airport are two datasets bound to the SAME physical
 # Glue table (`airports`), aliased by role — the classic star-schema pattern
 # the ontology form expresses with two link mappings to Airport.
-apiVersion: semantic.osi.io/v1alpha1
+apiVersion: semantic.ossie.io/v1alpha1
 kind: SemanticModel
 metadata:
   name: flights
@@ -26,7 +26,7 @@ spec:
     catalog: iceberg          # StarRocks external catalog fronting Glue
     database: osi_flights
     viewDatabase: semantic_views
-  osi:
+  ossie:
     name: flights_model
     description: On-time-performance semantic model over flights, carriers, routes, and airports
     ai_context:

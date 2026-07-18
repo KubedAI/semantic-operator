@@ -8,10 +8,10 @@ import (
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 
-	"github.com/vara-bonthu/osi-semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
 )
 
-// DeriveDatasets turns physical tables into OSI dataset stubs: source
+// DeriveDatasets turns physical tables into Ossie dataset stubs: source
 // binding, one field per column (ANSI_SQL identity expression), is_time on
 // date/timestamp columns. Humans keep metrics, relationships, and synonyms;
 // this output is regenerated as the physical schema evolves.

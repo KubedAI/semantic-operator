@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/vara-bonthu/osi-semantic-operator/api/v1alpha1"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/emitter"
-	"github.com/vara-bonthu/osi-semantic-operator/internal/planner/expr"
+	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/ossie-semantic-operator/internal/emitter"
+	"github.com/KubedAI/ossie-semantic-operator/internal/planner/expr"
 )
 
 // builder holds per-request state for SQL construction. All methods are

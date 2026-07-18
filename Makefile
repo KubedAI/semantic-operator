@@ -2,7 +2,7 @@
 # is hardcoded to an account.
 
 REGISTRY   ?= 000000000000.dkr.ecr.us-west-2.amazonaws.com
-IMAGE_BASE ?= $(REGISTRY)/osi-semantic-operator
+IMAGE_BASE ?= $(REGISTRY)/ossie-semantic-operator
 TAG        ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 AWS_REGION ?= us-west-2
 PLATFORM   ?= linux/amd64
@@ -24,7 +24,7 @@ build: ## Compile all binaries into bin/
 	mkdir -p bin
 	go build -o bin/manager ./cmd/manager
 	go build -o bin/server ./cmd/server
-	go build -o bin/osictl ./cmd/osictl
+	go build -o bin/ossiectl ./cmd/ossiectl
 
 .PHONY: test
 test: ## Unit and smoke tests
@@ -43,8 +43,8 @@ ecr-login: ## Authenticate docker to ECR
 
 .PHONY: ecr-create
 ecr-create: ## Create the ECR repositories (idempotent)
-	-aws ecr create-repository --region $(AWS_REGION) --repository-name osi-semantic-operator/manager 2>/dev/null
-	-aws ecr create-repository --region $(AWS_REGION) --repository-name osi-semantic-operator/server 2>/dev/null
+	-aws ecr create-repository --region $(AWS_REGION) --repository-name ossie-semantic-operator/manager 2>/dev/null
+	-aws ecr create-repository --region $(AWS_REGION) --repository-name ossie-semantic-operator/server 2>/dev/null
 
 .PHONY: docker-build
 docker-build: ## Build manager and server images
