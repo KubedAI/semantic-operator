@@ -1,8 +1,10 @@
 // osictl: offline tooling for SemanticModel resources.
 //
 //	osictl validate -f model.yaml          validate a SemanticModel CR
-//	osictl derive   -region us-west-2 -database osi_demo [-model name]
-//	                                       derive dataset stubs + candidate joins from Glue
+//	osictl derive   -region us-west-2 -database osi_demo [-out model.yaml]
+//	                                       scaffold an Ossie SemanticModel from a Glue
+//	                                       database (fields populated; metrics/joins/
+//	                                       governance emitted as TODO placeholders)
 //	osictl unwrap   -f cr.yaml             extract the OSI document from a CR
 //	osictl wrap     -f osi.yaml -name x -namespace ns -catalog c -database d
 //	                                       wrap an OSI document into a CR
@@ -90,6 +92,7 @@ func cmdDerive(args []string) error {
 	crName := fs.String("name", "derived-model", "CR metadata.name")
 	namespace := fs.String("namespace", "semantic-system", "CR namespace")
 	cat := fs.String("catalog", "iceberg", "StarRocks external catalog name")
+	out := fs.String("out", "", "write to this file instead of stdout")
 	_ = fs.Parse(args)
 	if *database == "" {
 		return fmt.Errorf("-database is required")
@@ -107,36 +110,29 @@ func cmdDerive(args []string) error {
 		return fmt.Errorf("no tables found in Glue database %q", *database)
 	}
 
-	cr := v1alpha1.SemanticModel{
-		Spec: v1alpha1.SemanticModelSpec{
-			Connection: v1alpha1.ConnectionSpec{Catalog: *cat, Database: *database},
-			OSI: v1alpha1.OSIModel{
-				Name:     *modelName,
-				Datasets: catalog.DeriveDatasets(tables),
-			},
-		},
+	w := os.Stdout
+	if *out != "" {
+		f, err := os.Create(*out)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		w = f
 	}
-	cr.APIVersion = v1alpha1.GroupVersion.String()
-	cr.Kind = "SemanticModel"
-	cr.Name = *crName
-	cr.Namespace = *namespace
 
-	out, err := yaml.Marshal(&cr)
-	if err != nil {
+	opts := catalog.TemplateOptions{
+		CRName:    *crName,
+		Namespace: *namespace,
+		Catalog:   *cat,
+		Database:  *database,
+		Model:     *modelName,
+	}
+	if err := catalog.RenderTemplate(w, opts, tables); err != nil {
 		return err
 	}
-	os.Stdout.Write(out)
-
-	candidates := catalog.InferRelationships(tables)
-	if len(candidates) > 0 {
-		fmt.Println("\n# Candidate relationships inferred from key-name conventions.")
-		fmt.Println("# Review and move the correct ones into spec.osi.relationships:")
-		for _, c := range candidates {
-			fmt.Printf("#  - name: %s\n#    from: %s\n#    to: %s\n#    from_columns: [%s]\n#    to_columns: [%s]\n#    # %s\n",
-				c.Name, c.From, c.To, c.FromColumns[0], c.ToColumns[0], c.Reason)
-		}
+	if *out != "" {
+		fmt.Fprintf(os.Stderr, "wrote %s — fill the TODO placeholders, then: osictl validate -f %s\n", *out, *out)
 	}
-	fmt.Println("\n# Add metrics, ai_context synonyms, and governance, then: osictl validate -f <file>")
 	return nil
 }
 

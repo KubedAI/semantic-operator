@@ -51,11 +51,14 @@ go run ./cmd/osictl validate -f examples/starrocks/flights/semanticmodel.yaml
 # OK: ... (model flights_model, version <hash>)
 ```
 
-Derive dataset stubs from your own Glue flights database instead of hand-writing
-fields:
+Derive a full Ossie model scaffold from your own Glue flights database instead
+of hand-writing fields (datasets and fields are populated from the catalog;
+metrics, relationships, synonyms, and governance are emitted as `TODO`
+placeholders to fill in):
 
 ```bash
-go run ./cmd/osictl derive --database osi_flights --out flights-derived.yaml
+go run ./cmd/osictl derive -region us-west-2 -database osi_flights -out flights-derived.yaml
+# writes to stdout if -out is omitted
 ```
 
 To run it end to end, create the `osi_flights` Glue database and the

@@ -65,9 +65,13 @@ Owns the `SemanticModel` CR — the only role that edits Apache Ossie YAML.
    kubectl -n semantic-system get semanticmodels -w   # Validated / Compiled / Published / DriftDetected
    ```
 3. You maintain only **metrics, joins, and synonyms**; physical field lists come
-   from Glue via `osictl derive --database <db> --out model.yaml` (candidate joins
-   are emitted commented-out for a human to confirm; metrics and relationships are
-   never auto-modified).
+   from Glue via `osictl derive -region <r> -database <db> -out model.yaml`
+   (writes to stdout if `-out` is omitted). The generated file is a full,
+   schema-valid Apache Ossie scaffold: datasets and fields populated from the
+   catalog, with `metrics`, `relationships`, synonyms, `primary_key`, governance,
+   and views left as clearly-marked `TODO` placeholders. Candidate joins are
+   inferred from key-name conventions and emitted commented-out for a human to
+   confirm; metrics and relationships are never auto-modified.
 4. Golden rules: a metric is a *certified definition* (disagreements about
    "revenue" are resolved in the CR, once); drift is *detected*, not silently
    served; the `spec.osi` block round-trips byte-for-byte as portable Apache Ossie.
