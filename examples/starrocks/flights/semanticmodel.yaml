@@ -8,7 +8,7 @@
 # metrics), so this file is a faithful re-expression of that flights domain in
 # the form our validator and planner consume. It is illustrative (model only):
 # it binds to a Glue database `osi_flights` that you would create with your own
-# flight tables, or derive stubs from with `osictl derive --database osi_flights`.
+# flight tables, or derive stubs with `osictl derive -database osi_flights`.
 #
 # Glue binding: `spec.connection` pins catalog=iceberg (the StarRocks external
 # catalog fronting Glue) and database=osi_flights. Each `dataset.source` is a

@@ -17,6 +17,26 @@ grouped by theme; nothing here is required for the current StarRocks deployment.
   keep each example's end-to-end in *its* README; the three top-level guides
   (`OVERVIEW`, `ARCHITECTURE`, `DEVELOPER`) stay engine-agnostic.
 
+## Semantics from existing catalogs (priority)
+
+The layer should reuse the business semantics teams already maintain, not make them
+re-author everything. Today only *physical* schema is imported (from Glue, behind
+the `catalog.Source` interface).
+
+- [ ] **Import business semantics from OpenMetadata / DataHub.** Add a semantics
+  source (a sibling to `catalog.Source`) that pulls what data catalogs already hold
+  and maps it into the model:
+  - table/field descriptions + glossary terms → dataset/field/metric `description`
+    and `ai_context` (so metrics carry business meaning, and agents ground user
+    vocabulary on it);
+  - PII / sensitivity tags → `governance.denyFields`;
+  - ownership / ACLs → `governance` roles.
+
+  This answers "where does the business meaning come from," and makes the project
+  **complementary** to existing catalogs instead of a parallel island — which also
+  lowers the barrier to internal adoption. `osictl` gains an import step; the
+  compiled model stays the single source of truth the planner enforces.
+
 ## Faster onboarding
 
 - [ ] **Local `kind` quickstart** — a one-command local stack (kind + StarRocks
