@@ -1,4 +1,4 @@
-# ossie-semantic-operator
+# semantic-operator
 
 Define a business metric once. Every AI agent, BI tool, and app then gets the same correct answer. The LLM never writes SQL.
 
