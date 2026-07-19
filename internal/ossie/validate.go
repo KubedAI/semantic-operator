@@ -1,4 +1,4 @@
-// Package osi validates SemanticModel specs against the Ossie structure and
+// Package ossie validates SemanticModel specs against the Ossie structure and
 // the planner's supported subset. Validation is pure: no I/O, so the same
 // spec always validates the same way (physical drift is checked separately
 // by the controller against live StarRocks).
@@ -21,13 +21,13 @@ func ValidateSpec(spec *v1alpha1.SemanticModelSpec) error {
 
 	m := &spec.Ossie
 	if m.Name == "" {
-		add("osi.name is required")
+		add("ossie.name is required")
 	}
 	if spec.Connection.Catalog == "" || spec.Connection.Database == "" {
 		add("connection.catalog and connection.database are required")
 	}
 	if len(m.Datasets) == 0 {
-		add("osi.datasets must not be empty")
+		add("ossie.datasets must not be empty")
 	}
 
 	datasets := map[string]*v1alpha1.Dataset{}

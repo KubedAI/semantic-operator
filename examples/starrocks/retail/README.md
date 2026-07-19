@@ -46,16 +46,27 @@ CREATE EXTERNAL CATALOG iceberg
 PROPERTIES (
   "type" = "iceberg",
   "iceberg.catalog.type" = "glue",
-  "aws.glue.use_instance_profile" = "true",
+  "aws.glue.use_aws_sdk_default_behavior" = "true",
   "aws.glue.region" = "us-west-2",
-  "aws.s3.use_instance_profile" = "true",
+  "aws.s3.use_aws_sdk_default_behavior" = "true",
   "aws.s3.region" = "us-west-2"
 );
 SHOW DATABASES FROM iceberg;   -- sanity check
 ```
 
-The StarRocks BE/CN node role (or IRSA role) needs Glue read/write and S3 access
-to the warehouse bucket. Writing demo tables also needs a Glue database location;
+`use_aws_sdk_default_behavior` uses the AWS SDK default credential chain, which
+covers both IRSA (recommended on EKS: annotate a ServiceAccount with the role
+and set it on the StarRocksCluster FE and BE specs) and node instance profiles.
+Do not use `aws.*.use_instance_profile` on EKS: it talks strictly to IMDS,
+which pods cannot reach when the node's metadata hop limit is 1 (the EKS
+default), and it ignores IRSA — the symptom is
+`Failed to load credentials from IMDS`. The role needs Glue read/write and S3
+access to the warehouse bucket.
+
+> **FE restarts drop external catalogs** unless FE metadata is persisted.
+> If `SHOW CATALOGS` stops listing `iceberg` after a StarRocks restart,
+> re-run the `CREATE EXTERNAL CATALOG` above. The operator surfaces this as
+> `DriftDetected=True` with `table not resolvable` on every dataset. Writing demo tables also needs a Glue database location;
 if `CREATE DATABASE` in the next step complains about a missing location, create
 the Glue database once:
 
@@ -167,6 +178,14 @@ make demo-nl QUESTION="What is our sales per employee by state?"
   certified `store_productivity` metric and returns the correct number with the
   planner's exact SQL.
 
+What you should see (measured live, Claude Sonnet 4.5 on Bedrock, temperature 0;
+ground truth hand-computed as `SUM(sales) / SUM(distinct store headcount)`):
+
+| | NY sales per employee |
+|---|---|
+| Raw text-to-SQL | $12.54 (denominator inflated ~17,000× by the fan-out) |
+| Semantic layer | **$210,176.60** (= ground truth to the last digit) |
+
 Run a **paraphrase** of each to show the raw path gives different answers to the
 same reworded question while the semantic path is identical every time:
 
@@ -174,6 +193,13 @@ same reworded question while the semantic path is identical every time:
 make demo-nl QUESTION="What is our customer lifetime value?"
 make demo-nl QUESTION="Average revenue per customer over their history?"   # paraphrase
 ```
+
+Measured live: the raw path answered the first phrasing with a 2000-row
+per-customer table (including `c_email_address` — PII the governed path denies
+with a 403), and the paraphrase with **$154,705.51** (it silently excluded
+unattributed sales with `WHERE ss_customer_sk IS NOT NULL`). The semantic path
+returned the certified **$157,891.20** for both phrasings, byte-identical SQL and
+request hash.
 
 > **Any LLM, not just Bedrock.** The semantic layer never calls an LLM — it
 > exposes MCP and REST. This demo harness (`nl/`, `bench/`) happens to use Amazon
@@ -198,6 +224,14 @@ go run ./examples/starrocks/retail/bench/runner -limit 5 -out /tmp/results.md
 [`bench/RESULTS.md`](bench/RESULTS.md) reports accuracy, cross-paraphrase
 consistency, and hallucination rate per path. The seed data is fixed and
 temperature is 0, so runs with the same model id are directly comparable.
+
+Latest run (Claude Sonnet 4.5, 2026-07-19): raw text-to-SQL **69% accuracy,
+63% consistency**; semantic layer **97% accuracy, 90% consistency**; zero
+hallucinations on both paths (every raw miss executed cleanly and returned a
+wrong number — the worst failure mode). The raw path failed all 12
+sales-per-employee runs and 10 of 12 customer-lifetime-value runs; the
+semantic path's three misses were single-paraphrase metric-selection slips by
+the agent, not planner errors.
 
 ## Troubleshooting
 

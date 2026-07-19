@@ -13,6 +13,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -73,6 +74,11 @@ func (r *SemanticModelReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if !controllerutil.ContainsFinalizer(&sm, finalizer) {
 		controllerutil.AddFinalizer(&sm, finalizer)
 		if err := r.Update(ctx, &sm); err != nil {
+			if apierrors.IsConflict(err) {
+				// A concurrent write (e.g. the apply that created the object)
+				// bumped it; its watch event re-queues this reconcile.
+				return ctrl.Result{}, nil
+			}
 			return ctrl.Result{}, err
 		}
 	}
@@ -85,7 +91,7 @@ func (r *SemanticModelReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if err := ossie.ValidateSpec(&sm.Spec); err != nil {
 		r.setCondition(&sm, semanticv1alpha1.ConditionValidated, metav1.ConditionFalse, "ValidationFailed", truncate(err.Error()))
 		log.Error(err, "validation failed")
-		return ctrl.Result{}, r.Status().Update(ctx, &sm)
+		return ctrl.Result{}, r.statusUpdate(ctx, &sm)
 	}
 	r.setCondition(&sm, semanticv1alpha1.ConditionValidated, metav1.ConditionTrue, "OK", "Ossie document and planner subset checks passed")
 
@@ -93,7 +99,7 @@ func (r *SemanticModelReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	compiled, err := planner.Compile(&sm.Spec, sm.Namespace, sm.Name)
 	if err != nil {
 		r.setCondition(&sm, semanticv1alpha1.ConditionCompiled, metav1.ConditionFalse, "CompileFailed", truncate(err.Error()))
-		return ctrl.Result{}, r.Status().Update(ctx, &sm)
+		return ctrl.Result{}, r.statusUpdate(ctx, &sm)
 	}
 
 	// 3. Bind and drift-check against live StarRocks. Connectivity failures
@@ -106,7 +112,10 @@ func (r *SemanticModelReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if len(drift) > 0 {
 		r.setCondition(&sm, semanticv1alpha1.ConditionDriftDetected, metav1.ConditionTrue, "SchemaDrift", truncate(strings.Join(drift, "; ")))
 		log.Info("schema drift detected, not publishing", "drift", drift)
-		return ctrl.Result{RequeueAfter: r.resync()}, r.Status().Update(ctx, &sm)
+		if err := r.statusUpdate(ctx, &sm); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: r.resync()}, nil
 	}
 	r.setCondition(&sm, semanticv1alpha1.ConditionDriftDetected, metav1.ConditionFalse, "NoDrift", "physical schema matches bindings")
 	r.setCondition(&sm, semanticv1alpha1.ConditionCompiled, metav1.ConditionTrue, "OK", "compiled model version "+version)
@@ -129,10 +138,24 @@ func (r *SemanticModelReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 	r.setCondition(&sm, semanticv1alpha1.ConditionViewsReady, metav1.ConditionTrue, "OK", fmt.Sprintf("%d views published", len(sm.Spec.Views)))
 
-	if err := r.Status().Update(ctx, &sm); err != nil {
+	if err := r.statusUpdate(ctx, &sm); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{RequeueAfter: r.resync()}, nil
+}
+
+// statusUpdate persists status, treating an optimistic-concurrency conflict
+// as benign: a conflict means another writer just bumped the object, and that
+// write's own watch event has already queued the next reconcile, which will
+// recompute this status from scratch. Surfacing it as a reconcile error only
+// produces alarming ERROR logs for a self-healing race.
+func (r *SemanticModelReconciler) statusUpdate(ctx context.Context, sm *semanticv1alpha1.SemanticModel) error {
+	err := r.Status().Update(ctx, sm)
+	if apierrors.IsConflict(err) {
+		logf.FromContext(ctx).V(1).Info("status update conflicted; deferring to the queued reconcile")
+		return nil
+	}
+	return err
 }
 
 // bind introspects every dataset table and cross-checks relationship columns
@@ -249,7 +272,11 @@ func (r *SemanticModelReconciler) publish(ctx context.Context, sm *semanticv1alp
 	default:
 		// Rehome the artifact when the ConfigMap already exists but is still owned
 		// by a prior SemanticModel object (for example after an API-group migration
-		// or delete/recreate of the same logical resource name).
+		// or delete/recreate of the same logical resource name). A rehomed owner
+		// must be persisted even when the content is already current: a stale
+		// ownerRef points at a deleted object, so garbage collection would
+		// otherwise remove the artifact out from under the serving layer.
+		prevRefs := append([]metav1.OwnerReference(nil), cm.OwnerReferences...)
 		for i := len(cm.OwnerReferences) - 1; i >= 0; i-- {
 			ref := cm.OwnerReferences[i]
 			if ref.Kind == "SemanticModel" && (ref.APIVersion == semanticv1alpha1.GroupVersion.String() || ref.APIVersion == "semantic.osi.io/v1alpha1") {
@@ -259,7 +286,8 @@ func (r *SemanticModelReconciler) publish(ctx context.Context, sm *semanticv1alp
 		if err := controllerutil.SetControllerReference(sm, &cm, r.Scheme()); err != nil {
 			return "", err
 		}
-		if cm.Labels[semanticv1alpha1.LabelVersion] == compiled.Version &&
+		if equality.Semantic.DeepEqual(prevRefs, cm.OwnerReferences) &&
+			cm.Labels[semanticv1alpha1.LabelVersion] == compiled.Version &&
 			cm.Data[semanticv1alpha1.CompiledModelKey] == string(blob) {
 			return name, nil // already current
 		}

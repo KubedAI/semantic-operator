@@ -46,7 +46,7 @@ func (b *builder) joinTree(required map[string]bool) (string, []CompiledRelation
 			names = append(names, ds)
 		}
 	}
-	return "", nil, fmt.Errorf("no join path connects datasets [%s]; check osi.relationships", strings.Join(names, ", "))
+	return "", nil, fmt.Errorf("no join path connects datasets [%s]; check ossie.relationships", strings.Join(names, ", "))
 }
 
 // reach runs BFS from root over relationship edges (from -> to, spec order),

@@ -66,7 +66,7 @@ func TestRenderTemplate_ValidOutOfBox(t *testing.T) {
 	}
 
 	if cr.Spec.Ossie.Name != "tpcds_3tb_model" {
-		t.Errorf("osi.name = %q, want tpcds_3tb_model", cr.Spec.Ossie.Name)
+		t.Errorf("ossie.name = %q, want tpcds_3tb_model", cr.Spec.Ossie.Name)
 	}
 	if cr.Spec.Connection.Catalog != "glue" || cr.Spec.Connection.Database != "tpcds_3tb" {
 		t.Errorf("connection = %+v, want catalog=glue database=tpcds_3tb", cr.Spec.Connection)

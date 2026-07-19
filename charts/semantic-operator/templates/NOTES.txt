@@ -5,7 +5,7 @@ Endpoints (in-cluster):
   REST : http://{{ include "semantic-operator.name" . }}-server.{{ .Release.Namespace }}.svc:{{ .Values.server.service.port }}/v1/models
 
 Next steps:
-  1. kubectl apply -f demo/model/semanticmodel.yaml
+  1. kubectl apply -f examples/starrocks/retail/model/semanticmodel.yaml
   2. kubectl get semanticmodels -n {{ .Release.Namespace }} -w
      Wait for Validated/Published=True.
   3. Query it:

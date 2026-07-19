@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Verdict classifies one path's answer against ground truth.
@@ -64,7 +65,7 @@ func normalizeRows(rows [][]any) []normalizedRow {
 			if f, ok := asNumber(c); ok {
 				n.nums = append(n.nums, f)
 			} else {
-				n.labels = append(n.labels, strings.TrimSpace(fmt.Sprint(c)))
+				n.labels = append(n.labels, canonLabel(strings.TrimSpace(fmt.Sprint(c))))
 			}
 		}
 		sort.Strings(n.labels)
@@ -119,6 +120,30 @@ func numbersClose(a, b float64) bool {
 		return true
 	}
 	return math.Abs(a-b)/den <= RelTolerance
+}
+
+// timeLayouts are the renderings a timestamp cell can arrive in depending on
+// transport: fmt.Sprint of a time.Time from the direct MySQL client
+// (ParseTime=true), RFC3339 from a JSON round-trip through REST/MCP, and the
+// bare SQL date/datetime forms. The same instant must compare equal whichever
+// path produced it.
+var timeLayouts = []string{
+	"2006-01-02 15:04:05 -0700 MST",
+	time.RFC3339,
+	"2006-01-02 15:04:05",
+	"2006-01-02",
+}
+
+// canonLabel canonicalizes a label that parses as a date/timestamp to one
+// fixed rendering, so ground truth (direct SQL) and path answers (JSON) key
+// rows identically. Non-temporal labels pass through unchanged.
+func canonLabel(s string) string {
+	for _, layout := range timeLayouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC().Format("2006-01-02T15:04:05Z")
+		}
+	}
+	return s
 }
 
 func asNumber(v any) (float64, bool) {

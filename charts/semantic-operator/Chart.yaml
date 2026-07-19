@@ -1,13 +1,13 @@
 apiVersion: v2
 name: semantic-operator
 description: >
-  OSI semantic layer for Kubernetes: SemanticModel CRD and operator, a
+  Apache Ossie semantic layer for Kubernetes: SemanticModel CRD and operator, a
   deterministic semantic planner with compile-time governance, and MCP/REST
   serving adapters, backed by an existing StarRocks cluster and Valkey cache.
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
 kubeVersion: ">=1.27.0-0"
-keywords: [semantic-layer, osi, starrocks, iceberg, mcp]
+keywords: [semantic-layer, ossie, starrocks, iceberg, mcp]
 sources:
   - https://github.com/KubedAI/semantic-operator

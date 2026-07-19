@@ -6,7 +6,7 @@
 //	                                       database (fields populated; metrics/joins/
 //	                                       governance emitted as TODO placeholders)
 //	ossiectl unwrap   -f cr.yaml             extract the Ossie document from a CR
-//	ossiectl wrap     -f osi.yaml -name x -namespace ns -catalog c -database d
+//	ossiectl wrap     -f ossie.yaml -name x -namespace ns -catalog c -database d
 //	                                       wrap an Ossie document into a CR
 package main
 

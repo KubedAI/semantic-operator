@@ -332,9 +332,9 @@ pods are Ready. The server's `/readyz` pings StarRocks. If a pod is not Ready,
 | Change a deployment default | `charts/semantic-operator/values.yaml` and templates | `make helm-lint` |
 
 **Do not** add other-engine SQL outside `emitter.Dialect`, and **do not** rename
-the `osi` identifiers (the `semantic.ossie.io` API group, `spec.ossie`, `ossiectl`).
-They are intentional backward-compat despite the OSI to Apache Ossie rename. See
-[CLAUDE.md](../CLAUDE.md) for the full guardrails.
+the `ossie` identifiers (the `semantic.ossie.io` API group, `spec.ossie`, `ossiectl`).
+They deliberately follow the Apache Ossie name after the OSI to Apache Ossie rename. See
+[AGENTS.md](../AGENTS.md) for the full guardrails.
 
 ---
 

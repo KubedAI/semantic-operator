@@ -113,7 +113,7 @@ Some ratio metrics have a numerator and denominator that aggregate different dat
 
 `internal/governance`, invoked by the planner before any SQL exists.
 
-- Identity is a `{role, claims}` object. Adapters pass it explicitly. REST reads the `X-Semantic-Role` header. Deployments should put an authenticating proxy in front, since the server trusts the header by design and documents it. MCP passes identity as a per-request tool argument or a server-level default. Absent identity gets `spec.governance.defaultRole`.
+- Identity is a `{role, claims}` object. Adapters pass it explicitly. Both REST and MCP read the `X-Semantic-Role` header (the MCP handler injects it into the request context). Deployments should put an authenticating proxy in front, since the server trusts the header by design and documents it. Absent identity gets `spec.governance.defaultRole`.
 - **Metric ACL**. `allowMetrics` globs. Requesting a metric outside the allowlist is a compile error (`ErrUnauthorized`), not an empty result.
 - **Column policy**. `denyFields` lists `dataset.field`. A denied field used as a dimension or filter is a compile error. A denied field inside a requested metric's expression is a compile error too. You cannot read a forbidden column through an aggregate.
 - **Row policy**. `rowFilters` predicates are parsed with the same field-reference resolution as user filters and conjoined into WHERE. Because they are applied during planning, they participate in join resolution and appear in the emitted SQL. There is no post-processing step that can be skipped.
@@ -124,7 +124,7 @@ Governance is part of the cache key, so a cached plan can never leak across role
 
 `internal/cache`, backed by the existing Valkey (go-redis client, works against any Redis-protocol endpoint).
 
-- **Plan cache**. Key is `plan:<model>:<modelVersion>:<sha256(canonical request + sorted roles)>`. Value is the compiled SQL and plan metadata. Long TTL. The modelVersion segment makes stale entries unreachable after a model change.
+- **Plan cache**. Key is `plan:<model>:<modelVersion>:<sha256(canonical request + effective role)>`. Value is the compiled SQL and plan metadata. Long TTL. The modelVersion segment makes stale entries unreachable after a model change.
 - **Result cache**. Key is `result:<model>:<modelVersion>:<sha256(SQL)>`. Value is the JSON result set. Short TTL (a Helm value, default 60s). It is keyed on the governed SQL, which already embeds row filters, so results are role-safe.
 - A cache miss or a down Valkey degrades to compute-and-query. Caching is an optimization, never a correctness dependency.
 
@@ -153,14 +153,14 @@ All three consumers hit the same planner and governance. None of them contains q
 ![Serving request sequence](img/serving-sequence.svg)
 <!-- Diagram source: docs/diagrams/serving-sequence.mmd -->
 
-- **MCP** (`internal/serving/mcp`, official `modelcontextprotocol/go-sdk`, streamable HTTP, stateless). Tools are `list_metrics` and `list_dimensions` (both return names, descriptions, and `ai_context` synonyms so the LLM can ground user vocabulary), and `query_metric(metric, dimensions?, filters?, grain?, limit?)`. Tool results include the emitted SQL for transparency.
+- **MCP** (`internal/serving/mcp`, official `modelcontextprotocol/go-sdk`, streamable HTTP, stateless). Tools are `list_models`, `list_metrics` and `list_dimensions` (the listings return names, descriptions, and `ai_context` synonyms so the LLM can ground user vocabulary), and `query_metric(metrics, dimensions?, filters?, grain?, limit?)`. Tool results include the emitted SQL for transparency.
 - **REST** (`internal/serving/rest`). `GET /v1/models`, `GET /v1/models/{m}/metrics`, `GET /v1/models/{m}/dimensions`, `POST /v1/models/{m}/query`, and `POST /v1/models/{m}/sql` (a dry run that returns SQL without executing). JSON in and out.
 - **BI views** (`internal/serving/views`, executed by the operator). Each `spec.views` entry becomes a StarRocks logical view whose body is planner output. Any BI tool connects to StarRocks over the MySQL protocol and sees `semantic_views.sales_by_category_year` as a table of certified numbers. Analysts cannot mis-aggregate a ratio metric, because the view already computed it.
 
 ## Observability
 
 - Structured logging. Controller-runtime zap in the operator, `log/slog` JSON in the server, with request-scoped fields (model, version, request hash, role).
-- Prometheus. `/metrics` on both binaries. Server counters and histograms are `semantic_requests_total{adapter,model,outcome}`, `semantic_plan_cache_hits_total`, `semantic_result_cache_hits_total`, and `semantic_starrocks_query_duration_seconds`. The operator has reconcile counters via controller-runtime defaults plus a `semantic_drift_detected{model}` gauge.
+- Prometheus. `/metrics` on both binaries. Server instruments are `semantic_requests_total{adapter,model,outcome}`, `semantic_plan_cache_hits_total`, `semantic_result_cache_hits_total`, `semantic_starrocks_query_duration_seconds`, and the `semantic_store_synced` and `semantic_loaded_models` gauges. The operator has reconcile counters via controller-runtime defaults; a per-model drift gauge is a [roadmap](ROADMAP.md) item.
 - OpenTelemetry traces (OTLP endpoint via env, off when unset). Spans for plan, cache, and execute. The emitted SQL comment carries model, version, and request hash, so a StarRocks audit log line joins back to a trace.
 
 ## Demo and benchmark design

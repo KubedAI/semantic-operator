@@ -272,4 +272,50 @@ func TestReconcileRehomesCompiledConfigMapOwner(t *testing.T) {
 	}
 }
 
+func TestReconcileRehomesOwnerEvenWhenContentCurrent(t *testing.T) {
+	scheme := testScheme(t)
+	cr := demoCR()
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).
+		WithStatusSubresource(&semanticv1alpha1.SemanticModel{}).Build()
+	d, _ := emitter.Get("starrocks")
+	r := &SemanticModelReconciler{Client: cl, StarRocks: &fakeStarRocks{tables: healthyTables()}, Dialect: d}
+
+	name := types.NamespacedName{Name: "retail", Namespace: "default"}
+	reconcileOnce(t, r, name)
+
+	// Rewrite the published ConfigMap's owner to a legacy-group object with a
+	// stale UID, leaving labels and data untouched. This is the delete/recreate
+	// (or API-group migration) case where the artifact content is already
+	// current but the owner must still be rehomed, or GC collects the artifact.
+	cmName := types.NamespacedName{Name: "sm-retail-compiled", Namespace: "default"}
+	var cm corev1.ConfigMap
+	if err := cl.Get(context.Background(), cmName, &cm); err != nil {
+		t.Fatal(err)
+	}
+	cm.OwnerReferences = []metav1.OwnerReference{{
+		APIVersion: "semantic.osi.io/v1alpha1",
+		Kind:       "SemanticModel",
+		Name:       "retail",
+		UID:        types.UID("old-owner-uid"),
+		Controller: ptrBool(true),
+	}}
+	if err := cl.Update(context.Background(), &cm); err != nil {
+		t.Fatal(err)
+	}
+
+	reconcileOnce(t, r, name)
+
+	var got corev1.ConfigMap
+	if err := cl.Get(context.Background(), cmName, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.OwnerReferences) != 1 {
+		t.Fatalf("expected exactly one ownerRef after rehome, got %+v", got.OwnerReferences)
+	}
+	ref := got.OwnerReferences[0]
+	if ref.APIVersion != semanticv1alpha1.GroupVersion.String() || ref.UID == types.UID("old-owner-uid") {
+		t.Fatalf("ownerRef not rehomed to the current object: %+v", ref)
+	}
+}
+
 func ptrBool(v bool) *bool { return &v }

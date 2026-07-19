@@ -8,13 +8,17 @@ A Kubernetes operator that turns certified business metrics into deterministic, 
 
 semantic-operator is a semantic layer that runs as a Kubernetes operator. It implements the Apache Ossie (incubating) standard, the vendor-neutral semantic-model spec once called Open Semantic Interchange (OSI). Ossie entered the Apache Incubator in July 2026.
 
-You define metrics, dimensions, and joins once, in an Apache Ossie `SemanticModel` resource under GitOps. The operator validates it against your live StarRocks/Iceberg schema, compiles it, and serves it three ways from one planner:
+You define metrics, dimensions, and joins once, in an Apache Ossie `SemanticModel` resource under GitOps. The operator validates it against your live database schema, compiles it, and serves it three ways from one planner. The query engine sits behind a dialect interface; the reference deployment uses StarRocks over Iceberg, and other engines plug in (see [EXTENDING-ENGINES](EXTENDING-ENGINES.md)). It serves:
 
 - an **MCP server** for LLM agents
 - a **REST API** for apps
 - **governed SQL views** for BI tools (any MySQL-protocol client)
 
 The key idea is that the LLM never writes SQL. It only selects certified metrics and dimensions. A compiler turns that choice into one SQL statement, and applies row and column governance before the query runs.
+
+## Semantic layer vs semantic compiler
+
+A semantic layer is the model of meaning: datasets, relationships, metrics, dimensions, time grains, and access policies. A semantic compiler is the runtime that turns intent (an agent's tool call, a REST request, a view definition) into executable SQL by compiling it through that model. This project is both. The `SemanticModel` resource holds the layer, as a portable Apache Ossie document. The planner is the compiler: deterministic, governed at compile time, and auditable down to the emitted statement. There is no query-time interpretation step that can drift, and no post-hoc filter that can be skipped.
 
 ## The gaps it fills
 
