@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/KubedAI/semantic-operator/actions/workflows/ci.yaml/badge.svg)](https://github.com/KubedAI/semantic-operator/actions/workflows/ci.yaml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/KubedAI/semantic-operator)](https://goreportcard.com/report/github.com/KubedAI/semantic-operator)
-[![License](https://img.shields.io/github/license/KubedAI/semantic-operator)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 A Kubernetes operator and server that run an [Apache Ossie](https://ossie.apache.org/) (incubating) semantic layer on your existing data platform. You define each business metric once, in a `SemanticModel` resource. The operator validates the model, checks its bindings against the live database schema, blocks publication on drift, and applies row and column access rules at compile time. A deterministic compiler turns every request into exactly one governed SQL statement, so AI agents (over MCP), apps (over REST), and BI tools (over SQL views) all compute the metric the same way. The LLM only selects certified metrics and dimensions. It never writes SQL. Query engines and catalogs are extension points, not assumptions.
 
