@@ -18,11 +18,11 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
-	"github.com/KubedAI/ossie-semantic-operator/internal/catalog"
-	"github.com/KubedAI/ossie-semantic-operator/internal/catalog/glue"
-	"github.com/KubedAI/ossie-semantic-operator/internal/ossie"
-	"github.com/KubedAI/ossie-semantic-operator/internal/planner"
+	"github.com/KubedAI/semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/semantic-operator/internal/catalog"
+	"github.com/KubedAI/semantic-operator/internal/catalog/glue"
+	"github.com/KubedAI/semantic-operator/internal/ossie"
+	"github.com/KubedAI/semantic-operator/internal/planner"
 )
 
 // ossieDocument is the top-level Ossie file shape: version + semantic_model list.

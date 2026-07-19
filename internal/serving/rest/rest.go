@@ -7,9 +7,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/KubedAI/ossie-semantic-operator/internal/governance"
-	"github.com/KubedAI/ossie-semantic-operator/internal/planner"
-	"github.com/KubedAI/ossie-semantic-operator/internal/serving"
+	"github.com/KubedAI/semantic-operator/internal/governance"
+	"github.com/KubedAI/semantic-operator/internal/planner"
+	"github.com/KubedAI/semantic-operator/internal/serving"
 )
 
 // RoleHeader names the trusted identity header. Deployments are expected to

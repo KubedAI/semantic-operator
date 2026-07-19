@@ -1,4 +1,4 @@
-module github.com/KubedAI/ossie-semantic-operator
+module github.com/KubedAI/semantic-operator
 
 go 1.26.2
 

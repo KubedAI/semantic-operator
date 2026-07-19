@@ -21,8 +21,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/KubedAI/ossie-semantic-operator/internal/nlbench"
-	"github.com/KubedAI/ossie-semantic-operator/internal/starrocks"
+	"github.com/KubedAI/semantic-operator/internal/nlbench"
+	"github.com/KubedAI/semantic-operator/internal/starrocks"
 )
 
 func main() {

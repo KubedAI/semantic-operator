@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
-	"github.com/KubedAI/ossie-semantic-operator/internal/emitter"
-	_ "github.com/KubedAI/ossie-semantic-operator/internal/emitter/starrocks"
-	"github.com/KubedAI/ossie-semantic-operator/internal/governance"
+	"github.com/KubedAI/semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/semantic-operator/internal/emitter"
+	_ "github.com/KubedAI/semantic-operator/internal/emitter/starrocks"
+	"github.com/KubedAI/semantic-operator/internal/governance"
 )
 
 func testDialect(t *testing.T) emitter.Dialect {

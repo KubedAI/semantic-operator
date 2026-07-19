@@ -3,7 +3,7 @@ package ossie
 import (
 	"testing"
 
-	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/semantic-operator/api/v1alpha1"
 )
 
 func TestValidateJoinsOK(t *testing.T) {

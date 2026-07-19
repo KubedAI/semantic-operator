@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
-	"github.com/KubedAI/ossie-semantic-operator/internal/governance"
+	"github.com/KubedAI/semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/semantic-operator/internal/governance"
 )
 
 // join_type is an operator extension delivered via spec.joins, not a field on

@@ -290,7 +290,7 @@ export VALKEY=valkey-primary.valkey.svc.cluster.local:6379   # omit to run witho
 # $VALKEY may be empty. That --set line simply disables caching.
 helm upgrade --install semantic-operator charts/semantic-operator \
   --namespace semantic-system --create-namespace \
-  --set image.repository=$REGISTRY/ossie-semantic-operator \
+  --set image.repository=$REGISTRY/semantic-operator \
   --set image.tag=0.1.0 \
   --set starrocks.host=$SR_FE \
   --set valkey.addr=$VALKEY \

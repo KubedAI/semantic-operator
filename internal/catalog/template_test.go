@@ -8,9 +8,9 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
-	"github.com/KubedAI/ossie-semantic-operator/internal/catalog"
-	"github.com/KubedAI/ossie-semantic-operator/internal/ossie"
+	"github.com/KubedAI/semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/semantic-operator/internal/catalog"
+	"github.com/KubedAI/semantic-operator/internal/ossie"
 )
 
 func sampleTables() []catalog.Table {

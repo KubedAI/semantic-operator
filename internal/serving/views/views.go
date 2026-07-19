@@ -9,10 +9,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
-	"github.com/KubedAI/ossie-semantic-operator/internal/emitter"
-	"github.com/KubedAI/ossie-semantic-operator/internal/governance"
-	"github.com/KubedAI/ossie-semantic-operator/internal/planner"
+	"github.com/KubedAI/semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/semantic-operator/internal/emitter"
+	"github.com/KubedAI/semantic-operator/internal/governance"
+	"github.com/KubedAI/semantic-operator/internal/planner"
 )
 
 // Executor is the DDL surface the publisher needs (satisfied by

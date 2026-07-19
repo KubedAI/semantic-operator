@@ -8,7 +8,7 @@ import (
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 
-	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/semantic-operator/api/v1alpha1"
 )
 
 // DeriveDatasets turns physical tables into Ossie dataset stubs: source

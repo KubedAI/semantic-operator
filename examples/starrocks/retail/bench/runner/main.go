@@ -20,8 +20,8 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/KubedAI/ossie-semantic-operator/internal/nlbench"
-	"github.com/KubedAI/ossie-semantic-operator/internal/starrocks"
+	"github.com/KubedAI/semantic-operator/internal/nlbench"
+	"github.com/KubedAI/semantic-operator/internal/starrocks"
 )
 
 type question struct {

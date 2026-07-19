@@ -10,9 +10,9 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/KubedAI/ossie-semantic-operator/internal/governance"
-	"github.com/KubedAI/ossie-semantic-operator/internal/planner"
-	"github.com/KubedAI/ossie-semantic-operator/internal/serving"
+	"github.com/KubedAI/semantic-operator/internal/governance"
+	"github.com/KubedAI/semantic-operator/internal/planner"
+	"github.com/KubedAI/semantic-operator/internal/serving"
 )
 
 // RoleHeader mirrors the REST adapter's identity header.

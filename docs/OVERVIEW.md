@@ -6,7 +6,7 @@ A Kubernetes operator that turns certified business metrics into deterministic, 
 
 ## What it is
 
-ossie-semantic-operator is a semantic layer that runs as a Kubernetes operator. It implements the Apache Ossie (incubating) standard, the vendor-neutral semantic-model spec once called Open Semantic Interchange (OSI). Ossie entered the Apache Incubator in July 2026.
+semantic-operator is a semantic layer that runs as a Kubernetes operator. It implements the Apache Ossie (incubating) standard, the vendor-neutral semantic-model spec once called Open Semantic Interchange (OSI). Ossie entered the Apache Incubator in July 2026.
 
 You define metrics, dimensions, and joins once, in an Apache Ossie `SemanticModel` resource under GitOps. The operator validates it against your live StarRocks/Iceberg schema, compiles it, and serves it three ways from one planner:
 

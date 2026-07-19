@@ -16,11 +16,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	semanticv1alpha1 "github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
-	"github.com/KubedAI/ossie-semantic-operator/controllers"
-	"github.com/KubedAI/ossie-semantic-operator/internal/emitter"
-	_ "github.com/KubedAI/ossie-semantic-operator/internal/emitter/starrocks"
-	"github.com/KubedAI/ossie-semantic-operator/internal/starrocks"
+	semanticv1alpha1 "github.com/KubedAI/semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/semantic-operator/controllers"
+	"github.com/KubedAI/semantic-operator/internal/emitter"
+	_ "github.com/KubedAI/semantic-operator/internal/emitter/starrocks"
+	"github.com/KubedAI/semantic-operator/internal/starrocks"
 )
 
 var scheme = runtime.NewScheme()

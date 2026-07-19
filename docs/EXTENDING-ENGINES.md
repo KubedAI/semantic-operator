@@ -37,7 +37,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/KubedAI/ossie-semantic-operator/internal/emitter"
+	"github.com/KubedAI/semantic-operator/internal/emitter"
 )
 
 type Dialect struct{}
@@ -153,8 +153,8 @@ db, err := dbclient.Open(ctx, dialectName, cfg)
 Register the dialect with a blank import next to the existing StarRocks one (`cmd/server/main.go:20`).
 
 ```go
-_ "github.com/KubedAI/ossie-semantic-operator/internal/emitter/starrocks"
-_ "github.com/KubedAI/ossie-semantic-operator/internal/emitter/trino"
+_ "github.com/KubedAI/semantic-operator/internal/emitter/starrocks"
+_ "github.com/KubedAI/semantic-operator/internal/emitter/trino"
 ```
 
 Do the same in `cmd/manager/main.go` for the reconciler's `StarRocks` field, the drift-check client.

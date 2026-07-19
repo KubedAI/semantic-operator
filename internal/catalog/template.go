@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/semantic-operator/api/v1alpha1"
 )
 
 // ossieSpecVersion is the Apache Ossie core-spec version the generated

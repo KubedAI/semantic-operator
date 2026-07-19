@@ -103,7 +103,7 @@ make ecr-login docker-build docker-push \
 #    valkey.addr is optional. Omit that --set line to run without caching.
 helm install semantic-operator charts/semantic-operator \
   --namespace semantic-system --create-namespace \
-  --set image.repository=<acct>.dkr.ecr.us-west-2.amazonaws.com/ossie-semantic-operator \
+  --set image.repository=<acct>.dkr.ecr.us-west-2.amazonaws.com/semantic-operator \
   --set image.tag=0.1.0 \
   --set starrocks.host=starrocks-fe.starrocks.svc.cluster.local \
   --set valkey.addr=valkey.valkey.svc.cluster.local:6379 \

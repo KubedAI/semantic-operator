@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
-	"github.com/KubedAI/ossie-semantic-operator/internal/planner/expr"
+	"github.com/KubedAI/semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/semantic-operator/internal/planner/expr"
 )
 
 // ValidateSpec checks the whole spec. It returns an aggregate error listing

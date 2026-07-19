@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/KubedAI/ossie-semantic-operator/api/v1alpha1"
-	"github.com/KubedAI/ossie-semantic-operator/internal/emitter"
-	"github.com/KubedAI/ossie-semantic-operator/internal/planner/expr"
+	"github.com/KubedAI/semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/semantic-operator/internal/emitter"
+	"github.com/KubedAI/semantic-operator/internal/planner/expr"
 )
 
 // builder holds per-request state for SQL construction. All methods are

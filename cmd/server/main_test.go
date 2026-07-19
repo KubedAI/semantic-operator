@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/KubedAI/ossie-semantic-operator/internal/serving"
+	"github.com/KubedAI/semantic-operator/internal/serving"
 )
 
 type fakePinger struct{ err error }

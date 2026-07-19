@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KubedAI/ossie-semantic-operator/internal/planner"
+	"github.com/KubedAI/semantic-operator/internal/planner"
 )
 
 func identityBlob(t *testing.T, name, version, ns, resource string) []byte {

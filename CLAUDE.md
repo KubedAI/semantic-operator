@@ -4,7 +4,7 @@ Guidance for Claude Code (and other AI agents) working in this repository.
 
 ## What this project is
 
-`ossie-semantic-operator` is a **Kubernetes operator + stateless semantic server** written in Go.
+`semantic-operator` is a **Kubernetes operator + stateless semantic server** written in Go.
 It runs an **Apache Ossie (incubating)** semantic layer — the standard formerly called
 **Open Semantic Interchange (OSI)** — on Amazon EKS, on top of an existing **StarRocks**
 cluster that queries **Apache Iceberg** tables through an AWS **Glue** external catalog.
@@ -23,7 +23,7 @@ selects certified metrics/dimensions — it never writes SQL.
 
 ## Module & toolchain
 
-- Go module: `github.com/KubedAI/ossie-semantic-operator` (Go 1.26).
+- Go module: `github.com/KubedAI/semantic-operator` (Go 1.26).
 - Kubebuilder/controller-runtime operator (`sigs.k8s.io/controller-runtime`).
 - Key deps: AWS SDK v2 (Glue, Bedrock), `go-sql-driver/mysql` (StarRocks MySQL protocol),
   `redis/go-redis` (Valkey), `modelcontextprotocol/go-sdk` (MCP), OpenTelemetry, Prometheus.
