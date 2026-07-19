@@ -213,3 +213,63 @@ func TestReconcileInvalidSpecSetsValidatedFalse(t *testing.T) {
 		t.Fatalf("expected Validated=False, got %+v", c)
 	}
 }
+
+func TestReconcileRehomesCompiledConfigMapOwner(t *testing.T) {
+	scheme := testScheme(t)
+	cr := demoCR()
+
+	// Seed an existing compiled artifact that is owned by a different object, as
+	// can happen during an API-group migration or delete/recreate of the logical
+	// resource name.
+	existing := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "sm-retail-compiled",
+			Namespace: "default",
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: "semantic.osi.io/v1alpha1",
+				Kind:       "SemanticModel",
+				Name:       "retail",
+				UID:        types.UID("old-owner-uid"),
+				Controller: ptrBool(true),
+			}},
+			Labels: map[string]string{
+				semanticv1alpha1.LabelVersion: "stale-version",
+			},
+		},
+		Data: map[string]string{
+			semanticv1alpha1.CompiledModelKey: `{"stale":"artifact"}`,
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr, existing).
+		WithStatusSubresource(&semanticv1alpha1.SemanticModel{}).Build()
+	srx := &fakeStarRocks{tables: healthyTables()}
+	d, _ := emitter.Get("starrocks")
+	r := &SemanticModelReconciler{Client: cl, StarRocks: srx, Dialect: d}
+
+	name := types.NamespacedName{Name: "retail", Namespace: "default"}
+	reconcileOnce(t, r, name)
+
+	var got corev1.ConfigMap
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: "sm-retail-compiled", Namespace: "default"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.OwnerReferences) != 1 {
+		t.Fatalf("expected exactly one ownerRef after rehome, got %+v", got.OwnerReferences)
+	}
+	ref := got.OwnerReferences[0]
+	if ref.APIVersion != semanticv1alpha1.GroupVersion.String() {
+		t.Fatalf("ownerRef apiVersion = %q, want %q", ref.APIVersion, semanticv1alpha1.GroupVersion.String())
+	}
+	if ref.Kind != "SemanticModel" || ref.Name != "retail" {
+		t.Fatalf("ownerRef = %+v, want current SemanticModel owner", ref)
+	}
+	if ref.UID != cr.UID {
+		t.Fatalf("ownerRef UID = %q, want current object UID %q", ref.UID, cr.UID)
+	}
+	if !strings.Contains(got.Data[semanticv1alpha1.CompiledModelKey], `"total_sales"`) {
+		t.Fatal("expected stale compiled artifact to be replaced")
+	}
+}
+
+func ptrBool(v bool) *bool { return &v }

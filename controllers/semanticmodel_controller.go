@@ -247,7 +247,20 @@ func (r *SemanticModelReconciler) publish(ctx context.Context, sm *semanticv1alp
 	case err != nil:
 		return "", err
 	default:
-		if cm.Labels[semanticv1alpha1.LabelVersion] == compiled.Version {
+		// Rehome the artifact when the ConfigMap already exists but is still owned
+		// by a prior SemanticModel object (for example after an API-group migration
+		// or delete/recreate of the same logical resource name).
+		for i := len(cm.OwnerReferences) - 1; i >= 0; i-- {
+			ref := cm.OwnerReferences[i]
+			if ref.Kind == "SemanticModel" && (ref.APIVersion == semanticv1alpha1.GroupVersion.String() || ref.APIVersion == "semantic.osi.io/v1alpha1") {
+				cm.OwnerReferences = append(cm.OwnerReferences[:i], cm.OwnerReferences[i+1:]...)
+			}
+		}
+		if err := controllerutil.SetControllerReference(sm, &cm, r.Scheme()); err != nil {
+			return "", err
+		}
+		if cm.Labels[semanticv1alpha1.LabelVersion] == compiled.Version &&
+			cm.Data[semanticv1alpha1.CompiledModelKey] == string(blob) {
 			return name, nil // already current
 		}
 		r.decorate(&cm, sm, compiled.Version, blob)
