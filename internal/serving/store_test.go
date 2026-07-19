@@ -81,3 +81,34 @@ func TestStoreSingle(t *testing.T) {
 		t.Fatalf("Single: want sales, got %v ok=%v", m, ok)
 	}
 }
+
+func TestStoreSyncState(t *testing.T) {
+	s := NewStore()
+	if s.Synced() {
+		t.Fatal("Synced: want false before initial informer sync")
+	}
+	s.MarkSynced()
+	if !s.Synced() {
+		t.Fatal("Synced: want true after MarkSynced")
+	}
+}
+
+func TestStoreCount(t *testing.T) {
+	s := NewStore()
+	if got := s.Count(); got != 0 {
+		t.Fatalf("Count: want 0, got %d", got)
+	}
+	if err := s.Put("sm-a-compiled", modelBlob(t, "sales", "v1")); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Put("sm-b-compiled", modelBlob(t, "inventory", "v1")); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Count(); got != 2 {
+		t.Fatalf("Count: want 2, got %d", got)
+	}
+	s.Delete("sm-a-compiled")
+	if got := s.Count(); got != 1 {
+		t.Fatalf("Count after delete: want 1, got %d", got)
+	}
+}

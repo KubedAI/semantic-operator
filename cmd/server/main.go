@@ -68,9 +68,16 @@ func main() {
 	defer func() { _ = shutdownTracing(context.Background()) }()
 
 	store := serving.NewStore()
+	metrics := observability.NewMetrics()
+	metrics.StoreSynced.Set(0)
+	metrics.LoadedModels.Set(0)
 	namespace := envOr("WATCH_NAMESPACE", "semantic-system")
 	go func() {
-		if err := serving.WatchConfigMaps(ctx, namespace, store, log); err != nil && !errors.Is(err, context.Canceled) {
+		callbacks := &serving.WatchCallbacks{
+			OnModelCount: func(count int) { metrics.LoadedModels.Set(float64(count)) },
+			OnSync:       func(synced bool) { metrics.StoreSynced.Set(boolFloat64(synced)) },
+		}
+		if err := serving.WatchConfigMaps(ctx, namespace, store, log, callbacks); err != nil && !errors.Is(err, context.Canceled) {
 			log.Error("configmap watcher exited", "err", err)
 			stop()
 		}
@@ -81,7 +88,7 @@ func main() {
 		Dialect: dialect,
 		Cache:   valkey,
 		DB:      srClient,
-		Metrics: observability.NewMetrics(),
+		Metrics: metrics,
 		Log:     log,
 		Tracer:  tracer,
 	}
@@ -91,13 +98,7 @@ func main() {
 	mux.Handle("/v1/", rest.Handler(svc))
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
-		if err := srClient.Ping(r.Context()); err != nil {
-			http.Error(w, "starrocks unreachable: "+err.Error(), http.StatusServiceUnavailable)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-	})
+	mux.HandleFunc("/readyz", readyzHandler(store, srClient))
 
 	addr := envOr("LISTEN_ADDR", ":8090")
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
@@ -147,4 +148,29 @@ func envDuration(key string, def time.Duration) time.Duration {
 		}
 	}
 	return def
+}
+
+type pinger interface {
+	Ping(context.Context) error
+}
+
+func readyzHandler(store *serving.Store, db pinger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !store.Synced() {
+			http.Error(w, "compiled-model store not synced", http.StatusServiceUnavailable)
+			return
+		}
+		if err := db.Ping(r.Context()); err != nil {
+			http.Error(w, "starrocks unreachable: "+err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func boolFloat64(v bool) float64 {
+	if v {
+		return 1
+	}
+	return 0
 }

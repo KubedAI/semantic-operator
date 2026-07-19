@@ -31,13 +31,44 @@ import (
 // than silently serving one of them. It is updated by a ConfigMap informer and
 // read by every request, so reads take an RLock only.
 type Store struct {
-	mu  sync.RWMutex
-	cms map[string]*planner.CompiledModel // configmap name -> compiled model
+	mu     sync.RWMutex
+	cms    map[string]*planner.CompiledModel // configmap name -> compiled model
+	synced bool
+}
+
+// WatchCallbacks receives informer-derived state transitions. Callbacks must be
+// cheap and non-blocking because they run on informer event handlers.
+type WatchCallbacks struct {
+	OnModelCount func(int)
+	OnSync       func(bool)
 }
 
 // NewStore returns an empty store.
 func NewStore() *Store {
 	return &Store{cms: map[string]*planner.CompiledModel{}}
+}
+
+// MarkSynced records that the backing informer cache has completed its initial
+// sync, so the server can safely report readiness.
+func (s *Store) MarkSynced() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.synced = true
+}
+
+// Synced reports whether the backing informer cache has completed its initial
+// sync.
+func (s *Store) Synced() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.synced
+}
+
+// Count returns the number of compiled models currently loaded.
+func (s *Store) Count() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.cms)
 }
 
 // byName returns the models published under a given model name. Caller holds
@@ -157,7 +188,7 @@ func (s *Store) Delete(cmName string) {
 
 // WatchConfigMaps runs an informer over operator-published ConfigMaps in the
 // namespace and keeps the store current. Blocks until ctx is done.
-func WatchConfigMaps(ctx context.Context, namespace string, store *Store, log *slog.Logger) error {
+func WatchConfigMaps(ctx context.Context, namespace string, store *Store, log *slog.Logger, callbacks *WatchCallbacks) error {
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
 		// Local development: fall back to kubeconfig.
@@ -190,6 +221,9 @@ func WatchConfigMaps(ctx context.Context, namespace string, store *Store, log *s
 			log.Error("ingesting compiled model", "configmap", cm.Name, "err", err)
 			return
 		}
+		if callbacks != nil && callbacks.OnModelCount != nil {
+			callbacks.OnModelCount(store.Count())
+		}
 		log.Info("loaded compiled model", "configmap", cm.Name,
 			"model", cm.Labels[v1alpha1.LabelModel], "version", cm.Labels[v1alpha1.LabelVersion])
 	}
@@ -199,6 +233,9 @@ func WatchConfigMaps(ctx context.Context, namespace string, store *Store, log *s
 		DeleteFunc: func(obj any) {
 			if cm, ok := obj.(*corev1.ConfigMap); ok {
 				store.Delete(cm.Name)
+				if callbacks != nil && callbacks.OnModelCount != nil {
+					callbacks.OnModelCount(store.Count())
+				}
 				log.Info("removed compiled model", "configmap", cm.Name)
 			}
 		},
@@ -209,6 +246,10 @@ func WatchConfigMaps(ctx context.Context, namespace string, store *Store, log *s
 	factory.Start(ctx.Done())
 	if !cache.WaitForCacheSync(ctx.Done(), inf.HasSynced) {
 		return fmt.Errorf("configmap informer failed to sync")
+	}
+	store.MarkSynced()
+	if callbacks != nil && callbacks.OnSync != nil {
+		callbacks.OnSync(true)
 	}
 	<-ctx.Done()
 	return nil

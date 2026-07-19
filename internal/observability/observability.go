@@ -33,6 +33,8 @@ type Metrics struct {
 	PlanCacheHits   prometheus.Counter
 	ResultCacheHits prometheus.Counter
 	QueryDuration   prometheus.Histogram
+	StoreSynced     prometheus.Gauge
+	LoadedModels    prometheus.Gauge
 }
 
 // NewMetrics registers instruments on the default registry.
@@ -54,6 +56,14 @@ func NewMetrics() *Metrics {
 			Name:    "semantic_starrocks_query_duration_seconds",
 			Help:    "StarRocks execution latency for planned queries.",
 			Buckets: prometheus.DefBuckets,
+		}),
+		StoreSynced: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "semantic_store_synced",
+			Help: "Whether the compiled-model store has completed its initial informer sync.",
+		}),
+		LoadedModels: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "semantic_loaded_models",
+			Help: "Number of compiled models currently loaded in the semantic server.",
 		}),
 	}
 }
