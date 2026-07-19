@@ -26,6 +26,7 @@ import (
 	"github.com/KubedAI/ossie-semantic-operator/internal/emitter"
 	"github.com/KubedAI/ossie-semantic-operator/internal/ossie"
 	"github.com/KubedAI/ossie-semantic-operator/internal/planner"
+	"github.com/KubedAI/ossie-semantic-operator/internal/planner/expr"
 	"github.com/KubedAI/ossie-semantic-operator/internal/serving/views"
 	"github.com/KubedAI/ossie-semantic-operator/internal/starrocks"
 )
@@ -192,6 +193,30 @@ func (r *SemanticModelReconciler) bind(ctx context.Context, compiled *planner.Co
 			if cols := tableCols[rel.To]; cols != nil {
 				if _, ok := cols[c]; !ok {
 					drift = append(drift, fmt.Sprintf("relationship %s: column %s missing on %s", rel.Name, c, rel.To))
+				}
+			}
+		}
+	}
+
+	// Governance row filters reference physical columns of their dataset. The
+	// grammar was validated earlier; here we cross-check the referenced columns
+	// against the DESC output so a typo (s_stat = 'TX') surfaces at reconcile,
+	// not at query time.
+	if compiled.Governance != nil {
+		for _, role := range compiled.Governance.Roles {
+			for _, rf := range role.RowFilters {
+				cols, err := expr.ParsePredicate(rf.Predicate)
+				if err != nil {
+					continue // grammar errors are the validator's job
+				}
+				physical := tableCols[rf.Dataset]
+				if physical == nil {
+					continue // dataset itself already drifted or unknown
+				}
+				for _, c := range cols {
+					if _, ok := physical[c]; !ok {
+						drift = append(drift, fmt.Sprintf("governance role %s: rowFilter on %s references missing column %s", role.Name, rf.Dataset, c))
+					}
 				}
 			}
 		}

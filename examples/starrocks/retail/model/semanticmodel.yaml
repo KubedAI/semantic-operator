@@ -321,7 +321,6 @@ spec:
         to: customer
         from_columns: [ss_customer_sk]
         to_columns: [c_customer_sk]
-        join_type: LEFT   # ~2% of sales are anonymous; keep them in revenue metrics
         ai_context:
           synonyms: ["who bought"]
       - name: store_sales_to_item
@@ -441,3 +440,9 @@ spec:
       metrics: [customer_lifetime_value]
       dimensions: [date_dim.d_year]
       role: admin
+
+  # Operator extension: per-relationship join type (INNER default), kept outside
+  # the ossie block. ~2% of sales are anonymous, so keep them in revenue metrics.
+  joins:
+    - relationship: store_sales_to_customer
+      type: LEFT

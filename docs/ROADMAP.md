@@ -15,6 +15,7 @@ All engine-specific code lives behind `emitter.Dialect` and a small query client
 - **Trino, ClickHouse, and DuckDB dialects** (`emitter.Dialect`). About 40 lines each. The per-engine deltas are already written up.
 - **A `SQL_DIALECT`-driven client factory** (`internal/dbclient`). Today `SQL_DIALECT` selects the emitter but the DB client is still constructed directly. One factory would let a single env var pick both.
 - **More `catalog.Source` implementations.** Unity, Polaris, Hive, or a portable `information_schema` source. The last one also lets `ossiectl derive` work without Glue.
+- **Automatic dataset field-list refresh** from the catalog on a timer, so new physical columns become available as dimensions without hand-editing. Re-running `ossiectl derive` is the manual path today. A `spec.catalogSync` field was removed because it was never wired to the reconciler, so build the timer before re-adding the API.
 
 ## More examples
 

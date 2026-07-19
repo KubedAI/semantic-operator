@@ -48,7 +48,15 @@ The generated file passes `ossiectl validate` as is, because empty metrics and r
 #    to_columns: [i_item_sk]
 ```
 
-Move the correct ones into `spec.ossie.relationships` and uncomment them. Each edge is many-to-one. `from` is the fact or child, `to` is the dimension or parent. Add `join_type: LEFT` where you need it. The default is `INNER`. The join graph must be a tree (star or snowflake). Cycles are a validation error.
+Move the correct ones into `spec.ossie.relationships` and uncomment them. Each edge is many-to-one. `from` is the fact or child, `to` is the dimension or parent. The join graph must be a tree (star or snowflake). Cycles are a validation error.
+
+Relationships carry no join type, so the `spec.ossie` block stays pure Ossie. Joins default to `INNER`. To make one a `LEFT` join, add a `spec.joins` override (an operator extension, sibling to `governance` and `views`):
+
+```yaml
+joins:
+  - relationship: store_sales_to_customer   # a relationship name
+    type: LEFT
+```
 
 ## Step 3. Define metrics (the certified part)
 

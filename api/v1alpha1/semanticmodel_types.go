@@ -42,9 +42,11 @@ type SemanticModelSpec struct {
 	// +optional
 	Views []ViewSpec `json:"views,omitempty"`
 
-	// CatalogSync refreshes dataset field lists from the lake catalog (e.g. Glue).
+	// Joins overrides the join type per relationship (operator extension). A
+	// relationship not listed here uses INNER. Kept outside the ossie block so
+	// the Ossie document stays pure.
 	// +optional
-	CatalogSync *CatalogSyncSpec `json:"catalogSync,omitempty"`
+	Joins []RelationshipJoin `json:"joins,omitempty"`
 }
 
 // ConnectionSpec resolves bare dataset sources to physical tables.
@@ -142,16 +144,23 @@ type Relationship struct {
 	To          string   `json:"to"`
 	FromColumns []string `json:"from_columns"`
 	ToColumns   []string `json:"to_columns"`
-	// JoinType is an operator extension: INNER (default) or LEFT.
-	// +kubebuilder:validation:Enum=INNER;LEFT
-	// +optional
-	JoinType string `json:"join_type,omitempty"`
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Schemaless
 	// +optional
 	AIContext *apiextensionsv1.JSON `json:"ai_context,omitempty"`
 	// +optional
 	CustomExtensions []CustomExtension `json:"custom_extensions,omitempty"`
+}
+
+// RelationshipJoin overrides the join type for one relationship. It is an
+// operator extension kept outside the Ossie block, so the relationships in
+// spec.ossie stay pure Ossie (the core spec does not define a join type).
+type RelationshipJoin struct {
+	// Relationship is the name of an ossie.relationships entry.
+	Relationship string `json:"relationship"`
+	// Type is INNER or LEFT.
+	// +kubebuilder:validation:Enum=INNER;LEFT
+	Type string `json:"type"`
 }
 
 // Metric is a model-level aggregate measure.
@@ -236,18 +245,6 @@ type ViewFilter struct {
 	// +kubebuilder:validation:Enum=auto;string;number
 	// +optional
 	ValueType string `json:"valueType,omitempty"`
-}
-
-// CatalogSyncSpec enables field-list refresh from the lake catalog.
-type CatalogSyncSpec struct {
-	Enabled bool `json:"enabled"`
-	// +kubebuilder:validation:Enum=glue
-	// +kubebuilder:default=glue
-	// +optional
-	Source string `json:"source,omitempty"`
-	// Database in the catalog; defaults to spec.connection.database.
-	// +optional
-	Database string `json:"database,omitempty"`
 }
 
 // DatasetBinding reports the physical resolution of one dataset.

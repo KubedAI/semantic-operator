@@ -3,3 +3,4 @@ dist/
 *.out
 coverage.txt
 .DS_Store
+.tmp/

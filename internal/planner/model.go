@@ -133,9 +133,13 @@ func Compile(spec *v1alpha1.SemanticModelSpec, namespace, resource string) (*Com
 		cm.Datasets[d.Name] = cd
 		cm.DatasetOrder = append(cm.DatasetOrder, d.Name)
 	}
+	joinType := map[string]string{}
+	for _, j := range spec.Joins {
+		joinType[j.Relationship] = j.Type
+	}
 	for i := range spec.Ossie.Relationships {
 		r := &spec.Ossie.Relationships[i]
-		jt := r.JoinType
+		jt := joinType[r.Name]
 		if jt == "" {
 			jt = "INNER"
 		}

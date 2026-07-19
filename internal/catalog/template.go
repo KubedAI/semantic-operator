@@ -163,6 +163,13 @@ func RenderTemplate(w io.Writer, opts TemplateOptions, tables []Table) error {
 	p("  #     dimensions: [item.i_category]")
 	p("  #     role: analyst")
 
+	// --- Joins (top-level under spec; per-relationship join type override) ---
+	p("")
+	p("  # joins: per-relationship join type override (INNER default). Uncomment and edit.")
+	p("  # joins:")
+	p("  #   - relationship: <relationship_name>")
+	p("  #     type: LEFT")
+
 	return werr
 }
 

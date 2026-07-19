@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -59,6 +60,10 @@ type ModelInfo struct {
 	Description string `json:"description,omitempty"`
 	Metrics     int    `json:"metrics"`
 	Datasets    int    `json:"datasets"`
+	// Namespace and Resource identify the SemanticModel that published this
+	// model, so colliding entries in a listing are attributable.
+	Namespace string `json:"namespace,omitempty"`
+	Resource  string `json:"resource,omitempty"`
 }
 
 // QueryResult is the adapter-facing result envelope. SQL is always included:
@@ -91,22 +96,42 @@ func (s *Service) Resolve(name string) (*planner.CompiledModel, error) {
 		if m, ok := s.Store.Get(name); ok {
 			return m, nil
 		}
+		if dupes := s.Store.ByName(name); len(dupes) > 1 {
+			var refs []string
+			for _, d := range dupes {
+				refs = append(refs, d.Namespace+"/"+d.Resource)
+			}
+			return nil, fmt.Errorf("model name %q is published by more than one resource (%s); model names must be unique across SemanticModels",
+				name, strings.Join(refs, ", "))
+		}
 		return nil, ErrUnknownModel{name}
 	}
 	if m, ok := s.Store.Single(); ok {
 		return m, nil
 	}
+	if names := s.Store.Names(); len(names) == 1 {
+		name = names[0]
+		if dupes := s.Store.ByName(name); len(dupes) > 1 {
+			var refs []string
+			for _, d := range dupes {
+				refs = append(refs, d.Namespace+"/"+d.Resource)
+			}
+			return nil, fmt.Errorf("model name %q is published by more than one resource (%s); model names must be unique across SemanticModels",
+				name, strings.Join(refs, ", "))
+		}
+	}
 	return nil, fmt.Errorf("model name required: %d models are published (%v)", len(s.Store.Names()), s.Store.Names())
 }
 
-// Models lists published models.
+// Models lists published models, including any duplicated names, so an operator
+// can see the collision.
 func (s *Service) Models() []ModelInfo {
 	var out []ModelInfo
-	for _, name := range s.Store.Names() {
-		m, _ := s.Store.Get(name)
+	for _, m := range s.Store.All() {
 		out = append(out, ModelInfo{
 			Name: m.Name, Version: m.Version, Description: m.Description,
 			Metrics: len(m.MetricOrder), Datasets: len(m.DatasetOrder),
+			Namespace: m.Namespace, Resource: m.Resource,
 		})
 	}
 	return out

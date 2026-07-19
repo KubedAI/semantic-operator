@@ -156,6 +156,8 @@ func ValidateSpec(spec *v1alpha1.SemanticModelSpec) error {
 				}
 				if strings.TrimSpace(rf.Predicate) == "" {
 					add("governance role %q: rowFilter on %q has empty predicate", r.Name, rf.Dataset)
+				} else if _, perr := expr.ParsePredicate(rf.Predicate); perr != nil {
+					add("governance role %q: rowFilter on %q: %v", r.Name, rf.Dataset, perr)
 				}
 			}
 		}
@@ -196,6 +198,24 @@ func ValidateSpec(spec *v1alpha1.SemanticModelSpec) error {
 		}
 		if v.Role != "" && spec.Governance.Role(v.Role) == nil {
 			add("view %q: role %q is not defined in governance", v.Name, v.Role)
+		}
+	}
+
+	// Join-type overrides: each must name an existing relationship, at most
+	// once. A duplicate would otherwise be resolved last-write-wins at compile
+	// time, letting a typo or merge artifact silently change join semantics.
+	joinSeen := map[string]bool{}
+	for i := range spec.Joins {
+		j := &spec.Joins[i]
+		if !relNames[j.Relationship] {
+			add("joins[%d]: relationship %q does not exist", i, j.Relationship)
+		}
+		if joinSeen[j.Relationship] {
+			add("joins[%d]: duplicate override for relationship %q", i, j.Relationship)
+		}
+		joinSeen[j.Relationship] = true
+		if j.Type != "INNER" && j.Type != "LEFT" {
+			add("joins[%d]: type %q must be INNER or LEFT", i, j.Type)
 		}
 	}
 

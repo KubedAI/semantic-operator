@@ -24,55 +24,119 @@ import (
 	"github.com/KubedAI/ossie-semantic-operator/internal/planner"
 )
 
-// Store holds the compiled models currently published by the operator,
-// keyed by Ossie model name. It is updated by a ConfigMap informer and read
-// by every request, so reads take an RLock only.
+// Store holds the compiled models currently published by the operator, keyed
+// by ConfigMap name. The ConfigMap name is unique per resource, so two
+// resources that declare the same Ossie model name do not overwrite each
+// other. Name-based lookups treat a duplicated model name as ambiguous rather
+// than silently serving one of them. It is updated by a ConfigMap informer and
+// read by every request, so reads take an RLock only.
 type Store struct {
-	mu     sync.RWMutex
-	models map[string]*planner.CompiledModel
-	byCM   map[string]string // configmap name -> model name (for deletes)
+	mu  sync.RWMutex
+	cms map[string]*planner.CompiledModel // configmap name -> compiled model
 }
 
 // NewStore returns an empty store.
 func NewStore() *Store {
-	return &Store{models: map[string]*planner.CompiledModel{}, byCM: map[string]string{}}
+	return &Store{cms: map[string]*planner.CompiledModel{}}
 }
 
-// Get returns the compiled model by name.
+// byName returns the models published under a given model name. Caller holds
+// at least an RLock.
+func (s *Store) byName(name string) []*planner.CompiledModel {
+	var out []*planner.CompiledModel
+	for _, m := range s.cms {
+		if m.Name == name {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// Get returns the compiled model published under name, but only when exactly
+// one resource publishes it. Zero or more than one returns ok=false; use
+// Ambiguous to tell those two cases apart.
 func (s *Store) Get(name string) (*planner.CompiledModel, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	m, ok := s.models[name]
-	return m, ok
+	if ms := s.byName(name); len(ms) == 1 {
+		return ms[0], true
+	}
+	return nil, false
 }
 
-// Names returns model names sorted for stable listings.
+// Ambiguous reports whether more than one resource publishes the given model
+// name. Adapters surface this as an error instead of guessing.
+func (s *Store) Ambiguous(name string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.byName(name)) > 1
+}
+
+// ByName returns every model published under the given name, sorted by
+// namespace then resource, so an ambiguity error can say which resources
+// collide.
+func (s *Store) ByName(name string) []*planner.CompiledModel {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ms := s.byName(name)
+	sort.Slice(ms, func(i, j int) bool {
+		if ms[i].Namespace != ms[j].Namespace {
+			return ms[i].Namespace < ms[j].Namespace
+		}
+		return ms[i].Resource < ms[j].Resource
+	})
+	return ms
+}
+
+// Names returns the distinct model names, sorted, for stable listings.
 func (s *Store) Names() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]string, 0, len(s.models))
-	for n := range s.models {
-		out = append(out, n)
+	seen := map[string]bool{}
+	var out []string
+	for _, m := range s.cms {
+		if !seen[m.Name] {
+			seen[m.Name] = true
+			out = append(out, m.Name)
+		}
 	}
 	sort.Strings(out)
 	return out
 }
 
-// Single returns the only model when exactly one is published; adapters use
-// it so single-model deployments do not need to name the model per call.
+// All returns every published model, sorted by name then version, so listings
+// show duplicates rather than hiding them.
+func (s *Store) All() []*planner.CompiledModel {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*planner.CompiledModel, 0, len(s.cms))
+	for _, m := range s.cms {
+		out = append(out, m)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].Version < out[j].Version
+	})
+	return out
+}
+
+// Single returns the only model when exactly one resource has published;
+// adapters use it so single-model deployments do not name the model per call.
 func (s *Store) Single() (*planner.CompiledModel, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if len(s.models) != 1 {
+	if len(s.cms) != 1 {
 		return nil, false
 	}
-	for _, m := range s.models {
+	for _, m := range s.cms {
 		return m, true
 	}
 	return nil, false
 }
 
-// Put ingests a published ConfigMap (also used directly by tests).
+// Put ingests a published ConfigMap, keyed by its unique name.
 func (s *Store) Put(cmName string, blob []byte) error {
 	var m planner.CompiledModel
 	if err := json.Unmarshal(blob, &m); err != nil {
@@ -80,8 +144,7 @@ func (s *Store) Put(cmName string, blob []byte) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.models[m.Name] = &m
-	s.byCM[cmName] = m.Name
+	s.cms[cmName] = &m
 	return nil
 }
 
@@ -89,10 +152,7 @@ func (s *Store) Put(cmName string, blob []byte) error {
 func (s *Store) Delete(cmName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if model, ok := s.byCM[cmName]; ok {
-		delete(s.models, model)
-		delete(s.byCM, cmName)
-	}
+	delete(s.cms, cmName)
 }
 
 // WatchConfigMaps runs an informer over operator-published ConfigMaps in the

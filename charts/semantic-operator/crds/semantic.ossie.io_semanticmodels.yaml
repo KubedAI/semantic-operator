@@ -57,30 +57,13 @@ spec:
           spec:
             description: |-
               SemanticModelSpec defines the desired state of SemanticModel.
-              The osi block is an OSI (Open Semantic Interchange) semantic_model entry,
-              structurally unmodified so it round-trips as OSI YAML. governance and views
-              are operator extensions kept outside the OSI document.
+              The ossie block is an Apache Ossie semantic_model entry, structurally
+              unmodified so it round-trips as Ossie YAML. governance and views are
+              operator extensions kept outside the Ossie document.
             properties:
-              catalogSync:
-                description: CatalogSync refreshes dataset field lists from the lake
-                  catalog (e.g. Glue).
-                properties:
-                  database:
-                    description: Database in the catalog; defaults to spec.connection.database.
-                    type: string
-                  enabled:
-                    type: boolean
-                  source:
-                    default: glue
-                    enum:
-                    - glue
-                    type: string
-                required:
-                - enabled
-                type: object
               connection:
-                description: Connection pins the OSI model's dataset sources to a
-                  StarRocks external catalog.
+                description: Connection pins the Ossie model's dataset sources to
+                  a StarRocks external catalog.
                 properties:
                   catalog:
                     description: Catalog is the StarRocks external catalog name (e.g.
@@ -152,9 +135,35 @@ spec:
                 required:
                 - roles
                 type: object
+              joins:
+                description: |-
+                  Joins overrides the join type per relationship (operator extension). A
+                  relationship not listed here uses INNER. Kept outside the ossie block so
+                  the Ossie document stays pure.
+                items:
+                  description: |-
+                    RelationshipJoin overrides the join type for one relationship. It is an
+                    operator extension kept outside the Ossie block, so the relationships in
+                    spec.ossie stay pure Ossie (the core spec does not define a join type).
+                  properties:
+                    relationship:
+                      description: Relationship is the name of an ossie.relationships
+                        entry.
+                      type: string
+                    type:
+                      description: Type is INNER or LEFT.
+                      enum:
+                      - INNER
+                      - LEFT
+                      type: string
+                  required:
+                  - relationship
+                  - type
+                  type: object
+                type: array
               ossie:
-                description: OSI is the semantic model definition, following the OSI
-                  core spec.
+                description: Ossie is the semantic model definition, following the
+                  Ossie core spec.
                 properties:
                   ai_context:
                     x-kubernetes-preserve-unknown-fields: true
@@ -174,8 +183,8 @@ spec:
                     type: array
                   datasets:
                     items:
-                      description: Dataset is an OSI logical dataset bound to a physical
-                        table.
+                      description: Dataset is an Ossie logical dataset bound to a
+                        physical table.
                       properties:
                         ai_context:
                           x-kubernetes-preserve-unknown-fields: true
@@ -374,13 +383,6 @@ spec:
                           items:
                             type: string
                           type: array
-                        join_type:
-                          description: 'JoinType is an operator extension: INNER (default)
-                            or LEFT.'
-                          enum:
-                          - INNER
-                          - LEFT
-                          type: string
                         name:
                           type: string
                         to:
