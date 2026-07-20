@@ -5,7 +5,6 @@ package main
 import (
 	"flag"
 	"os"
-	"strconv"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -18,9 +17,12 @@ import (
 
 	semanticv1alpha1 "github.com/KubedAI/semantic-operator/api/v1alpha1"
 	"github.com/KubedAI/semantic-operator/controllers"
+	"github.com/KubedAI/semantic-operator/internal/dbclient"
 	"github.com/KubedAI/semantic-operator/internal/emitter"
 	_ "github.com/KubedAI/semantic-operator/internal/emitter/starrocks"
-	"github.com/KubedAI/semantic-operator/internal/starrocks"
+	_ "github.com/KubedAI/semantic-operator/internal/emitter/trino"
+	_ "github.com/KubedAI/semantic-operator/internal/starrocks"
+	_ "github.com/KubedAI/semantic-operator/internal/trino"
 )
 
 var scheme = runtime.NewScheme()
@@ -43,20 +45,23 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	log := ctrl.Log.WithName("setup")
 
-	srClient, err := starrocks.Open(starrocks.Config{
-		Host:     mustEnv(log, "STARROCKS_HOST"),
-		Port:     envInt("STARROCKS_PORT", 9030),
-		User:     envOr("STARROCKS_USER", "root"),
-		Password: os.Getenv("STARROCKS_PASSWORD"),
-	})
-	if err != nil {
-		log.Error(err, "opening StarRocks client")
-		os.Exit(1)
-	}
-
-	dialect, err := emitter.Get(envOr("SQL_DIALECT", "starrocks"))
+	// SQL_DIALECT selects both halves of the engine boundary: the SQL
+	// dialect (emitter) and the connection client (dbclient). The ENGINE_*
+	// env vars configure the connection.
+	engine := envOr("SQL_DIALECT", "starrocks")
+	dialect, err := emitter.Get(engine)
 	if err != nil {
 		log.Error(err, "resolving dialect")
+		os.Exit(1)
+	}
+	cfg, err := dbclient.EnvConfig()
+	if err != nil {
+		log.Error(err, "reading engine connection config")
+		os.Exit(1)
+	}
+	db, err := dbclient.Open(engine, cfg)
+	if err != nil {
+		log.Error(err, "opening query engine client", "engine", engine)
 		os.Exit(1)
 	}
 
@@ -74,7 +79,7 @@ func main() {
 
 	if err = (&controllers.SemanticModelReconciler{
 		Client:       mgr.GetClient(),
-		StarRocks:    srClient,
+		DB:           db,
 		Dialect:      dialect,
 		ViewDatabase: envOr("VIEW_DATABASE", "semantic_views"),
 		ResyncPeriod: envDuration("RESYNC_PERIOD", 5*time.Minute),
@@ -93,31 +98,9 @@ func main() {
 	}
 }
 
-func mustEnv(log logrLike, key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		log.Error(nil, "required environment variable missing", "key", key)
-		os.Exit(1)
-	}
-	return v
-}
-
-type logrLike interface {
-	Error(err error, msg string, kv ...any)
-}
-
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
-	}
-	return def
-}
-
-func envInt(key string, def int) int {
-	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
 	}
 	return def
 }

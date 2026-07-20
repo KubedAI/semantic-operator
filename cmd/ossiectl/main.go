@@ -27,7 +27,7 @@ import (
 
 // ossieDocument is the top-level Ossie file shape: version + semantic_model list.
 type ossieDocument struct {
-	Version       string              `json:"version,omitempty"`
+	Version       string                `json:"version,omitempty"`
 	SemanticModel []v1alpha1.OssieModel `json:"semantic_model"`
 }
 
@@ -186,7 +186,7 @@ func cmdWrap(args []string) error {
 	cr := v1alpha1.SemanticModel{
 		Spec: v1alpha1.SemanticModelSpec{
 			Connection: v1alpha1.ConnectionSpec{Catalog: *cat, Database: *database},
-			Ossie:        doc.SemanticModel[0],
+			Ossie:      doc.SemanticModel[0],
 		},
 	}
 	cr.APIVersion = v1alpha1.GroupVersion.String()

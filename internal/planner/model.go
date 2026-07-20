@@ -22,13 +22,13 @@ type CompiledModel struct {
 	Connection v1alpha1.ConnectionSpec     `json:"connection"`
 	Datasets   map[string]*CompiledDataset `json:"datasets"`
 	// DatasetOrder preserves spec order for deterministic iteration.
-	DatasetOrder  []string                  `json:"datasetOrder"`
-	Relationships []CompiledRelationship    `json:"relationships"`
+	DatasetOrder  []string                   `json:"datasetOrder"`
+	Relationships []CompiledRelationship     `json:"relationships"`
 	Metrics       map[string]*CompiledMetric `json:"metrics"`
-	MetricOrder   []string                  `json:"metricOrder"`
-	Governance    *v1alpha1.GovernanceSpec  `json:"governance,omitempty"`
-	Description   string                    `json:"description,omitempty"`
-	AIContext     v1alpha1.AIContext        `json:"aiContext,omitempty"`
+	MetricOrder   []string                   `json:"metricOrder"`
+	Governance    *v1alpha1.GovernanceSpec   `json:"governance,omitempty"`
+	Description   string                     `json:"description,omitempty"`
+	AIContext     v1alpha1.AIContext         `json:"aiContext,omitempty"`
 }
 
 // CompiledDataset is a dataset with its physical binding resolved.

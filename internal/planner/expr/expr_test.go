@@ -104,16 +104,26 @@ func TestRewriteRefs(t *testing.T) {
 	}
 }
 
+func backtick(s string) string { return "`" + s + "`" }
+
 func TestQualifyBareColumns(t *testing.T) {
 	cases := map[string]string{
-		"s_state = 'TX'":                    "`s`.`s_state` = 'TX'",
+		"s_state = 'TX'":                     "`s`.`s_state` = 'TX'",
 		"c_first_name || ' ' || c_last_name": "`s`.`c_first_name` || ' ' || `s`.`c_last_name`",
-		"LOWER(email)":                      "LOWER(`s`.`email`)",
-		"price > 100 AND qty IS NOT NULL":   "`s`.`price` > 100 AND `s`.`qty` IS NOT NULL",
+		"LOWER(email)":                       "LOWER(`s`.`email`)",
+		"price > 100 AND qty IS NOT NULL":    "`s`.`price` > 100 AND `s`.`qty` IS NOT NULL",
 	}
 	for in, want := range cases {
-		if got := QualifyBareColumns(in, "`s`"); got != want {
+		if got := QualifyBareColumns(in, "`s`", backtick); got != want {
 			t.Errorf("QualifyBareColumns(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestQualifyBareColumnsUsesDialectQuote(t *testing.T) {
+	quote := func(s string) string { return `"` + s + `"` }
+	got := QualifyBareColumns("s_state = 'TX'", `"s"`, quote)
+	if got != `"s"."s_state" = 'TX'` {
+		t.Errorf("double-quote dialect: got %q", got)
 	}
 }

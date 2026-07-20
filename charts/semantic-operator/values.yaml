@@ -7,7 +7,26 @@ image:
   tag: "latest"
   pullPolicy: IfNotPresent
 
-# Existing StarRocks cluster (FE MySQL-protocol endpoint). Required.
+# Query engine the semantic layer compiles for and connects to. One engine
+# per install; `type` selects both the SQL dialect and the connection client.
+engine:
+  # starrocks | trino
+  type: starrocks
+  # Engine endpoint. Empty falls back to the legacy starrocks.host value.
+  host: ""            # e.g. trino.trino.svc.cluster.local
+  # 0 uses the engine's default port (starrocks 9030, trino 8080).
+  port: 0
+  # Empty falls back to starrocks.user (each client also has its own default).
+  user: ""
+  # Reference an existing Secret holding the password; empty name falls back
+  # to starrocks.passwordSecret. Note: the Trino client requires TLS when a
+  # password is set.
+  passwordSecret:
+    name: ""
+    key: password
+
+# Legacy StarRocks block. Still honored when the engine block above leaves
+# host/user/passwordSecret empty and engine.type is starrocks.
 starrocks:
   host: ""            # e.g. starrocks-fe.starrocks.svc.cluster.local
   port: 9030

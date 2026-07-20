@@ -337,10 +337,11 @@ func RewriteRefs(scalar string, repl func(FieldRef) string) string {
 
 // QualifyBareColumns prefixes bare column identifiers in a scalar SQL
 // expression (a field expression or row-filter predicate, written against a
-// single dataset's physical columns) with the given quoted alias. Function
-// names, keywords, already-qualified identifiers, and string literals are
-// left alone.
-func QualifyBareColumns(scalar, quotedAlias string) string {
+// single dataset's physical columns) with the given quoted alias, quoting
+// each column through the dialect's quote function. Function names,
+// keywords, already-qualified identifiers, and string literals are left
+// alone.
+func QualifyBareColumns(scalar, quotedAlias string, quote func(string) string) string {
 	var b strings.Builder
 	i := 0
 	for i < len(scalar) {
@@ -388,7 +389,7 @@ func QualifyBareColumns(scalar, quotedAlias string) string {
 		}
 		b.WriteString(quotedAlias)
 		b.WriteByte('.')
-		b.WriteString("`" + word + "`")
+		b.WriteString(quote(word))
 	}
 	return b.String()
 }

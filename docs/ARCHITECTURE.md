@@ -176,7 +176,7 @@ The goal is to show that the same LLM answering the same business questions is m
 
 Deliberately built as interfaces, deliberately not built out.
 
-- `emitter.Dialect`. Add Trino, ClickHouse, or DuckDB by implementing identifier quoting, literal rendering, and DATE_TRUNC mapping. Only `starrocks` ships. Step-by-step guide: [EXTENDING-ENGINES.md](EXTENDING-ENGINES.md).
+- `emitter.Dialect` + `dbclient.Client`. An engine is a dialect (SQL text: quoting, literals, DATE_TRUNC, null-safe equality, schema DDL) plus a connection client (transport: query, exec, ping, introspection). Both register by name and `SQL_DIALECT` selects the pair. `starrocks` and `trino` ship. Step-by-step guide: [EXTENDING-ENGINES.md](EXTENDING-ENGINES.md).
 - `catalog.Source`. Add Unity, Polaris, or Hive by implementing `ListTables`. Only `glue` ships.
 - Planner boundary. The compiler is `planner.Build`, a package-level function taking `(CompiledModel, Dialect, Request, Identity)` and returning a `Plan`. Extracting it behind a `planner.Planner` interface would let an alternative compiler, for example a MetricFlow-backed one, slot in behind the same MCP, REST, and views adapters. That interface is not built yet.
 - Not in scope: full MetricFlow semantics (multi-hop metrics, cumulative metrics, saved queries), multi-engine federation, and a BI tool.

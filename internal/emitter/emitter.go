@@ -23,6 +23,10 @@ type Dialect interface {
 	// NullSafeEq renders a null-safe equality predicate for joining
 	// aggregation subqueries on dimension columns.
 	NullSafeEq(a, b string) string
+	// CreateSchema renders the idempotent DDL that creates the (already
+	// quoted, possibly catalog-qualified) schema governed views live in.
+	// Engines disagree on the keyword (DATABASE vs SCHEMA), hence a method.
+	CreateSchema(quotedSchema string) string
 }
 
 // Registry of available dialects, keyed by name.

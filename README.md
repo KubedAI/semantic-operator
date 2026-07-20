@@ -54,7 +54,7 @@ Examples are in [examples/](examples/README.md). Start with [starrocks/retail](e
 | Server | `cmd/server` | Stateless. Answers queries. Runs the compiler, applies governance, and hosts the MCP and REST APIs. Caches in Valkey when one is configured. |
 | CLI (`ossiectl`) | `cmd/ossiectl` | Validate a model offline, generate a model template from a Glue database, and convert between Ossie YAML and the resource format. |
 
-The query engine is pluggable. The planner emits SQL through the `emitter.Dialect` interface and reads catalog metadata through the `catalog.Source` interface, so engines such as Trino, ClickHouse, or DuckDB and catalogs such as Unity or Polaris slot in without touching the compiler ([EXTENDING-ENGINES](docs/EXTENDING-ENGINES.md) walks through it). The reference implementation ships a StarRocks dialect and a Glue catalog source: StarRocks runs star-schema joins fast over Iceberg tables on S3, speaks the MySQL protocol so BI tools connect directly, and supports views over external tables. See [ARCHITECTURE](docs/ARCHITECTURE.md#extension-points) for the scope guardrails.
+The query engine is pluggable, in two halves selected together by one Helm value (`engine.type`): the SQL dialect (`emitter.Dialect`) and the connection client (`internal/dbclient`). Two engines ship today — **StarRocks** (MySQL protocol; fast star-schema joins over Iceberg on S3, views over external tables, BI tools connect natively) and **Trino** (HTTP protocol; views live in a catalog, e.g. `iceberg.semantic_views`). Engines such as ClickHouse, DuckDB, or Redshift and catalogs such as Unity or Polaris slot in without touching the compiler — [EXTENDING-ENGINES](docs/EXTENDING-ENGINES.md) walks through it, with the Trino implementation as the worked example. See [ARCHITECTURE](docs/ARCHITECTURE.md#extension-points) for the scope guardrails.
 
 ## What a request looks like
 
@@ -92,6 +92,10 @@ request hash. That lets you trace any query in the engine's query log back to
 the request that made it. `POST .../sql` returns the plan without executing it.
 
 ## Quickstart
+
+The quickstart below uses StarRocks, the reference engine. To run on Trino
+instead, follow [examples/trino/retail](examples/trino/retail/README.md) —
+the install differs only in two `--set engine.*` flags.
 
 You need a Kubernetes cluster with:
 

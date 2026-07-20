@@ -104,7 +104,7 @@ func (b *builder) renderFieldRef(ref expr.FieldRef) (string, error) {
 	if cf == nil {
 		return "", fmt.Errorf("unknown field %q on dataset %q", ref.Field, ref.Dataset)
 	}
-	out := expr.QualifyBareColumns(cf.Expr, b.alias(ref.Dataset))
+	out := expr.QualifyBareColumns(cf.Expr, b.alias(ref.Dataset), b.d.QuoteIdent)
 	if strings.ContainsAny(out, " (") {
 		out = "(" + out + ")"
 	}
@@ -223,7 +223,7 @@ func (b *builder) whereClauses(filters []Filter, inTree map[string]bool) ([]stri
 		if !inTree[rf.Dataset] {
 			return nil, fmt.Errorf("internal: row filter dataset %q not in join tree", rf.Dataset)
 		}
-		out = append(out, "("+expr.QualifyBareColumns(rf.Predicate, b.alias(rf.Dataset))+")")
+		out = append(out, "("+expr.QualifyBareColumns(rf.Predicate, b.alias(rf.Dataset), b.d.QuoteIdent)+")")
 	}
 	return out, nil
 }
@@ -381,12 +381,13 @@ func (b *builder) sideQuery(t expr.AggTerm, filters []Filter) (string, error) {
 	inner = append(inner, selectItem{Expr: scalar, Alias: "mval"})
 	innerSQL := renderSelectDistinct(b.d, inner, from, where)
 
+	dedup := b.d.QuoteIdent("t")
 	var outer []selectItem
 	for i := range b.dims {
-		outer = append(outer, selectItem{Expr: "t." + b.d.QuoteIdent(fmt.Sprintf("d%d", i)), Alias: fmt.Sprintf("d%d", i)})
+		outer = append(outer, selectItem{Expr: dedup + "." + b.d.QuoteIdent(fmt.Sprintf("d%d", i)), Alias: fmt.Sprintf("d%d", i)})
 	}
-	outer = append(outer, selectItem{Expr: t.Func + "(t.`mval`)", Alias: "val"})
-	return renderSelect(b.d, outer, "FROM (\n"+indent(innerSQL)+"\n) AS t", nil, len(b.dims)), nil
+	outer = append(outer, selectItem{Expr: t.Func + "(" + dedup + "." + b.d.QuoteIdent("mval") + ")", Alias: "val"})
+	return renderSelect(b.d, outer, "FROM (\n"+indent(innerSQL)+"\n) AS "+dedup, nil, len(b.dims)), nil
 }
 
 // compositeQuery combines a base single-pass query with one or more split
@@ -437,8 +438,8 @@ func (b *builder) compositeQuery(baseRequired map[string]bool, inline []*Compile
 		if hasBase && containsMetric(inline, name) {
 			sel = append(sel, b.d.QuoteIdent("base")+"."+b.d.QuoteIdent("m_"+name)+" AS "+b.d.QuoteIdent(name))
 		} else {
-			n := b.d.QuoteIdent("m_"+name+"_num") + ".`val`"
-			d := b.d.QuoteIdent("m_"+name+"_den") + ".`val`"
+			n := b.d.QuoteIdent("m_"+name+"_num") + "." + b.d.QuoteIdent("val")
+			d := b.d.QuoteIdent("m_"+name+"_den") + "." + b.d.QuoteIdent("val")
 			sel = append(sel, n+" / NULLIF("+d+", 0) AS "+b.d.QuoteIdent(name))
 		}
 	}

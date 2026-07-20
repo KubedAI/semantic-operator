@@ -1,5 +1,6 @@
 // Package starrocks is the MySQL-protocol client used for schema
-// introspection (drift detection), view DDL, and query execution.
+// introspection (drift detection), view DDL, and query execution. It
+// registers itself with dbclient under the engine name "starrocks".
 package starrocks
 
 import (
@@ -9,23 +10,24 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
+
+	"github.com/KubedAI/semantic-operator/internal/dbclient"
 )
 
-// Config comes from Helm values via env; nothing is hardcoded.
-type Config struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	// QueryTimeout bounds a single statement. Default 60s.
-	QueryTimeout time.Duration
+// DefaultPort is the StarRocks FE MySQL-protocol port.
+const DefaultPort = 9030
+
+func init() {
+	dbclient.Register("starrocks", func(cfg dbclient.Config) (dbclient.Client, error) {
+		return Open(cfg)
+	})
 }
 
+// Config comes from Helm values via env; nothing is hardcoded.
+type Config = dbclient.Config
+
 // Column is one physical column as reported by DESC.
-type Column struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-}
+type Column = dbclient.Column
 
 // Client wraps database/sql for StarRocks.
 type Client struct {
@@ -35,6 +37,12 @@ type Client struct {
 
 // Open creates a pooled client. It does not dial; use Ping for readiness.
 func Open(cfg Config) (*Client, error) {
+	if cfg.Port == 0 {
+		cfg.Port = DefaultPort
+	}
+	if cfg.User == "" {
+		cfg.User = "root"
+	}
 	mc := mysql.NewConfig()
 	mc.Addr = fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	mc.Net = "tcp"

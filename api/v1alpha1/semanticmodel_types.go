@@ -16,10 +16,10 @@ const (
 
 // Labels and keys used on published ConfigMaps.
 const (
-	LabelModel        = "semantic.ossie.io/model"
-	LabelVersion      = "semantic.ossie.io/version"
-	CompiledModelKey  = "compiled-model.json"
-	ManagedByValue    = "semantic-operator"
+	LabelModel           = "semantic.ossie.io/model"
+	LabelVersion         = "semantic.ossie.io/version"
+	CompiledModelKey     = "compiled-model.json"
+	ManagedByValue       = "semantic-operator"
 	AnnotationOwnedViews = "semantic.ossie.io/owned-views"
 )
 
@@ -63,7 +63,7 @@ type ConnectionSpec struct {
 
 // OssieModel mirrors one entry of the Ossie `semantic_model` list.
 type OssieModel struct {
-	Name        string `json:"name"`
+	Name string `json:"name"`
 	// +optional
 	Description string `json:"description,omitempty"`
 	// +kubebuilder:pruning:PreserveUnknownFields
@@ -187,7 +187,7 @@ type CustomExtension struct {
 type GovernanceSpec struct {
 	// DefaultRole applies when an adapter passes no identity.
 	// +optional
-	DefaultRole string `json:"defaultRole,omitempty"`
+	DefaultRole string       `json:"defaultRole,omitempty"`
 	Roles       []RolePolicy `json:"roles"`
 }
 

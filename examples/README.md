@@ -10,12 +10,15 @@ examples/
   starrocks/
     retail/     # runnable end-to-end: TPC-DS subset, loader, model, NL demo, benchmark
     flights/    # model-only: a second Glue-bound domain, shows authoring + binding
+  trino/
+    retail/     # the same retail model served by Trino (engine portability)
 ```
 
 | Example | Engine | Kind | Start here |
 |---|---|---|---|
 | [starrocks/retail](starrocks/retail/README.md) | StarRocks | Runnable end-to-end (data loader included) | **Yes — the reference example** |
 | [starrocks/flights](starrocks/flights/README.md) | StarRocks | Model-only (authoring + Glue binding) | After retail |
+| [trino/retail](trino/retail/README.md) | Trino | Same model, second engine (uses the retail demo data) | After retail |
 
 ## How examples relate to the rest of the repo
 

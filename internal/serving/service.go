@@ -170,7 +170,7 @@ func (s *Service) ListDimensions(m *planner.CompiledModel) []DimensionInfo {
 // Query). The plan cache key includes model version and effective role.
 func (s *Service) Plan(ctx context.Context, m *planner.CompiledModel, req planner.Request, id governance.Identity) (*planner.Plan, bool, error) {
 	role := effectiveRole(m, id)
-	key := cache.PlanKey(m.Name, m.Version, planner.RequestHash(req, role))
+	key := cache.PlanKey(s.Dialect.Name(), m.Name, m.Version, planner.RequestHash(req, role))
 	if blob, ok := s.Cache.GetPlan(ctx, key); ok {
 		var p planner.Plan
 		if err := json.Unmarshal(blob, &p); err == nil {

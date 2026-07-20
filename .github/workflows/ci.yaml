@@ -33,8 +33,16 @@ jobs:
       - uses: azure/setup-helm@v4
       - name: Lint chart
         run: helm lint charts/semantic-operator
-      - name: Render templates
-        run: helm template charts/semantic-operator --set starrocks.host=fe.example >/dev/null
+      - name: Render templates (starrocks, legacy values)
+        run: >
+          helm template charts/semantic-operator
+          --set image.repository=example.com/semantic-operator
+          --set starrocks.host=fe.example >/dev/null
+      - name: Render templates (trino)
+        run: >
+          helm template charts/semantic-operator
+          --set image.repository=example.com/semantic-operator
+          --set engine.type=trino --set engine.host=trino.example >/dev/null
 
   image:
     runs-on: ubuntu-latest

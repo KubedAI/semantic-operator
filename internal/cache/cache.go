@@ -52,9 +52,12 @@ func New(opts Options, log *slog.Logger) *Cache {
 
 // PlanKey derives the compiled-plan cache key. The model version segment
 // makes entries for old model versions unreachable; the request hash already
-// includes the effective role, so plans cannot leak across identities.
-func PlanKey(model, modelVersion, requestHash string) string {
-	return "sl:plan:" + model + ":" + modelVersion + ":" + requestHash
+// includes the effective role, so plans cannot leak across identities. The
+// dialect segment keeps plans engine-specific: without it, switching
+// SQL_DIALECT on a live install would serve cached SQL from the previous
+// engine until the TTL expired.
+func PlanKey(dialect, model, modelVersion, requestHash string) string {
+	return "sl:plan:" + dialect + ":" + model + ":" + modelVersion + ":" + requestHash
 }
 
 // ResultKey derives the result cache key from the emitted SQL, which embeds

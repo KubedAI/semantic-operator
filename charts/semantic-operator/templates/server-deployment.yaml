@@ -32,7 +32,7 @@ spec:
           image: "{{ required "image.repository is required" .Values.image.repository }}/server:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
-            {{- include "semantic-operator.starrocksEnv" . | nindent 12 }}
+            {{- include "semantic-operator.engineEnv" . | nindent 12 }}
             - name: LISTEN_ADDR
               value: ":{{ .Values.server.listenPort }}"
             - name: LOG_LEVEL

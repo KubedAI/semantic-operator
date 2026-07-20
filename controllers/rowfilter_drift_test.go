@@ -30,7 +30,7 @@ func TestReconcileFlagsRowFilterColumnDrift(t *testing.T) {
 		WithStatusSubresource(&semanticv1alpha1.SemanticModel{}).Build()
 	srx := &fakeStarRocks{tables: healthyTables()}
 	d, _ := emitter.Get("starrocks")
-	r := &SemanticModelReconciler{Client: cl, StarRocks: srx, Dialect: d}
+	r := &SemanticModelReconciler{Client: cl, DB: srx, Dialect: d}
 
 	name := types.NamespacedName{Name: "retail", Namespace: "default"}
 	reconcileOnce(t, r, name)
@@ -63,7 +63,7 @@ func TestReconcileRowFilterOnExistingColumnIsClean(t *testing.T) {
 		WithStatusSubresource(&semanticv1alpha1.SemanticModel{}).Build()
 	srx := &fakeStarRocks{tables: healthyTables()}
 	d, _ := emitter.Get("starrocks")
-	r := &SemanticModelReconciler{Client: cl, StarRocks: srx, Dialect: d}
+	r := &SemanticModelReconciler{Client: cl, DB: srx, Dialect: d}
 
 	name := types.NamespacedName{Name: "retail", Namespace: "default"}
 	reconcileOnce(t, r, name)

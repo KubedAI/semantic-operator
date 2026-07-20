@@ -39,21 +39,21 @@ func TestParsePredicateValid(t *testing.T) {
 
 func TestParsePredicateRejectsUnsafe(t *testing.T) {
 	bad := []string{
-		"s_state = 'TX'; DROP TABLE store",        // statement terminator
-		"s_state IN (SELECT s FROM secret)",       // subquery
-		"lower(s_state) = 'tx'",                   // function call
-		"s_state = 'TX' OR 1 = 1",                 // literal on the left (tautology shape)
-		"s_state = 'TX' -- comment",               // sql comment
-		"s_state = 'TX' /* comment */",            // block comment
-		"s_state",                                 // no comparison
-		"s_state = ",                              // missing literal
-		"= 'TX'",                                  // missing column
-		"s_state == 'TX'",                         // invalid operator
-		"s_state = 'unterminated",                 // unterminated string
-		"s_state & 1",                             // stray operator char
-		"price = 1.2.3",                           // malformed numeric literal
-		"price = 1.",                              // trailing decimal point
-		"",                                        // empty
+		"s_state = 'TX'; DROP TABLE store",  // statement terminator
+		"s_state IN (SELECT s FROM secret)", // subquery
+		"lower(s_state) = 'tx'",             // function call
+		"s_state = 'TX' OR 1 = 1",           // literal on the left (tautology shape)
+		"s_state = 'TX' -- comment",         // sql comment
+		"s_state = 'TX' /* comment */",      // block comment
+		"s_state",                           // no comparison
+		"s_state = ",                        // missing literal
+		"= 'TX'",                            // missing column
+		"s_state == 'TX'",                   // invalid operator
+		"s_state = 'unterminated",           // unterminated string
+		"s_state & 1",                       // stray operator char
+		"price = 1.2.3",                     // malformed numeric literal
+		"price = 1.",                        // trailing decimal point
+		"",                                  // empty
 	}
 	for _, in := range bad {
 		if _, err := ParsePredicate(in); err == nil {

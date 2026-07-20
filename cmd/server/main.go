@@ -16,13 +16,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/KubedAI/semantic-operator/internal/cache"
+	"github.com/KubedAI/semantic-operator/internal/dbclient"
 	"github.com/KubedAI/semantic-operator/internal/emitter"
 	_ "github.com/KubedAI/semantic-operator/internal/emitter/starrocks"
+	_ "github.com/KubedAI/semantic-operator/internal/emitter/trino"
 	"github.com/KubedAI/semantic-operator/internal/observability"
 	"github.com/KubedAI/semantic-operator/internal/serving"
 	mcpadapter "github.com/KubedAI/semantic-operator/internal/serving/mcp"
 	"github.com/KubedAI/semantic-operator/internal/serving/rest"
-	"github.com/KubedAI/semantic-operator/internal/starrocks"
+	_ "github.com/KubedAI/semantic-operator/internal/starrocks"
+	_ "github.com/KubedAI/semantic-operator/internal/trino"
 )
 
 var version = "dev" // set via -ldflags
@@ -32,20 +35,23 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	srClient, err := starrocks.Open(starrocks.Config{
-		Host:     mustEnv(log, "STARROCKS_HOST"),
-		Port:     envInt("STARROCKS_PORT", 9030),
-		User:     envOr("STARROCKS_USER", "root"),
-		Password: os.Getenv("STARROCKS_PASSWORD"),
-	})
-	if err != nil {
-		log.Error("opening StarRocks client", "err", err)
-		os.Exit(1)
-	}
-
-	dialect, err := emitter.Get(envOr("SQL_DIALECT", "starrocks"))
+	// SQL_DIALECT selects both halves of the engine boundary: the SQL
+	// dialect (emitter) and the connection client (dbclient). The ENGINE_*
+	// env vars configure the connection.
+	engine := envOr("SQL_DIALECT", "starrocks")
+	dialect, err := emitter.Get(engine)
 	if err != nil {
 		log.Error("resolving dialect", "err", err)
+		os.Exit(1)
+	}
+	cfg, err := dbclient.EnvConfig()
+	if err != nil {
+		log.Error("reading engine connection config", "err", err)
+		os.Exit(1)
+	}
+	srClient, err := dbclient.Open(engine, cfg)
+	if err != nil {
+		log.Error("opening query engine client", "engine", engine, "err", err)
 		os.Exit(1)
 	}
 
@@ -98,7 +104,7 @@ func main() {
 	mux.Handle("/v1/", rest.Handler(svc))
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	mux.HandleFunc("/readyz", readyzHandler(store, srClient))
+	mux.HandleFunc("/readyz", readyzHandler(store, srClient, engine))
 
 	addr := envOr("LISTEN_ADDR", ":8090")
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
@@ -114,15 +120,6 @@ func main() {
 		log.Error("server exited", "err", err)
 		os.Exit(1)
 	}
-}
-
-func mustEnv(log interface{ Error(string, ...any) }, key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		log.Error("required environment variable missing", "key", key)
-		os.Exit(1)
-	}
-	return v
 }
 
 func envOr(key, def string) string {
@@ -154,14 +151,14 @@ type pinger interface {
 	Ping(context.Context) error
 }
 
-func readyzHandler(store *serving.Store, db pinger) http.HandlerFunc {
+func readyzHandler(store *serving.Store, db pinger, engine string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !store.Synced() {
 			http.Error(w, "compiled-model store not synced", http.StatusServiceUnavailable)
 			return
 		}
 		if err := db.Ping(r.Context()); err != nil {
-			http.Error(w, "starrocks unreachable: "+err.Error(), http.StatusServiceUnavailable)
+			http.Error(w, "query engine ("+engine+") unreachable: "+err.Error(), http.StatusServiceUnavailable)
 			return
 		}
 		w.WriteHeader(http.StatusOK)

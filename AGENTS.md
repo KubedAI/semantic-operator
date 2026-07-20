@@ -41,12 +41,14 @@ cmd/ossiectl/          CLI: offline validate, Glue-derived scaffolds, CR <-> Oss
 internal/ossie/        Apache Ossie schema validation (pure, no I/O)
 internal/planner/      semantic request -> logical plan -> SQL; expr/ bounded grammars
 internal/governance/   compile-time row/column/metric policies
-internal/emitter/      Dialect interface; emitter/starrocks/ implementation
+internal/emitter/      Dialect interface; emitter/starrocks/, emitter/trino/ implementations
+internal/dbclient/     engine connection interface + factory (SQL_DIALECT selects dialect+client)
 internal/catalog/      Source interface; catalog/glue/ implementation; derive + template
 internal/cache/        Valkey plan + result caches (nil *Cache = valid no-op)
 internal/serving/      Store (informer-fed model registry) + Service (one query path);
                        adapters: mcp/ (streamable HTTP), rest/, views/ (governed StarRocks views)
 internal/starrocks/    MySQL-protocol client + schema introspection (DESC / SHOW CREATE TABLE)
+internal/trino/        Trino HTTP-protocol client + information_schema introspection
 internal/nlbench/      NL comparison / benchmark support (Bedrock Converse, temperature 0)
 internal/observability/ slog logger, Prometheus metrics, optional OTLP tracing
 charts/semantic-operator/  Helm chart (crds/, templates/, values.yaml)

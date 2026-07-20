@@ -1,6 +1,6 @@
 // Package controllers reconciles SemanticModel resources: validate the Ossie
-// document, bind and drift-check physical schema through StarRocks, compile
-// deterministically, publish the artifact ConfigMap, and materialize
+// document, bind and drift-check physical schema through the query engine,
+// compile deterministically, publish the artifact ConfigMap, and materialize
 // governed views. Reconciliation is level-triggered and idempotent, so it
 // behaves under ArgoCD.
 package controllers
@@ -24,20 +24,20 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	semanticv1alpha1 "github.com/KubedAI/semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/semantic-operator/internal/dbclient"
 	"github.com/KubedAI/semantic-operator/internal/emitter"
 	"github.com/KubedAI/semantic-operator/internal/ossie"
 	"github.com/KubedAI/semantic-operator/internal/planner"
 	"github.com/KubedAI/semantic-operator/internal/planner/expr"
 	"github.com/KubedAI/semantic-operator/internal/serving/views"
-	"github.com/KubedAI/semantic-operator/internal/starrocks"
 )
 
 const finalizer = "semantic.ossie.io/views-cleanup"
 
-// StarRocksClient is the slice of the StarRocks client the controller needs;
-// mocked in the smoke test.
-type StarRocksClient interface {
-	DescribeTable(ctx context.Context, catalog, database, table string) ([]starrocks.Column, error)
+// EngineClient is the slice of the query-engine client the controller needs
+// (satisfied by any dbclient implementation); mocked in the smoke test.
+type EngineClient interface {
+	DescribeTable(ctx context.Context, catalog, database, table string) ([]dbclient.Column, error)
 	Exec(ctx context.Context, sql string) error
 	Ping(ctx context.Context) error
 }
@@ -45,8 +45,8 @@ type StarRocksClient interface {
 // SemanticModelReconciler reconciles SemanticModel objects.
 type SemanticModelReconciler struct {
 	client.Client
-	StarRocks StarRocksClient
-	Dialect   emitter.Dialect
+	DB      EngineClient
+	Dialect emitter.Dialect
 	// ViewDatabase is the default database for governed views (Helm value).
 	ViewDatabase string
 	// ResyncPeriod is the drift-detection cadence. Default 5m.
@@ -102,11 +102,11 @@ func (r *SemanticModelReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, r.statusUpdate(ctx, &sm)
 	}
 
-	// 3. Bind and drift-check against live StarRocks. Connectivity failures
-	// requeue with backoff; a missing table or column is drift.
+	// 3. Bind and drift-check against the live query engine. Connectivity
+	// failures requeue with backoff; a missing table or column is drift.
 	drift, bindings, err := r.bind(ctx, compiled)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("starrocks unreachable during bind: %w", err)
+		return ctrl.Result{}, fmt.Errorf("query engine unreachable during bind: %w", err)
 	}
 	sm.Status.Bindings = bindings
 	if len(drift) > 0 {
@@ -170,9 +170,9 @@ func (r *SemanticModelReconciler) bind(ctx context.Context, compiled *planner.Co
 		ds := compiled.Datasets[name]
 		fq := ds.Catalog + "." + ds.Database + "." + ds.Table
 		b := semanticv1alpha1.DatasetBinding{Dataset: name, Table: fq}
-		cols, err := r.StarRocks.DescribeTable(ctx, ds.Catalog, ds.Database, ds.Table)
+		cols, err := r.DB.DescribeTable(ctx, ds.Catalog, ds.Database, ds.Table)
 		if err != nil {
-			if perr := r.StarRocks.Ping(ctx); perr != nil {
+			if perr := r.DB.Ping(ctx); perr != nil {
 				return nil, nil, perr // infrastructure, not drift
 			}
 			b.Drift = fmt.Sprintf("table not resolvable: %v", err)
@@ -317,7 +317,7 @@ func (r *SemanticModelReconciler) reconcileViews(ctx context.Context, sm *semant
 	if sm.Spec.Governance != nil {
 		defaultRole = sm.Spec.Governance.DefaultRole
 	}
-	created, err := views.Publish(ctx, r.StarRocks, compiled, r.Dialect, sm.Spec.Views, db, defaultRole)
+	created, err := views.Publish(ctx, r.DB, compiled, r.Dialect, sm.Spec.Views, db, defaultRole)
 	if err != nil {
 		return err
 	}
@@ -337,7 +337,7 @@ func (r *SemanticModelReconciler) reconcileViews(ctx context.Context, sm *semant
 		}
 	}
 	if len(stale) > 0 {
-		if err := views.Drop(ctx, r.StarRocks, r.Dialect, db, stale); err != nil {
+		if err := views.Drop(ctx, r.DB, r.Dialect, db, stale); err != nil {
 			return err
 		}
 	}
@@ -367,7 +367,7 @@ func (r *SemanticModelReconciler) finalize(ctx context.Context, sm *semanticv1al
 			db = r.ViewDatabase
 		}
 		if len(owned) > 0 {
-			if err := views.Drop(ctx, r.StarRocks, r.Dialect, db, owned); err != nil {
+			if err := views.Drop(ctx, r.DB, r.Dialect, db, owned); err != nil {
 				logf.FromContext(ctx).Error(err, "dropping views during finalize; continuing")
 			}
 		}

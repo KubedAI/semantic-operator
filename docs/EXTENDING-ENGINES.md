@@ -1,6 +1,8 @@
-# Adding a query engine (Trino, ClickHouse, DuckDB)
+# Adding a query engine (ClickHouse, DuckDB, Redshift, ...)
 
-This guide shows how to teach the semantic layer to emit and run SQL against a new engine. It covers the **Tier 1** engines: Trino/Presto, ClickHouse, and DuckDB. These have full SQL, multi-table joins, `CREATE VIEW`, and a `date_trunc`-style function. For those, adding support means implementing two small things and wiring them up. No planner changes.
+This guide shows how to teach the semantic layer to emit and run SQL against a new engine. It targets **Tier 1** engines: those with full SQL, multi-table joins, `CREATE VIEW`, and a `date_trunc`-style function. Adding one means implementing two small things and registering them. No planner changes.
+
+**Trino shipped this way** and is the worked example throughout: `internal/emitter/trino/trino.go` (the dialect, ~70 lines) and `internal/trino/client.go` (the client, ~150 lines), both registered by name and selected together by the `SQL_DIALECT` env var (Helm value `engine.type`). Diff those two files against their StarRocks counterparts to see exactly what an engine port touches.
 
 > **You do not touch Iceberg here.** The planner only ever emits `catalog.database.table` references and hands the SQL to the engine. Whether those tables are Iceberg, Delta, Hive, or engine-native is the engine's external-catalog concern, invisible to this code. If your engine points at the same Glue and Iceberg catalog StarRocks uses (Trino especially), the same lake tables resolve with zero extra work. See [ARCHITECTURE.md](ARCHITECTURE.md#extension-points).
 
@@ -8,16 +10,20 @@ This guide shows how to teach the semantic layer to emit and run SQL against a n
 
 The planner is a compiler. It builds a logical plan and renders it through interfaces. To add an engine you provide two things.
 
-1. **An `emitter.Dialect`.** The engine-specific SQL atoms (quoting, literals, `DATE_TRUNC`, null-safe equality). About 40 lines. See `internal/emitter/starrocks/starrocks.go` for the reference.
-2. **A query client.** A thin `database/sql` wrapper that satisfies the three narrow runtime interfaces the rest of the system already depends on. About 80 lines, largely a copy of `internal/starrocks/client.go`.
+1. **An `emitter.Dialect`.** The engine-specific SQL atoms (quoting, literals, `DATE_TRUNC`, null-safe equality, schema-creation DDL). About 40–70 lines. References: `internal/emitter/starrocks/` (MySQL family) and `internal/emitter/trino/` (double-quote ANSI family).
+2. **A `dbclient.Client`.** A thin `database/sql` wrapper implementing `Query`, `Exec`, `Ping`, `DescribeTable`, and `Close`. References: `internal/starrocks/client.go` and `internal/trino/client.go`.
 
-Those three runtime interfaces already exist. Nothing consumes the concrete `starrocks.Client` type except the two `main.go` wiring points.
+Both register themselves by engine name from `init()` (`emitter.Register`, `dbclient.Register`) and the binaries pick them up through one blank import each in `cmd/manager` and `cmd/server`. `SQL_DIALECT` selects the pair at runtime; there is no other wiring.
+
+The narrow consumer interfaces the rest of the system depends on:
 
 | Interface | Method | Used by |
 |---|---|---|
 | `serving.QueryExecutor` | `Query(ctx, sql) ([]string, [][]any, error)` | MCP and REST query path |
 | `views.Executor` | `Exec(ctx, sql) error` | governed-view publisher |
-| `controllers.StarRocksClient` | `DescribeTable(ctx, catalog, db, table) ([]starrocks.Column, error)` | drift-check in the reconciler |
+| `controllers.EngineClient` | `DescribeTable(ctx, catalog, db, table) ([]dbclient.Column, error)` | drift-check in the reconciler |
+
+Two hard-won rules for `DescribeTable`: a missing table must return an **error**, never an empty column list, so the reconciler can tell drift from an empty table; and do not blindly trust `information_schema` — Trino's Iceberg connector silently omits tables it cannot load (for example when the engine lacks S3 access to the table's metadata), while `SHOW TABLES` still lists them. The operator surfaces that as per-dataset drift, which is exactly what you want, but it is worth knowing when debugging a new engine.
 
 A single client type with `Query`, `Exec`, and `DescribeTable` methods satisfies all three.
 
@@ -99,65 +105,57 @@ Drivers:
 | ClickHouse | `github.com/ClickHouse/clickhouse-go/v2` | `"clickhouse"` |
 | DuckDB | `github.com/marcboeker/go-duckdb` | `"duckdb"` |
 
-`Query` and `Exec` can be copied verbatim from the StarRocks client. The `[]byte` to `string` normalization in `Query` keeps results JSON-friendly and is worth keeping. Only `DescribeTable` needs an engine-specific query. Prefer the portable `information_schema.columns`, which all three support.
+`Query` and `Exec` can be copied verbatim from the Trino client. The `[]byte` to `string` normalization in `Query` keeps results JSON-friendly and is worth keeping. Only `DescribeTable` needs an engine-specific query; it returns `[]dbclient.Column` (`{Name, Type string}`).
 
 ```go
-func (c *Client) DescribeTable(ctx context.Context, catalog, database, table string) ([]starrocks.Column, error) {
-	// information_schema is portable across Trino, ClickHouse, and DuckDB.
-	q := fmt.Sprintf(
-		"SELECT column_name, data_type FROM information_schema.columns "+
-			"WHERE table_catalog = %s AND table_schema = %s AND table_name = %s "+
-			"ORDER BY ordinal_position",
-		lit(catalog), lit(database), lit(table)) // lit() = your dialect's string literal
+func (c *Client) DescribeTable(ctx context.Context, catalog, database, table string) ([]dbclient.Column, error) {
+	// information_schema is broadly portable; see internal/trino/client.go
+	// for the full version with literal escaping and the empty-result check.
+	q := describeQuery(catalog, database, table)
 	cols, rows, err := c.Query(ctx, q)
-	// ...map rows -> []starrocks.Column{Name, Type}
+	// ...map rows -> []dbclient.Column{Name, Type}
 }
 ```
 
-Engine-native alternatives if you prefer. Trino has `DESCRIBE cat.db.tbl` or `SHOW COLUMNS FROM cat.db.tbl`. ClickHouse has `DESCRIBE TABLE db.tbl`. DuckDB has `DESCRIBE db.tbl`. ClickHouse has no `table_catalog`, so filter on `table_schema` and `table_name` only.
+Engine-native alternatives if you prefer. ClickHouse has `DESCRIBE TABLE db.tbl` (and no `table_catalog` in information_schema, so filter on `table_schema` and `table_name` only). DuckDB has `DESCRIBE db.tbl`.
 
-> **Note on the return type.** `controllers.StarRocksClient.DescribeTable` returns `[]starrocks.Column`, a plain `{Name, Type string}` struct. The quickest path is to import that struct and return it. For a cleaner contribution, move `Column` into a neutral package (for example `internal/catalog`) and update the controller interface. That is a small, self-contained refactor. Either is acceptable.
+Two hard requirements, both learned the hard way (see the note at the top of this document):
+
+1. A missing table must return an **error**, never an empty column list, so the reconciler reports drift instead of treating the table as empty.
+2. Verify `information_schema` actually lists your tables on a live system before trusting it — Trino's Iceberg connector omits tables it cannot load while `SHOW TABLES` still names them.
 
 ---
 
-## Step 3. Wire it up
+## Step 3. Register it (there is no other wiring)
 
-Two spots construct the concrete client today: `cmd/server/main.go` and `cmd/manager/main.go`. Both call `starrocks.Open(...)` directly. Generalize the selection with the `SQL_DIALECT` env var that already drives the emitter, so one variable picks both the dialect and the client.
+Both halves register themselves by name from `init()`; the factory already exists.
 
-Add a tiny factory (for example `internal/dbclient/factory.go`) returning a value that satisfies `Query`, `Exec`, and `DescribeTable`.
+In your dialect package:
 
 ```go
-func Open(ctx context.Context, dialect string, cfg Config) (DB, error) {
-	switch dialect {
-	case "starrocks":
-		return starrocks.Open(starrocks.Config{ /* ... */ })
-	case "trino":
-		return trino.Open(trino.Config{ /* ... */ })
-	// clickhouse, duckdb ...
-	default:
-		return nil, fmt.Errorf("no DB client for dialect %q", dialect)
-	}
+func init() { emitter.Register(Dialect{}) }
+```
+
+In your client package:
+
+```go
+func init() {
+	dbclient.Register("myengine", func(cfg dbclient.Config) (dbclient.Client, error) {
+		return Open(cfg)
+	})
 }
 ```
 
-Then in `cmd/server/main.go`, replace the hardcoded open with the factory driven by the same variable used for the emitter (`emitter.Get(envOr("SQL_DIALECT", "starrocks"))` is already there at `cmd/server/main.go:46`).
+Apply your engine's defaults inside `Open` for zero-valued `Config` fields (default port, default user) — see `internal/trino/client.go`.
+
+Then add one blank import for each package to **both** `cmd/manager/main.go` and `cmd/server/main.go`, next to the existing ones:
 
 ```go
-dialectName := envOr("SQL_DIALECT", "starrocks")
-dialect, err := emitter.Get(dialectName)
-// ...
-db, err := dbclient.Open(ctx, dialectName, cfg)
-// svc.DB = db ; readiness Ping = db.Ping
+_ "github.com/KubedAI/semantic-operator/internal/emitter/myengine"
+_ "github.com/KubedAI/semantic-operator/internal/myengine"
 ```
 
-Register the dialect with a blank import next to the existing StarRocks one (`cmd/server/main.go:20`).
-
-```go
-_ "github.com/KubedAI/semantic-operator/internal/emitter/starrocks"
-_ "github.com/KubedAI/semantic-operator/internal/emitter/trino"
-```
-
-Do the same in `cmd/manager/main.go` for the reconciler's `StarRocks` field, the drift-check client.
+That is the entire wiring. At runtime, `SQL_DIALECT=myengine` (Helm value `engine.type`) selects both the dialect and the client; connection settings come from the `ENGINE_*` env vars via `dbclient.EnvConfig`. Finally, add your engine to the `values.yaml` comment for `engine.type` and, if it needs a non-standard connection scheme (TLS, tokens), extend `dbclient.Config` rather than inventing engine-specific env vars.
 
 ---
 
@@ -177,7 +175,7 @@ Do the same in `cmd/manager/main.go` for the reconciler's `StarRocks` field, the
 - [ ] `internal/emitter/<engine>/<engine>.go` implementing `emitter.Dialect` and the `init()` register
 - [ ] Dialect golden-SQL test
 - [ ] `internal/<engine>/client.go` with `Query`, `Exec`, `DescribeTable`
-- [ ] A `SQL_DIALECT`-driven client factory, and update both `main.go` wirings and blank imports
+- [ ] Register the dialect and client by name, and add both blank imports to `cmd/manager` and `cmd/server`
 - [ ] (Optional) an `information_schema` `catalog.Source` for `ossiectl` derivation
 - [ ] Add `<engine>` to the `DialectExpression` enum in `api/v1alpha1/semanticmodel_types.go` if models will carry engine-specific expressions, then `make generate`
 - [ ] Helm: surface the engine's connection env vars in `charts/semantic-operator/values.yaml`

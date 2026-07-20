@@ -52,7 +52,19 @@ func BuildViewSQL(cm *planner.CompiledModel, d emitter.Dialect, v v1alpha1.ViewS
 		return "", fmt.Errorf("view %q: %w", v.Name, err)
 	}
 	return fmt.Sprintf("CREATE OR REPLACE VIEW %s.%s AS\n%s",
-		d.QuoteIdent(database), d.QuoteIdent(v.Name), plan.SQL), nil
+		quoteDotted(d, database), d.QuoteIdent(v.Name), plan.SQL), nil
+}
+
+// quoteDotted quotes a possibly catalog-qualified schema name part by part:
+// "semantic_views" for engines with a default catalog (StarRocks), or
+// "iceberg.semantic_views" for engines where views live inside a catalog
+// (Trino). Each dot-separated part is quoted through the dialect.
+func quoteDotted(d emitter.Dialect, name string) string {
+	parts := strings.Split(name, ".")
+	for i, p := range parts {
+		parts[i] = d.QuoteIdent(p)
+	}
+	return strings.Join(parts, ".")
 }
 
 // coerce renders a string-typed CR filter value per valueType: auto tries
@@ -88,7 +100,7 @@ func Publish(ctx context.Context, exec Executor, cm *planner.CompiledModel, d em
 	if database == "" {
 		database = DefaultDatabase
 	}
-	if err := exec.Exec(ctx, "CREATE DATABASE IF NOT EXISTS "+d.QuoteIdent(database)); err != nil {
+	if err := exec.Exec(ctx, d.CreateSchema(quoteDotted(d, database))); err != nil {
 		return nil, fmt.Errorf("creating view database %q: %w", database, err)
 	}
 	var created []string
@@ -112,7 +124,7 @@ func Drop(ctx context.Context, exec Executor, d emitter.Dialect, database string
 	}
 	var errs []string
 	for _, n := range names {
-		if err := exec.Exec(ctx, "DROP VIEW IF EXISTS "+d.QuoteIdent(database)+"."+d.QuoteIdent(n)); err != nil {
+		if err := exec.Exec(ctx, "DROP VIEW IF EXISTS "+quoteDotted(d, database)+"."+d.QuoteIdent(n)); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", n, err))
 		}
 	}

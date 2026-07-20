@@ -168,7 +168,7 @@ lives in exactly two packages. Everything else is engine-neutral.
 | SQL rendering (quoting, literals, DATE_TRUNC, null-safe equality) | `internal/emitter/starrocks/` | `internal/emitter/<engine>/` implementing `emitter.Dialect` |
 | Runtime DB client (`Query`, `Exec`, `DescribeTable`) | `internal/starrocks/` | `internal/<engine>/`, a `database/sql` wrapper of the same shape |
 | Catalog and schema discovery | `internal/catalog/glue/` (Glue) | `internal/catalog/<source>/` implementing `catalog.Source`, for example over `information_schema` |
-| Which engine is active | `SQL_DIALECT=starrocks` (env) selects the dialect at runtime. The client is currently constructed directly in both `main.go` files. | Add a client factory keyed by the same `SQL_DIALECT` variable |
+| Which engine is active | `SQL_DIALECT` selects both the dialect and the runtime client through the registered factories in `internal/emitter` and `internal/dbclient`. | Add one emitter package and one client package, register both by name, then blank-import them in `cmd/manager` and `cmd/server` |
 
 The planner, governance, validator, serving adapters, caching, and CRD types are
 untouched when you add an engine. That is by design. See
@@ -303,13 +303,14 @@ kubectl -n semantic-system get pods
 ```
 
 Expected result: the `semantic-operator-manager` and `semantic-operator-server`
-pods are Ready. The server's `/readyz` pings StarRocks. If a pod is not Ready,
-`kubectl logs` says why.
+pods are Ready. The server's `/readyz` pings the configured query engine and
+names it in the failure body (`query engine (trino) unreachable: ...`). If a
+pod is not Ready, `kubectl logs` says why.
 
 **Operational notes.**
 
-- Server not Ready. `/readyz` failing means StarRocks is unreachable from the pod.
-  Check `starrocks.host` and NetworkPolicies.
+- Server not Ready. `/readyz` failing means the configured query engine is unreachable from the pod.
+  Check `engine.type`, `engine.host`, any required credentials, and NetworkPolicies.
 - SemanticModel stuck with no conditions. Run `kubectl -n semantic-system logs
   deploy/semantic-operator-manager`.
 - Model drift. `DriftDetected=True` is expected when the physical schema and the
@@ -327,7 +328,7 @@ pods are Ready. The server's `/readyz` pings StarRocks. If a pod is not Ready,
 | Add or adjust a row or column policy | `internal/governance/governance.go` | it is compile-time. Assert the plan fails or filters |
 | Support a new query engine | `internal/emitter/<engine>/` and `internal/<engine>/` | see [EXTENDING-ENGINES.md](EXTENDING-ENGINES.md) |
 | Support a new catalog (Unity, Polaris, Hive) | `internal/catalog/<source>/` implementing `catalog.Source` | wire into `ossiectl` and the reconciler |
-| Change reconcile or drift behavior | `controllers/semanticmodel_controller.go` | table-test with a fake `StarRocksClient` |
+| Change reconcile or drift behavior | `controllers/semanticmodel_controller.go` | table-test with a fake `EngineClient` |
 | Add an API surface beyond MCP and REST | `internal/serving/<adapter>/` calling `serving.Service` | reuse the shared serving path (plan, execute, report) |
 | Change a deployment default | `charts/semantic-operator/values.yaml` and templates | `make helm-lint` |
 
@@ -355,7 +356,7 @@ go build ./...  ·  go test ./...  ·  go vet ./...
 
 **Testing.** Tests live next to code (`*_test.go`). The planner, validator,
 governance, cache, and controller have unit tests that run with no cluster and no
-database. The reconciler uses a fake `StarRocksClient`, and the planner asserts
+database. The reconciler uses a fake `EngineClient`, and the planner asserts
 golden SQL. Prefer running the whole suite. It is fast. Anything needing a live
 cluster (data loader, NL comparison, benchmark) is isolated under `examples/` and
 documented in each example's README.

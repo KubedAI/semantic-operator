@@ -15,9 +15,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	semanticv1alpha1 "github.com/KubedAI/semantic-operator/api/v1alpha1"
+	sr "github.com/KubedAI/semantic-operator/internal/dbclient"
 	"github.com/KubedAI/semantic-operator/internal/emitter"
 	_ "github.com/KubedAI/semantic-operator/internal/emitter/starrocks"
-	sr "github.com/KubedAI/semantic-operator/internal/starrocks"
 )
 
 // fakeStarRocks serves canned DESC output and records DDL.
@@ -123,7 +123,7 @@ func TestReconcileHappyPath(t *testing.T) {
 		WithStatusSubresource(&semanticv1alpha1.SemanticModel{}).Build()
 	srx := &fakeStarRocks{tables: healthyTables()}
 	d, _ := emitter.Get("starrocks")
-	r := &SemanticModelReconciler{Client: cl, StarRocks: srx, Dialect: d}
+	r := &SemanticModelReconciler{Client: cl, DB: srx, Dialect: d}
 
 	name := types.NamespacedName{Name: "retail", Namespace: "default"}
 	reconcileOnce(t, r, name)
@@ -173,7 +173,7 @@ func TestReconcileFlagsDriftAndBlocksPublish(t *testing.T) {
 	delete(tables, "iceberg.osi_demo.item") // simulate dropped table
 	srx := &fakeStarRocks{tables: tables}
 	d, _ := emitter.Get("starrocks")
-	r := &SemanticModelReconciler{Client: cl, StarRocks: srx, Dialect: d}
+	r := &SemanticModelReconciler{Client: cl, DB: srx, Dialect: d}
 
 	name := types.NamespacedName{Name: "retail", Namespace: "default"}
 	reconcileOnce(t, r, name)
@@ -199,7 +199,7 @@ func TestReconcileInvalidSpecSetsValidatedFalse(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).
 		WithStatusSubresource(&semanticv1alpha1.SemanticModel{}).Build()
 	d, _ := emitter.Get("starrocks")
-	r := &SemanticModelReconciler{Client: cl, StarRocks: &fakeStarRocks{tables: healthyTables()}, Dialect: d}
+	r := &SemanticModelReconciler{Client: cl, DB: &fakeStarRocks{tables: healthyTables()}, Dialect: d}
 
 	name := types.NamespacedName{Name: "retail", Namespace: "default"}
 	reconcileOnce(t, r, name)
@@ -245,7 +245,7 @@ func TestReconcileRehomesCompiledConfigMapOwner(t *testing.T) {
 		WithStatusSubresource(&semanticv1alpha1.SemanticModel{}).Build()
 	srx := &fakeStarRocks{tables: healthyTables()}
 	d, _ := emitter.Get("starrocks")
-	r := &SemanticModelReconciler{Client: cl, StarRocks: srx, Dialect: d}
+	r := &SemanticModelReconciler{Client: cl, DB: srx, Dialect: d}
 
 	name := types.NamespacedName{Name: "retail", Namespace: "default"}
 	reconcileOnce(t, r, name)
@@ -278,7 +278,7 @@ func TestReconcileRehomesOwnerEvenWhenContentCurrent(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).
 		WithStatusSubresource(&semanticv1alpha1.SemanticModel{}).Build()
 	d, _ := emitter.Get("starrocks")
-	r := &SemanticModelReconciler{Client: cl, StarRocks: &fakeStarRocks{tables: healthyTables()}, Dialect: d}
+	r := &SemanticModelReconciler{Client: cl, DB: &fakeStarRocks{tables: healthyTables()}, Dialect: d}
 
 	name := types.NamespacedName{Name: "retail", Namespace: "default"}
 	reconcileOnce(t, r, name)
