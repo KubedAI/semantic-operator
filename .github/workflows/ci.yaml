@@ -16,15 +16,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Vet
-        run: go vet ./...
+      - name: Lint and verify Go formatting
+        run: make lint
       - name: Test
-        run: go test ./... -count=1
+        run: make test
       - name: Verify generated code is current
         run: |
-          go run sigs.k8s.io/controller-tools/cmd/controller-gen object paths=./api/...
-          go run sigs.k8s.io/controller-tools/cmd/controller-gen crd paths=./api/... output:crd:dir=./charts/semantic-operator/crds
+          make generate
           git diff --exit-code
+  
 
   helm:
     runs-on: ubuntu-latest

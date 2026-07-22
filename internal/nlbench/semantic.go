@@ -54,7 +54,7 @@ func (r *Runner) AnswerSemantic(ctx context.Context, question string) PathResult
 		res.ElapsedMs = time.Since(start).Milliseconds()
 		return res
 	}
-	defer sess.Close()
+	defer func() { _ = sess.Close() }()
 
 	listed, err := sess.ListTools(ctx, nil)
 	if err != nil {

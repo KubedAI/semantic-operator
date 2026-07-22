@@ -28,7 +28,7 @@ const (
 // unmodified so it round-trips as Ossie YAML. governance and views are
 // operator extensions kept outside the Ossie document.
 type SemanticModelSpec struct {
-	// Connection pins the Ossie model's dataset sources to a StarRocks external catalog.
+	// Connection pins the Ossie model's dataset sources to a query-engine catalog.
 	Connection ConnectionSpec `json:"connection"`
 
 	// Ossie is the semantic model definition, following the Ossie core spec.
@@ -38,7 +38,7 @@ type SemanticModelSpec struct {
 	// +optional
 	Governance *GovernanceSpec `json:"governance,omitempty"`
 
-	// Views are governed metric views the operator creates in StarRocks for BI tools.
+	// Views are governed metric views the operator creates in the configured query engine for BI tools.
 	// +optional
 	Views []ViewSpec `json:"views,omitempty"`
 
@@ -51,11 +51,11 @@ type SemanticModelSpec struct {
 
 // ConnectionSpec resolves bare dataset sources to physical tables.
 type ConnectionSpec struct {
-	// Catalog is the StarRocks external catalog name (e.g. "iceberg").
+	// Catalog is the query-engine catalog name (e.g. "iceberg").
 	Catalog string `json:"catalog"`
 	// Database is the database/schema within the catalog (e.g. "osi_demo").
 	Database string `json:"database"`
-	// ViewDatabase is the StarRocks default-catalog database where governed
+	// ViewDatabase is the query-engine default-catalog database where governed
 	// views are created. Defaults to "semantic_views".
 	// +optional
 	ViewDatabase string `json:"viewDatabase,omitempty"`
@@ -215,7 +215,7 @@ type RowFilter struct {
 	Predicate string `json:"predicate"`
 }
 
-// ViewSpec declares a governed metric view materialized in StarRocks.
+// ViewSpec declares a governed metric view materialized in the configured query engine.
 type ViewSpec struct {
 	Name    string   `json:"name"`
 	Metrics []string `json:"metrics"`

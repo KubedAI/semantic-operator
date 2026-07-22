@@ -13,8 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-
 	"github.com/KubedAI/semantic-operator/internal/cache"
 	"github.com/KubedAI/semantic-operator/internal/dbclient"
 	"github.com/KubedAI/semantic-operator/internal/emitter"
@@ -26,11 +24,19 @@ import (
 	"github.com/KubedAI/semantic-operator/internal/serving/rest"
 	_ "github.com/KubedAI/semantic-operator/internal/starrocks"
 	_ "github.com/KubedAI/semantic-operator/internal/trino"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var version = "dev" // set via -ldflags
 
 func main() {
+	err := run()
+	if err != nil {
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	log := observability.Logger(envOr("LOG_LEVEL", "info"))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -42,17 +48,17 @@ func main() {
 	dialect, err := emitter.Get(engine)
 	if err != nil {
 		log.Error("resolving dialect", "err", err)
-		os.Exit(1)
+		return err
 	}
 	cfg, err := dbclient.EnvConfig()
 	if err != nil {
 		log.Error("reading engine connection config", "err", err)
-		os.Exit(1)
+		return err
 	}
 	srClient, err := dbclient.Open(engine, cfg)
 	if err != nil {
 		log.Error("opening query engine client", "engine", engine, "err", err)
-		os.Exit(1)
+		return err
 	}
 
 	valkey := cache.New(cache.Options{
@@ -69,7 +75,7 @@ func main() {
 	tracer, shutdownTracing, err := observability.Tracer(ctx, "semantic-server", os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
 	if err != nil {
 		log.Error("configuring tracing", "err", err)
-		os.Exit(1)
+		return err
 	}
 	defer func() { _ = shutdownTracing(context.Background()) }()
 
@@ -118,8 +124,9 @@ func main() {
 	log.Info("semantic-server listening", "addr", addr, "namespace", namespace, "version", version)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("server exited", "err", err)
-		os.Exit(1)
+		return err
 	}
+	return nil
 }
 
 func envOr(key, def string) string {

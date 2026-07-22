@@ -84,7 +84,7 @@ func cmdValidate(args []string) error {
 	return nil
 }
 
-func cmdDerive(args []string) error {
+func cmdDerive(args []string) (err error) {
 	fs := flag.NewFlagSet("derive", flag.ExitOnError)
 	region := fs.String("region", os.Getenv("AWS_REGION"), "AWS region")
 	database := fs.String("database", "", "Glue database")
@@ -112,11 +112,15 @@ func cmdDerive(args []string) error {
 
 	w := os.Stdout
 	if *out != "" {
-		f, err := os.Create(*out)
-		if err != nil {
-			return err
+		f, createErr := os.Create(*out)
+		if createErr != nil {
+			return createErr
 		}
-		defer f.Close()
+		defer func() {
+			if closeErr := f.Close(); err == nil && closeErr != nil {
+				err = createErr
+			}
+		}()
 		w = f
 	}
 
@@ -131,7 +135,10 @@ func cmdDerive(args []string) error {
 		return err
 	}
 	if *out != "" {
-		fmt.Fprintf(os.Stderr, "wrote %s — fill the TODO placeholders, then: ossiectl validate -f %s\n", *out, *out)
+		_, err := fmt.Fprintf(os.Stderr, "wrote %s — fill the TODO placeholders, then: ossiectl validate -f %s\n", *out, *out)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -157,7 +164,10 @@ func cmdUnwrap(args []string) error {
 	if err != nil {
 		return err
 	}
-	os.Stdout.Write(out)
+	_, err = os.Stdout.Write(out)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -197,6 +207,9 @@ func cmdWrap(args []string) error {
 	if err != nil {
 		return err
 	}
-	os.Stdout.Write(out)
+	_, err = os.Stdout.Write(out)
+	if err != nil {
+		return err
+	}
 	return nil
 }

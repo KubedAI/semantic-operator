@@ -344,8 +344,10 @@ They deliberately follow the Apache Ossie name after the OSI to Apache Ossie ren
 The domain core is offline and fast. You rarely need a cluster to make progress.
 
 ```bash
+make tools        # install pinned controller-gen and golangci-lint into bin/
 make build        # bin/manager, bin/server, bin/ossiectl
 make test         # go vet ./... && go test ./... -count=1   (offline, fast)
+make lint         # golangci-lint: Go formatting and static analysis
 make cover        # coverage profile
 make generate     # REQUIRED after editing api/. Regenerates deepcopy + CRD
 make helm-lint    # lint the chart
@@ -353,6 +355,10 @@ make helm-lint    # lint the chart
 # plain Go works too
 go build ./...  ·  go test ./...  ·  go vet ./...
 ```
+
+`make generate` and `make lint` install their required pinned executable into
+`bin/` automatically when it is missing or its version inputs change; use
+`make tools` to install both up front.
 
 **Testing.** Tests live next to code (`*_test.go`). The planner, validator,
 governance, cache, and controller have unit tests that run with no cluster and no
