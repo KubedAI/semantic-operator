@@ -35,6 +35,11 @@ An agent picks a certified metric and some dimensions. It does not write SQL. A 
 ![Architecture overview](docs/img/architecture-overview.png)
 <!-- Diagram source: docs/diagrams/architecture-overview.mmd -->
 
+### AWS Glue and StarRocks Example
+
+![Architecture Example](docs/img/architecture-overview-example.png)
+
+
 ## Documentation
 
 - [OVERVIEW](docs/OVERVIEW.md). What this is and who uses it.
