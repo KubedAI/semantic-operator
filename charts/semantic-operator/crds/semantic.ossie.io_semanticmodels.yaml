@@ -63,11 +63,10 @@ spec:
             properties:
               connection:
                 description: Connection pins the Ossie model's dataset sources to
-                  a StarRocks external catalog.
+                  a query-engine catalog.
                 properties:
                   catalog:
-                    description: Catalog is the StarRocks external catalog name (e.g.
-                      "iceberg").
+                    description: Catalog is the query-engine catalog name (e.g. "iceberg").
                     type: string
                   database:
                     description: Database is the database/schema within the catalog
@@ -75,7 +74,7 @@ spec:
                     type: string
                   viewDatabase:
                     description: |-
-                      ViewDatabase is the StarRocks default-catalog database where governed
+                      ViewDatabase is the query-engine default-catalog database where governed
                       views are created. Defaults to "semantic_views".
                     type: string
                 required:
@@ -405,10 +404,10 @@ spec:
                 type: object
               views:
                 description: Views are governed metric views the operator creates
-                  in StarRocks for BI tools.
+                  in the configured query engine for BI tools.
                 items:
                   description: ViewSpec declares a governed metric view materialized
-                    in StarRocks.
+                    in the configured query engine.
                   properties:
                     dimensions:
                       items:

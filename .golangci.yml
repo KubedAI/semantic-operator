@@ -1,0 +1,30 @@
+version: "2"
+
+run:
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    - gocritic
+    - misspell
+    - unconvert
+    - whitespace
+  settings:
+    staticcheck:
+      checks:
+        - all
+        - -QF1001
+        - -ST1000
+  exclusions:
+    generated: lax
+    rules:
+      - path: 'api/v1alpha1/groupversion_info.go'
+        linters:
+          - staticcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+

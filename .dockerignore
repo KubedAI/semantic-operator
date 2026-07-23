@@ -1,0 +1,12 @@
+# Version-control metadata
+.git/
+
+# Local build outputs and developer tools
+bin/
+dist/
+coverage.txt
+*.out
+
+# Local temporary and editor files
+.tmp/
+.DS_Store

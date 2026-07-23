@@ -68,7 +68,6 @@ type ToolCall struct {
 // It returns the final answer and the ordered tool-call trace.
 func (l *LLM) RunToolLoop(ctx context.Context, system, user string, tools []ToolDef,
 	call func(context.Context, ToolCall) (string, error), maxTurns int) (string, []string, error) {
-
 	var brTools []brtypes.Tool
 	for _, t := range tools {
 		brTools = append(brTools, &brtypes.ToolMemberToolSpec{Value: brtypes.ToolSpecification{

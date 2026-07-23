@@ -79,19 +79,22 @@ func (c *Client) Exec(ctx context.Context, query string) error {
 
 // Query runs a statement and returns column names and JSON-friendly rows
 // ([]byte becomes string, so results marshal cleanly).
-func (c *Client) Query(ctx context.Context, query string) ([]string, [][]any, error) {
+func (c *Client) Query(ctx context.Context, query string) (cols []string, out [][]any, err error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 	rows, err := c.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
-	cols, err := rows.Columns()
+	defer func() {
+		if closeErr := rows.Close(); err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
+	cols, err = rows.Columns()
 	if err != nil {
 		return nil, nil, err
 	}
-	var out [][]any
 	for rows.Next() {
 		vals := make([]any, len(cols))
 		ptrs := make([]any, len(cols))
