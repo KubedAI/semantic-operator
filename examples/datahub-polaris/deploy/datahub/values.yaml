@@ -1,0 +1,79 @@
+# DataHub v1.6.0 for the local kind cluster: full deployment (GMS +
+# React frontend) trimmed to single replicas and minimal resources.
+#
+# Relational store is the shared Postgres 'datahub' DB (not the bundled MySQL).
+# Graph + search are the OpenSearch from the prerequisites release. neo4j is
+# unused. The password comes from the datahub-postgres Secret created by
+# datahub-up.sh (mirrored from the chd postgres-credentials Secret).
+
+global:
+  datahub:
+    version: v1.6.0
+    # Local dev cluster with no external exposure: disable DataHub's
+    # metadata-service authentication so the client-side ingestion/enrichment
+    # (and the agent) reach GMS without a personal access token. Re-enable this
+    # (and mint a PAT) if the cluster is ever exposed beyond localhost.
+    metadata_service_authentication:
+      enabled: false
+  graph_service_impl: elasticsearch
+
+  sql:
+    datasource:
+      host: "postgres.chd.svc.cluster.local:5432"
+      hostForpostgresqlClient: "postgres.chd.svc.cluster.local"
+      port: "5432"
+      url: "jdbc:postgresql://postgres.chd.svc.cluster.local:5432/datahub"
+      driver: "org.postgresql.Driver"
+      database: "datahub"
+      username: "datahub"
+      password:
+        secretRef: datahub-postgres
+        secretKey: postgres-password
+
+  elasticsearch:
+    host: "opensearch-cluster-master"
+    port: "9200"
+
+  kafka:
+    bootstrap:
+      server: "prerequisites-kafka:9092"
+
+# --- components: full but single-replica / minimal ---
+datahub-gms:
+  enabled: true
+  replicaCount: 1
+  service:
+    type: ClusterIP
+  resources:
+    requests: {cpu: "100m", memory: "768Mi"}
+    limits: {memory: "1536Mi"}
+
+datahub-frontend:
+  enabled: true
+  replicaCount: 1
+  service:
+    type: ClusterIP
+  resources:
+    requests: {cpu: "50m", memory: "256Mi"}
+    limits: {memory: "640Mi"}
+
+# Ingestion runs client-side (uv), so the in-cluster actions pod is not needed.
+acryl-datahub-actions:
+  enabled: false
+
+# Consumers run embedded in GMS (standalone consumers disabled), so no separate
+# consumer pods.
+datahub-mae-consumer:
+  enabled: false
+datahub-mce-consumer:
+  enabled: false
+datahub-ingestion-cron:
+  enabled: false
+
+# Schema creation for Postgres: use the postgres setup job; mysql setup off.
+mysqlSetupJob:
+  enabled: false
+postgresqlSetupJob:
+  enabled: true
+
+# System-update job builds ES indices + bootstraps; keep enabled (default).

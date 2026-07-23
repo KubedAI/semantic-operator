@@ -1,0 +1,46 @@
+# DataHub ingestion of the customer-health Iceberg tables, read from the Polaris
+# REST catalog (warehouse 'chd') with Garage as the S3 FileIO. Runs client-side
+# from the host, so the endpoints are the kind host mappings (Polaris 8181,
+# Garage 3900, GMS 8080). Values are expanded from the environment by
+# datahub-ingest.sh, which reads them from the in-cluster Secrets.
+#
+# Datasets land on platform 'iceberg' as saas_customer_health_demo.<table>.
+# Metadata only: no profiling, no sample values.
+source:
+  type: iceberg
+  config:
+    catalog:
+      chd:
+        type: rest
+        uri: "${ICEBERG_REST_URI}"
+        warehouse: "${ICEBERG_WAREHOUSE}"
+        credential: "${ICEBERG_CREDENTIAL}"
+        scope: "PRINCIPAL_ROLE:ALL"
+        # Polaris does not vend credentials here (Garage has no STS), just like
+        # the StarRocks catalog (vended-credentials-enabled=false). pyiceberg
+        # otherwise defaults X-Iceberg-Access-Delegation to "vended-credentials",
+        # which Polaris refuses (LOAD_TABLE_WITH_READ_DELEGATION). Emptying the
+        # header makes Polaris do a plain LOAD_TABLE; we read S3 with the static
+        # Garage key below.
+        header.X-Iceberg-Access-Delegation: ""
+        s3.endpoint: "${AWS_S3_ENDPOINT}"
+        s3.access-key-id: "${AWS_ACCESS_KEY_ID}"
+        s3.secret-access-key: "${AWS_SECRET_ACCESS_KEY}"
+        s3.region: "${AWS_REGION}"
+        s3.path-style-access: "true"
+    env: "DEV"
+    platform_instance: "chd-local"
+    namespace_pattern:
+      allow:
+        - "^saas_customer_health_demo$"
+    table_pattern:
+      deny:
+        - ".*_demo_manifest$"
+    profiling:
+      enabled: false
+
+sink:
+  type: datahub-rest
+  config:
+    server: "${DATAHUB_GMS_URL}"
+    token: "${DATAHUB_GMS_TOKEN}"

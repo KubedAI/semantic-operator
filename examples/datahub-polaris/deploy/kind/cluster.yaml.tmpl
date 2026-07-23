@@ -1,0 +1,32 @@
+# Single-node kind cluster for the local demo.
+#
+# Rendered by the Makefile into deploy/kind/cluster.yaml with __LOCAL_DATA_DIR__
+# replaced by the absolute path of local/data, because kind cannot expand env
+# vars or resolve relative hostPaths reliably.
+#
+# extraMounts binds host local/data into the node so Garage (Iceberg objects)
+# and Postgres (Polaris catalog + DataHub metadata) survive `kind delete`. The
+# loaded dataset is only reusable if BOTH persist together, so they share the
+# one mount.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraMounts:
+      - hostPath: __LOCAL_DATA_DIR__
+        containerPath: /mnt/local-data
+    extraPortMappings:
+      # Garage S3 API (StarRocks/Polaris reach it in-cluster; host access for debug)
+      - { containerPort: 30390, hostPort: 3900, protocol: TCP }
+      # Polaris REST catalog
+      - { containerPort: 30818, hostPort: 8181, protocol: TCP }
+      # StarRocks FE MySQL protocol (loader / BI / operator from host)
+      - { containerPort: 30903, hostPort: 9030, protocol: TCP }
+      # StarRocks FE HTTP
+      - { containerPort: 30803, hostPort: 8030, protocol: TCP }
+      # Semantic Operator server (MCP + REST) — the host agent connects here
+      - { containerPort: 30809, hostPort: 8090, protocol: TCP }
+      # DataHub GMS (metadata API + the DataHub MCP server)
+      - { containerPort: 30808, hostPort: 8080, protocol: TCP }
+      # DataHub frontend UI
+      - { containerPort: 30902, hostPort: 9002, protocol: TCP }

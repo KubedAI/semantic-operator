@@ -1,0 +1,114 @@
+# Garage v2.3.0 — single-node S3-compatible object store for the Iceberg data.
+# Stable RPC identity via the headless service pod DNS (garage-0...), so no
+# pod-IP interpolation is needed. Storage is hostPath under the kind mount so
+# Iceberg objects survive `kind delete` (must persist together with Postgres).
+#
+# rpc_secret / admin_token are LOCAL-DEV-ONLY. Config lives in a Secret because
+# it carries those tokens.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: garage-config
+  namespace: chd
+stringData:
+  garage.toml: |
+    metadata_dir = "/mnt/garage/meta"
+    data_dir = "/mnt/garage/data"
+    db_engine = "lmdb"
+    replication_factor = 1
+
+    rpc_bind_addr = "[::]:3901"
+    rpc_public_addr = "garage-0.garage-headless.chd.svc.cluster.local:3901"
+    # 32-byte hex, local-dev-only.
+    rpc_secret = "1111111111111111111111111111111111111111111111111111111111111111"
+
+    [s3_api]
+    s3_region = "garage"
+    api_bind_addr = "[::]:3900"
+    root_domain = ".s3.garage.local"
+
+    [admin]
+    api_bind_addr = "[::]:3903"
+    admin_token = "chd-admin-token-local-dev"
+---
+# Headless service: stable per-pod DNS for Garage RPC.
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage-headless
+  namespace: chd
+spec:
+  clusterIP: None
+  selector: { app: garage }
+  ports:
+    - { name: rpc, port: 3901, targetPort: 3901 }
+---
+# In-cluster S3 + admin endpoints (StarRocks/Polaris use garage.chd:3900).
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage
+  namespace: chd
+spec:
+  selector: { app: garage }
+  ports:
+    - { name: s3, port: 3900, targetPort: 3900 }
+    - { name: admin, port: 3903, targetPort: 3903 }
+---
+# NodePort so the host can reach the S3 API at localhost:3900 (kind maps
+# node:30390 -> host:3900). For debugging/verification.
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage-nodeport
+  namespace: chd
+spec:
+  type: NodePort
+  selector: { app: garage }
+  ports:
+    - { name: s3, port: 3900, targetPort: 3900, nodePort: 30390 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: garage
+  namespace: chd
+  labels: { app: garage }
+spec:
+  serviceName: garage-headless
+  replicas: 1
+  selector:
+    matchLabels: { app: garage }
+  template:
+    metadata:
+      labels: { app: garage }
+    spec:
+      containers:
+        - name: garage
+          image: dxflrs/garage:v2.3.0
+          imagePullPolicy: IfNotPresent
+          command: ["/garage", "server"]   # image has no ENTRYPOINT; give full path
+          env:
+            - { name: GARAGE_CONFIG_FILE, value: /etc/garage.toml }
+          ports:
+            - { name: s3, containerPort: 3900 }
+            - { name: rpc, containerPort: 3901 }
+            - { name: admin, containerPort: 3903 }
+          volumeMounts:
+            - { name: config, mountPath: /etc/garage.toml, subPath: garage.toml }
+            - { name: data, mountPath: /mnt/garage }
+          readinessProbe:
+            # TCP only: /health (admin :3903) returns 503 until a layout is
+            # applied, but the layout is applied post-start by garage-up.sh —
+            # gating readiness on /health would deadlock the bring-up.
+            tcpSocket: { port: 3900 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { memory: "1Gi" }
+      volumes:
+        - name: config
+          secret: { secretName: garage-config }
+        - name: data
+          hostPath: { path: /mnt/local-data/garage, type: DirectoryOrCreate }

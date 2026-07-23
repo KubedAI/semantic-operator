@@ -1,0 +1,140 @@
+# Apache Polaris 1.6.0 — Iceberg REST catalog, relational-jdbc persistence on
+# the shared Postgres 'polaris' database. Config verified offline against the
+# real images (bootstrap creates schema 'polaris_schema'; server health at
+# :8182/q/health). Catalog creation (S3->Garage) is a separate step.
+#
+# Root principal credentials are LOCAL-DEV-ONLY. The value in the bootstrap
+# Job's -c flag MUST match ROOT_CLIENT_SECRET below.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: polaris-credentials
+  namespace: chd
+type: Opaque
+stringData:
+  ROOT_CLIENT_ID: root
+  ROOT_CLIENT_SECRET: polaris-root-local-dev
+---
+# One-shot: bootstrap realm POLARIS + root principal into polaris_schema.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: polaris-bootstrap
+  namespace: chd
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels: { app: polaris-bootstrap }
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: apache/polaris-admin-tool:1.6.0
+          imagePullPolicy: IfNotPresent
+          # -c must match polaris-credentials.ROOT_CLIENT_SECRET (local-dev value).
+          args: ["bootstrap", "-r", "POLARIS", "-c", "POLARIS,root,polaris-root-local-dev"]
+          env:
+            - { name: QUARKUS_DATASOURCE_DB_KIND, value: postgresql }
+            - { name: QUARKUS_DATASOURCE_USERNAME, value: polaris }
+            - name: QUARKUS_DATASOURCE_PASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: POLARIS_DB_PASSWORD } }
+            - { name: QUARKUS_DATASOURCE_JDBC_URL, value: "jdbc:postgresql://postgres.chd.svc.cluster.local:5432/polaris" }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: polaris
+  namespace: chd
+  labels: { app: polaris }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: polaris }
+  template:
+    metadata:
+      labels: { app: polaris }
+    spec:
+      initContainers:
+        # Wait until the bootstrap Job has populated polaris_schema, so the
+        # server doesn't crash-loop on an un-bootstrapped realm.
+        - name: wait-bootstrap
+          image: postgres:16
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              until psql -h postgres.chd.svc.cluster.local -U polaris -d polaris \
+                    -tAc "SELECT 1 FROM polaris_schema.version LIMIT 1" >/dev/null 2>&1; do
+                echo "waiting for polaris bootstrap..."; sleep 3
+              done
+              echo "bootstrap present"
+          env:
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: POLARIS_DB_PASSWORD } }
+      containers:
+        - name: polaris
+          image: apache/polaris:1.6.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: catalog, containerPort: 8181 }
+            - { name: mgmt, containerPort: 8182 }
+          env:
+            - { name: QUARKUS_DATASOURCE_DB_KIND, value: postgresql }
+            - { name: QUARKUS_DATASOURCE_USERNAME, value: polaris }
+            - name: QUARKUS_DATASOURCE_PASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: POLARIS_DB_PASSWORD } }
+            - { name: QUARKUS_DATASOURCE_JDBC_URL, value: "jdbc:postgresql://postgres.chd.svc.cluster.local:5432/polaris" }
+            - { name: POLARIS_PERSISTENCE_TYPE, value: relational-jdbc }
+            - { name: POLARIS_REALM_CONTEXT_REALMS, value: POLARIS }
+            # S3 access to Garage for catalog storage. stsUnavailable=true on the
+            # catalog means Polaris uses these static creds directly (no STS).
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: garage-credentials, key: AWS_ACCESS_KEY_ID } }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: garage-credentials, key: AWS_SECRET_ACCESS_KEY } }
+            - name: AWS_REGION
+              valueFrom: { secretKeyRef: { name: garage-credentials, key: region } }
+            # AWS SDK v2's default trailer checksums make Garage reject writes with
+            # "Invalid payload signature"; restrict to when-required. (Validated.)
+            - { name: AWS_REQUEST_CHECKSUM_CALCULATION, value: when_required }
+            - { name: AWS_RESPONSE_CHECKSUM_VALIDATION, value: when_required }
+            # Pin the heap to ~50% of the reduced 1Gi limit (~512Mi, same as it
+            # effectively used before) so the smaller container doesn't starve
+            # the JVM of its container-aware default heap.
+            - { name: JAVA_OPTS_APPEND, value: "-XX:MaxRAMPercentage=50.0" }
+          readinessProbe:
+            httpGet: { path: /q/health, port: 8182 }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /q/health/live, port: 8182 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { memory: "1Gi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: polaris
+  namespace: chd
+  labels: { app: polaris }
+spec:
+  selector: { app: polaris }
+  ports:
+    - { name: catalog, port: 8181, targetPort: 8181 }
+    - { name: mgmt, port: 8182, targetPort: 8182 }
+---
+# NodePort so the host reaches the catalog API at localhost:8181.
+apiVersion: v1
+kind: Service
+metadata:
+  name: polaris-nodeport
+  namespace: chd
+spec:
+  type: NodePort
+  selector: { app: polaris }
+  ports:
+    - { name: catalog, port: 8181, targetPort: 8181, nodePort: 30818 }

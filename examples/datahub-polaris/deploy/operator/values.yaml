@@ -1,0 +1,48 @@
+# semantic-operator Helm values for the local kind cluster. Images are built
+# and kind-loaded by operator-build.sh (chd/manager:local, chd/server:local),
+# so pullPolicy=IfNotPresent must find them locally. StarRocks is the engine;
+# caching (Valkey) is disabled; the catalog is the Polaris-backed 'iceberg'.
+image:
+  repository: chd
+  tag: local
+  pullPolicy: IfNotPresent
+
+engine:
+  type: starrocks
+
+# Passwordless dev StarRocks FE in namespace chd. engine.host is empty, so the
+# legacy starrocks.host below is used.
+starrocks:
+  host: chd-fe-service.chd.svc.cluster.local
+  port: 9030
+  user: root
+  icebergCatalog: iceberg
+
+# Caching disabled on the host.
+valkey:
+  addr: ""
+
+# Unused locally (no Glue catalog source at runtime); kept non-empty for the
+# manager's AWS config init.
+aws:
+  region: us-east-1
+
+manager:
+  replicas: 1
+  leaderElect: true
+  resyncPeriod: 5m
+  viewDatabase: semantic_views
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 256Mi}
+
+server:
+  replicas: 1
+  logLevel: info
+  listenPort: 8090
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 256Mi}
+  service:
+    type: ClusterIP
+    port: 8090
