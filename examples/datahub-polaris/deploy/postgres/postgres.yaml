@@ -1,0 +1,93 @@
+# Shared Postgres 16 for the local demo: one instance, two databases —
+#   polaris  (Polaris Iceberg REST catalog metastore)
+#   datahub  (DataHub relational store; replaces the bundled MySQL)
+#
+# Storage is a hostPath under the kind host-mount so it (and therefore the
+# loaded catalog + DataHub metadata) survives `kind delete`. Passwords here are
+# LOCAL-DEV-ONLY placeholders; this is not a secret store.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-credentials
+  namespace: chd
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: postgres-local-dev      # superuser
+  POLARIS_DB_PASSWORD: polaris-local-dev
+  DATAHUB_DB_PASSWORD: datahub-local-dev
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: chd
+data:
+  # Runs only on first initialization (empty PGDATA). Creates the two app
+  # roles + databases. Passwords are injected from the Secret via env.
+  10-databases.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-SQL
+      CREATE ROLE polaris LOGIN PASSWORD '${POLARIS_DB_PASSWORD}';
+      CREATE DATABASE polaris OWNER polaris;
+      CREATE ROLE datahub LOGIN PASSWORD '${DATAHUB_DB_PASSWORD}';
+      CREATE DATABASE datahub OWNER datahub;
+    SQL
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: chd
+  labels: { app: postgres }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }        # single hostPath volume; never two pods at once
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: postgres, containerPort: 5432 }
+          env:
+            - { name: POSTGRES_USER, value: postgres }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: POSTGRES_PASSWORD } }
+            - name: POLARIS_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: POLARIS_DB_PASSWORD } }
+            - name: DATAHUB_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: postgres-credentials, key: DATAHUB_DB_PASSWORD } }
+            # Subdir so Postgres does not fight lost+found on the mount root.
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: init, mountPath: /docker-entrypoint-initdb.d }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "postgres"] }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { memory: "1Gi" }
+      volumes:
+        - name: data
+          hostPath: { path: /mnt/local-data/postgres, type: DirectoryOrCreate }
+        - name: init
+          configMap: { name: postgres-init, defaultMode: 0755 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: chd
+  labels: { app: postgres }
+spec:
+  selector: { app: postgres }
+  ports:
+    - { name: postgres, port: 5432, targetPort: 5432 }

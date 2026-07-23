@@ -1,0 +1,227 @@
+apiVersion: semantic.ossie.io/v1alpha1
+kind: SemanticModel
+metadata:
+  name: saas-adoption
+  namespace: semantic-system
+spec:
+  connection:
+    catalog: iceberg
+    database: saas_customer_health_demo
+    viewDatabase: semantic_views
+  ossie:
+    name: saas_adoption
+    description: >-
+      SaaS adoption model over daily usage and current account-feature
+      entitlements. Current-window metrics use the fixed 30-day window.
+      licensed_seat_utilization and feature_adoption_rate support only account
+      and feature dimensions, never date dimensions, because entitlement
+      capacity is current and unsnapshotted.
+    datasets:
+      - name: usage_daily
+        source: usage_daily
+        primary_key: [usage_event_id]
+        description: >-
+          Usage fact at account-user-feature-day event or observation grain;
+          current IDs and counters are populated only in the fixed 30-day
+          current window.
+        fields:
+          - name: usage_event_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: usage_event_id}]}
+            description: Usage event identifier.
+          - name: account_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: account_id}]}
+            description: Account identifier.
+          - name: user_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: user_id}]}
+            description: User identifier within an account.
+          - name: feature_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: feature_id}]}
+            description: Product feature identifier.
+          - name: usage_date_sk
+            expression: {dialects: [{dialect: ANSI_SQL, expression: usage_date_sk}]}
+            description: Usage date key.
+          - name: total_events
+            expression: {dialects: [{dialect: ANSI_SQL, expression: total_events}]}
+            description: Total observed product events.
+          - name: error_events
+            expression: {dialects: [{dialect: ANSI_SQL, expression: error_events}]}
+            description: Observed product error events.
+          - name: current_user_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_user_id}]}
+            description: Globally unique account-user ID in the fixed current window; NULL otherwise.
+          - name: current_user_feature_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_user_feature_id}]}
+            description: Globally unique account-user-feature assignment ID in the fixed current window; NULL otherwise.
+          - name: current_account_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_account_id}]}
+            description: Account ID in the fixed current window; NULL otherwise.
+          - name: current_usage_date_sk
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_usage_date_sk}]}
+            description: Usage date key in the fixed current window; NULL otherwise.
+          - name: current_error_events
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_error_events}]}
+            description: Error events in the fixed current window; zero otherwise.
+          - name: current_total_events
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_total_events}]}
+            description: Total events in the fixed current window; zero otherwise.
+
+      - name: account_feature_entitlement
+        source: account_feature_entitlement
+        primary_key: [account_id, feature_id]
+        description: >-
+          Current licensed capacity at one account-feature entitlement per row.
+          Capacity is unsnapshotted, so entitlement metrics do not support date
+          dimensions.
+        fields:
+          - name: account_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: account_id}]}
+            description: Account identifier.
+          - name: feature_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: feature_id}]}
+            description: Product feature identifier.
+          - name: licensed_seats
+            expression: {dialects: [{dialect: ANSI_SQL, expression: licensed_seats}]}
+            description: Current licensed seats for the account-feature pair.
+          - name: eligible_seats
+            expression: {dialects: [{dialect: ANSI_SQL, expression: eligible_seats}]}
+            description: Current seats eligible to adopt the feature.
+          - name: adopted_seats
+            expression: {dialects: [{dialect: ANSI_SQL, expression: adopted_seats}]}
+            description: Current eligible seats that adopted the feature.
+
+      - name: account
+        source: account
+        primary_key: [account_id]
+        description: Account dimension at one company per row.
+        fields:
+          - name: account_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: account_id}]}
+            description: Account identifier.
+          - name: account_name
+            expression: {dialects: [{dialect: ANSI_SQL, expression: account_name}]}
+            description: Company account name.
+          - name: segment
+            expression: {dialects: [{dialect: ANSI_SQL, expression: segment}]}
+            description: Customer segment.
+          - name: region
+            expression: {dialects: [{dialect: ANSI_SQL, expression: region}]}
+            description: Customer region.
+          - name: industry
+            expression: {dialects: [{dialect: ANSI_SQL, expression: industry}]}
+            description: Customer industry.
+          - name: csm_team
+            expression: {dialects: [{dialect: ANSI_SQL, expression: csm_team}]}
+            description: Assigned customer-success team.
+          - name: renewal_date
+            expression: {dialects: [{dialect: ANSI_SQL, expression: renewal_date}]}
+            description: Account renewal date.
+            dimension:
+              is_time: true
+          - name: lifecycle_status
+            expression: {dialects: [{dialect: ANSI_SQL, expression: lifecycle_status}]}
+            description: Account lifecycle status.
+
+      - name: product_feature
+        source: product_feature
+        primary_key: [feature_id]
+        description: Product feature dimension at one licensed feature or module per row.
+        fields:
+          - name: feature_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: feature_id}]}
+            description: Product feature identifier.
+          - name: feature_name
+            expression: {dialects: [{dialect: ANSI_SQL, expression: feature_name}]}
+            description: Product feature name.
+          - name: product_area
+            expression: {dialects: [{dialect: ANSI_SQL, expression: product_area}]}
+            description: Product area containing the feature.
+          - name: criticality
+            expression: {dialects: [{dialect: ANSI_SQL, expression: criticality}]}
+            description: Feature criticality classification.
+
+      - name: date_dim
+        source: date_dim
+        primary_key: [date_sk]
+        description: Calendar date dimension at one date per row.
+        fields:
+          - name: date_sk
+            expression: {dialects: [{dialect: ANSI_SQL, expression: date_sk}]}
+            description: Date surrogate key.
+          - name: date_date
+            expression: {dialects: [{dialect: ANSI_SQL, expression: date_date}]}
+            description: Calendar date.
+            dimension:
+              is_time: true
+          - name: year
+            expression: {dialects: [{dialect: ANSI_SQL, expression: year}]}
+            description: Calendar year.
+          - name: quarter
+            expression: {dialects: [{dialect: ANSI_SQL, expression: quarter}]}
+            description: Calendar quarter number.
+          - name: month
+            expression: {dialects: [{dialect: ANSI_SQL, expression: month}]}
+            description: Calendar month number.
+
+    relationships:
+      - name: usage_to_entitlement
+        from: usage_daily
+        to: account_feature_entitlement
+        from_columns: [account_id, feature_id]
+        to_columns: [account_id, feature_id]
+      - name: entitlement_to_account
+        from: account_feature_entitlement
+        to: account
+        from_columns: [account_id]
+        to_columns: [account_id]
+      - name: entitlement_to_feature
+        from: account_feature_entitlement
+        to: product_feature
+        from_columns: [feature_id]
+        to_columns: [feature_id]
+      - name: usage_to_date
+        from: usage_daily
+        to: date_dim
+        from_columns: [usage_date_sk]
+        to_columns: [date_sk]
+
+    metrics:
+      - name: active_users
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "COUNT(DISTINCT usage_daily.current_user_id)"}]}
+        description: Distinct globally unique users active in the fixed 30-day current window.
+      - name: active_accounts
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "COUNT(DISTINCT usage_daily.current_account_id)"}]}
+        description: Distinct accounts with activity in the fixed 30-day current window.
+      - name: feature_adoption_rate
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "SUM(account_feature_entitlement.adopted_seats) / NULLIF(SUM(account_feature_entitlement.eligible_seats), 0)"}]}
+        description: >-
+          Current adopted eligible seats divided by eligible seats. Query only
+          by account or feature dimensions, never date dimensions, because
+          entitlement capacity is current and unsnapshotted.
+      - name: licensed_seat_utilization
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "COUNT(DISTINCT usage_daily.current_user_feature_id) / NULLIF(SUM(account_feature_entitlement.licensed_seats), 0)"}]}
+        description: >-
+          Current active user-feature seat assignments divided by current
+          account-feature licensed seats. Query only by account or feature
+          dimensions, never date dimensions, because entitlement capacity is
+          current and unsnapshotted.
+      - name: product_error_rate
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "SUM(usage_daily.current_error_events) / NULLIF(SUM(usage_daily.current_total_events), 0)"}]}
+        description: Errors per event in the fixed 30-day current window.
+      - name: active_days
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "COUNT(DISTINCT usage_daily.current_usage_date_sk)"}]}
+        description: Distinct active dates in the fixed 30-day current window.
+
+  governance:
+    defaultRole: platform_analyst
+    roles:
+      - name: platform_analyst
+        allowMetrics: ["*"]
+      - name: na_customer_success
+        allowMetrics: ["*"]
+        rowFilters:
+          - dataset: account
+            predicate: "region = 'NA'"
+      - name: finance_analyst
+        allowMetrics: []
+      - name: privacy_admin
+        allowMetrics: ["*"]

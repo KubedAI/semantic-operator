@@ -1,0 +1,212 @@
+apiVersion: semantic.ossie.io/v1alpha1
+kind: SemanticModel
+metadata:
+  name: saas-support
+  namespace: semantic-system
+spec:
+  connection:
+    catalog: iceberg
+    database: saas_customer_health_demo
+    viewDatabase: semantic_views
+  ossie:
+    name: saas_support
+    description: >-
+      SaaS support model at one ticket per row. Current-period metrics cover
+      the nominal fixed 90-day period but are observed only through June 28,
+      leaving a two-day freshness gap before the June 30 as-of date; they must
+      not be described as complete through June 30.
+    datasets:
+      - name: support_ticket
+        source: support_ticket
+        primary_key: [ticket_id]
+        description: >-
+          Support fact at one ticket per row. Current fields cover the nominal
+          fixed 90-day period but the source is observed only through the June
+          28 cutoff, two days before the June 30 as-of date.
+        fields:
+          - name: ticket_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: ticket_id}]}
+            description: Support ticket identifier.
+          - name: account_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: account_id}]}
+            description: Account identifier.
+          - name: feature_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: feature_id}]}
+            description: Nullable product feature identifier.
+          - name: created_date_sk
+            expression: {dialects: [{dialect: ANSI_SQL, expression: created_date_sk}]}
+            description: Ticket creation date key.
+          - name: requester_email
+            expression: {dialects: [{dialect: ANSI_SQL, expression: requester_email}]}
+            description: Ticket requester email address (PII).
+          - name: subject
+            expression: {dialects: [{dialect: ANSI_SQL, expression: subject}]}
+            description: Ticket subject containing potentially sensitive customer text (PII).
+          - name: status
+            expression: {dialects: [{dialect: ANSI_SQL, expression: status}]}
+            description: Ticket status at the June 28 observation cutoff.
+          - name: escalated_flag
+            expression: {dialects: [{dialect: ANSI_SQL, expression: escalated_flag}]}
+            description: Escalation flag for the ticket.
+          - name: sla_met_flag
+            expression: {dialects: [{dialect: ANSI_SQL, expression: sla_met_flag}]}
+            description: SLA-attainment flag for the ticket.
+          - name: first_response_hours
+            expression: {dialects: [{dialect: ANSI_SQL, expression: first_response_hours}]}
+            description: First-response time in hours.
+          - name: resolution_hours
+            expression: {dialects: [{dialect: ANSI_SQL, expression: resolution_hours}]}
+            description: Resolution time in hours; NULL for unresolved tickets.
+          - name: current_ticket_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_ticket_id}]}
+            description: Ticket ID in the nominal fixed 90-day period observed through June 28; NULL otherwise.
+          - name: current_open_flag
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_open_flag}]}
+            description: In-window ticket still open at the June 28 observation cutoff.
+          - name: current_escalated_flag
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_escalated_flag}]}
+            description: Escalation flag for an in-window ticket observed through June 28.
+          - name: current_sla_met_flag
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_sla_met_flag}]}
+            description: SLA-attainment flag for an in-window ticket observed through June 28.
+          - name: current_first_response_hours
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_first_response_hours}]}
+            description: First-response hours for an in-window ticket; NULL for non-current rows.
+          - name: current_resolution_hours
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_resolution_hours}]}
+            description: Resolution hours for resolved in-window tickets; NULL for unresolved or non-current rows.
+
+      - name: account
+        source: account
+        primary_key: [account_id]
+        description: Account dimension at one company per row.
+        fields:
+          - name: account_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: account_id}]}
+            description: Account identifier.
+          - name: account_name
+            expression: {dialects: [{dialect: ANSI_SQL, expression: account_name}]}
+            description: Company account name.
+          - name: segment
+            expression: {dialects: [{dialect: ANSI_SQL, expression: segment}]}
+            description: Customer segment.
+          - name: region
+            expression: {dialects: [{dialect: ANSI_SQL, expression: region}]}
+            description: Customer region.
+          - name: industry
+            expression: {dialects: [{dialect: ANSI_SQL, expression: industry}]}
+            description: Customer industry.
+          - name: csm_team
+            expression: {dialects: [{dialect: ANSI_SQL, expression: csm_team}]}
+            description: Assigned customer-success team.
+          - name: renewal_date
+            expression: {dialects: [{dialect: ANSI_SQL, expression: renewal_date}]}
+            description: Account renewal date.
+            dimension:
+              is_time: true
+          - name: lifecycle_status
+            expression: {dialects: [{dialect: ANSI_SQL, expression: lifecycle_status}]}
+            description: Account lifecycle status.
+
+      - name: product_feature
+        source: product_feature
+        primary_key: [feature_id]
+        description: Product feature dimension at one licensed feature or module per row.
+        fields:
+          - name: feature_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: feature_id}]}
+            description: Product feature identifier.
+          - name: feature_name
+            expression: {dialects: [{dialect: ANSI_SQL, expression: feature_name}]}
+            description: Product feature name.
+          - name: product_area
+            expression: {dialects: [{dialect: ANSI_SQL, expression: product_area}]}
+            description: Product area containing the feature.
+          - name: criticality
+            expression: {dialects: [{dialect: ANSI_SQL, expression: criticality}]}
+            description: Feature criticality classification.
+
+      - name: date_dim
+        source: date_dim
+        primary_key: [date_sk]
+        description: Calendar date dimension at one date per row.
+        fields:
+          - name: date_sk
+            expression: {dialects: [{dialect: ANSI_SQL, expression: date_sk}]}
+            description: Date surrogate key.
+          - name: date_date
+            expression: {dialects: [{dialect: ANSI_SQL, expression: date_date}]}
+            description: Calendar date.
+            dimension:
+              is_time: true
+          - name: year
+            expression: {dialects: [{dialect: ANSI_SQL, expression: year}]}
+            description: Calendar year.
+          - name: quarter
+            expression: {dialects: [{dialect: ANSI_SQL, expression: quarter}]}
+            description: Calendar quarter number.
+          - name: month
+            expression: {dialects: [{dialect: ANSI_SQL, expression: month}]}
+            description: Calendar month number.
+
+    relationships:
+      - name: ticket_to_account
+        from: support_ticket
+        to: account
+        from_columns: [account_id]
+        to_columns: [account_id]
+      - name: ticket_to_feature
+        from: support_ticket
+        to: product_feature
+        from_columns: [feature_id]
+        to_columns: [feature_id]
+      - name: ticket_to_created_date
+        from: support_ticket
+        to: date_dim
+        from_columns: [created_date_sk]
+        to_columns: [date_sk]
+
+    metrics:
+      - name: ticket_count
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "COUNT(support_ticket.current_ticket_id)"}]}
+        description: Available tickets in the nominal fixed 90-day period, observed only through June 28 with a two-day gap before June 30.
+      - name: open_ticket_count
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "SUM(support_ticket.current_open_flag)"}]}
+        description: In-window tickets still open at the June 28 observation cutoff.
+      - name: escalation_rate
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "SUM(support_ticket.current_escalated_flag) / NULLIF(COUNT(support_ticket.current_ticket_id), 0)"}]}
+        description: Escalated share of current-period tickets observed through June 28.
+      - name: sla_attainment_rate
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "SUM(support_ticket.current_sla_met_flag) / NULLIF(COUNT(support_ticket.current_ticket_id), 0)"}]}
+        description: SLA-met share of current-period tickets observed through June 28.
+      - name: average_first_response_hours
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "AVG(support_ticket.current_first_response_hours)"}]}
+        description: Mean first-response hours; non-current rows are NULL and observations stop June 28.
+      - name: average_resolution_hours
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "AVG(support_ticket.current_resolution_hours)"}]}
+        description: Mean resolution hours over resolved current-period tickets; unresolved and non-current rows are NULL, and observations stop June 28.
+
+  governance:
+    defaultRole: platform_analyst
+    roles:
+      - name: platform_analyst
+        allowMetrics: ["*"]
+        denyFields:
+          - support_ticket.requester_email
+          - support_ticket.subject
+      - name: na_customer_success
+        allowMetrics: ["*"]
+        rowFilters:
+          - dataset: account
+            predicate: "region = 'NA'"
+      - name: finance_analyst
+        allowMetrics: []
+        denyFields:
+          - support_ticket.requester_email
+          - support_ticket.subject
+      - name: privacy_admin
+        allowMetrics: ["*"]
+
+  joins:
+    - relationship: ticket_to_feature
+      type: LEFT

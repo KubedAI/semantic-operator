@@ -1,0 +1,273 @@
+apiVersion: semantic.ossie.io/v1alpha1
+kind: SemanticModel
+metadata:
+  name: saas-revenue
+  namespace: semantic-system
+spec:
+  connection:
+    catalog: iceberg
+    database: saas_customer_health_demo
+    viewDatabase: semantic_views
+  ossie:
+    name: saas_revenue
+    description: >-
+      SaaS revenue model at account-subscription-month grain. Current metrics
+      use the fixed current snapshot, while GRR and NRR use the fixed current
+      retention cohort defined by the generated physical fields.
+    datasets:
+      - name: subscription_monthly
+        source: subscription_monthly
+        primary_key: [subscription_id, snapshot_date_sk]
+        description: >-
+          Monthly subscription fact at account-subscription-month grain;
+          current fields are populated only for the fixed current snapshot.
+        fields:
+          - name: subscription_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: subscription_id}]}
+            description: Subscription identifier.
+          - name: snapshot_date_sk
+            expression: {dialects: [{dialect: ANSI_SQL, expression: snapshot_date_sk}]}
+            description: Snapshot date key.
+          - name: account_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: account_id}]}
+            description: Account identifier.
+          - name: plan_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: plan_id}]}
+            description: Plan identifier.
+          - name: contract_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: contract_id}]}
+            description: Contract identifier.
+          - name: status
+            expression: {dialects: [{dialect: ANSI_SQL, expression: status}]}
+            description: Subscription status at the snapshot.
+          - name: mrr
+            expression: {dialects: [{dialect: ANSI_SQL, expression: mrr}]}
+            description: Monthly recurring revenue at the snapshot.
+          - name: current_account_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_account_id}]}
+            description: Account identifier on positive-MRR current-snapshot rows; otherwise NULL.
+          - name: current_mrr_amount
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_mrr_amount}]}
+            description: MRR on the fixed current snapshot; zero otherwise.
+          - name: current_arr_amount
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_arr_amount}]}
+            description: ARR on the fixed current snapshot; zero otherwise.
+          - name: current_renewal_arr_amount
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_renewal_arr_amount}]}
+            description: Current ARR renewing in the configured renewal horizon; zero otherwise.
+          - name: current_grr_starting_mrr
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_grr_starting_mrr}]}
+            description: Starting MRR for the fixed current GRR cohort.
+          - name: current_grr_retained_mrr
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_grr_retained_mrr}]}
+            description: Retained MRR for the fixed current GRR cohort, excluding expansion and new business.
+          - name: current_nrr_starting_mrr
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_nrr_starting_mrr}]}
+            description: Starting MRR for the fixed current NRR cohort.
+          - name: current_nrr_ending_mrr
+            expression: {dialects: [{dialect: ANSI_SQL, expression: current_nrr_ending_mrr}]}
+            description: Ending MRR for the fixed current NRR cohort, including contraction and expansion but excluding new business.
+
+      - name: account
+        source: account
+        primary_key: [account_id]
+        description: Account dimension at one company per row.
+        fields:
+          - name: account_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: account_id}]}
+            description: Account identifier.
+          - name: account_name
+            expression: {dialects: [{dialect: ANSI_SQL, expression: account_name}]}
+            description: Company account name.
+          - name: segment
+            expression: {dialects: [{dialect: ANSI_SQL, expression: segment}]}
+            description: Customer segment.
+          - name: region
+            expression: {dialects: [{dialect: ANSI_SQL, expression: region}]}
+            description: Customer region.
+          - name: industry
+            expression: {dialects: [{dialect: ANSI_SQL, expression: industry}]}
+            description: Customer industry.
+          - name: csm_team
+            expression: {dialects: [{dialect: ANSI_SQL, expression: csm_team}]}
+            description: Assigned customer-success team.
+          - name: renewal_date
+            expression: {dialects: [{dialect: ANSI_SQL, expression: renewal_date}]}
+            description: Account renewal date.
+            dimension:
+              is_time: true
+          - name: lifecycle_status
+            expression: {dialects: [{dialect: ANSI_SQL, expression: lifecycle_status}]}
+            description: Account lifecycle status.
+
+      - name: account_primary_contact
+        source: account_primary_contact
+        primary_key: [account_id]
+        description: Primary-contact dimension with exactly one synthetic contact per account.
+        fields:
+          - name: account_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: account_id}]}
+            description: Account identifier.
+          - name: full_name
+            expression: {dialects: [{dialect: ANSI_SQL, expression: full_name}]}
+            description: Primary contact full name (PII).
+          - name: email
+            expression: {dialects: [{dialect: ANSI_SQL, expression: email}]}
+            description: Primary contact email address (PII).
+          - name: phone
+            expression: {dialects: [{dialect: ANSI_SQL, expression: phone}]}
+            description: Primary contact phone number (PII).
+          - name: job_title
+            expression: {dialects: [{dialect: ANSI_SQL, expression: job_title}]}
+            description: Primary contact job title (PII).
+
+      - name: plan
+        source: plan
+        primary_key: [plan_id]
+        description: SaaS plan dimension at one plan or SKU per row.
+        fields:
+          - name: plan_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: plan_id}]}
+            description: Plan identifier.
+          - name: plan_name
+            expression: {dialects: [{dialect: ANSI_SQL, expression: plan_name}]}
+            description: Plan name.
+          - name: plan_tier
+            expression: {dialects: [{dialect: ANSI_SQL, expression: plan_tier}]}
+            description: Plan tier.
+          - name: product_family
+            expression: {dialects: [{dialect: ANSI_SQL, expression: product_family}]}
+            description: Product family.
+
+      - name: contract
+        source: contract
+        primary_key: [contract_id]
+        description: Contract dimension at one contract version per row.
+        fields:
+          - name: contract_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: contract_id}]}
+            description: Contract identifier.
+          - name: account_id
+            expression: {dialects: [{dialect: ANSI_SQL, expression: account_id}]}
+            description: Account identifier.
+          - name: contract_start
+            expression: {dialects: [{dialect: ANSI_SQL, expression: contract_start}]}
+            description: Contract start date.
+            dimension:
+              is_time: true
+          - name: contract_end
+            expression: {dialects: [{dialect: ANSI_SQL, expression: contract_end}]}
+            description: Contract end date.
+            dimension:
+              is_time: true
+          - name: negotiated_discount_pct
+            expression: {dialects: [{dialect: ANSI_SQL, expression: negotiated_discount_pct}]}
+            description: Confidential negotiated discount percentage.
+          - name: negotiated_annual_rate
+            expression: {dialects: [{dialect: ANSI_SQL, expression: negotiated_annual_rate}]}
+            description: Confidential negotiated annual rate.
+          - name: contract_value
+            expression: {dialects: [{dialect: ANSI_SQL, expression: contract_value}]}
+            description: Confidential total contract value.
+
+      - name: date_dim
+        source: date_dim
+        primary_key: [date_sk]
+        description: Calendar date dimension at one date per row.
+        fields:
+          - name: date_sk
+            expression: {dialects: [{dialect: ANSI_SQL, expression: date_sk}]}
+            description: Date surrogate key.
+          - name: date_date
+            expression: {dialects: [{dialect: ANSI_SQL, expression: date_date}]}
+            description: Calendar date.
+            dimension:
+              is_time: true
+          - name: year
+            expression: {dialects: [{dialect: ANSI_SQL, expression: year}]}
+            description: Calendar year.
+          - name: quarter
+            expression: {dialects: [{dialect: ANSI_SQL, expression: quarter}]}
+            description: Calendar quarter number.
+          - name: month
+            expression: {dialects: [{dialect: ANSI_SQL, expression: month}]}
+            description: Calendar month number.
+
+    relationships:
+      - name: subscription_to_account
+        from: subscription_monthly
+        to: account
+        from_columns: [account_id]
+        to_columns: [account_id]
+      - name: account_to_primary_contact
+        from: account
+        to: account_primary_contact
+        from_columns: [account_id]
+        to_columns: [account_id]
+      - name: subscription_to_plan
+        from: subscription_monthly
+        to: plan
+        from_columns: [plan_id]
+        to_columns: [plan_id]
+      - name: subscription_to_contract
+        from: subscription_monthly
+        to: contract
+        from_columns: [contract_id]
+        to_columns: [contract_id]
+      - name: subscription_to_snapshot_date
+        from: subscription_monthly
+        to: date_dim
+        from_columns: [snapshot_date_sk]
+        to_columns: [date_sk]
+
+    metrics:
+      - name: monthly_recurring_revenue
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "SUM(subscription_monthly.current_mrr_amount)"}]}
+        description: Current snapshot MRR; the physical current field is zero outside the fixed current snapshot.
+      - name: current_annual_recurring_revenue
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "SUM(subscription_monthly.current_arr_amount)"}]}
+        description: Current snapshot ARR.
+      - name: renewal_annual_value
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "SUM(subscription_monthly.current_renewal_arr_amount)"}]}
+        description: Current ARR whose contract renews in the configured renewal horizon.
+      - name: gross_revenue_retention
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "SUM(subscription_monthly.current_grr_retained_mrr) / NULLIF(SUM(subscription_monthly.current_grr_starting_mrr), 0)"}]}
+        description: Fixed current retention cohort; excludes expansion and new business.
+      - name: net_revenue_retention
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "SUM(subscription_monthly.current_nrr_ending_mrr) / NULLIF(SUM(subscription_monthly.current_nrr_starting_mrr), 0)"}]}
+        description: Same fixed cohort as GRR; includes contraction and expansion and excludes new business.
+      - name: average_revenue_per_account
+        expression: {dialects: [{dialect: ANSI_SQL, expression: "SUM(subscription_monthly.current_mrr_amount) / NULLIF(COUNT(DISTINCT subscription_monthly.current_account_id), 0)"}]}
+        description: Current MRR per account represented in the current snapshot; current_account_id is NULL on historical rows.
+
+  governance:
+    defaultRole: platform_analyst
+    roles:
+      - name: platform_analyst
+        allowMetrics: ["*"]
+        denyFields:
+          - account_primary_contact.full_name
+          - account_primary_contact.email
+          - account_primary_contact.phone
+          - account_primary_contact.job_title
+          - contract.negotiated_discount_pct
+          - contract.negotiated_annual_rate
+          - contract.contract_value
+      - name: na_customer_success
+        allowMetrics: ["*"]
+        denyFields:
+          - contract.negotiated_discount_pct
+          - contract.negotiated_annual_rate
+          - contract.contract_value
+        rowFilters:
+          - dataset: account
+            predicate: "region = 'NA'"
+      - name: finance_analyst
+        allowMetrics: ["*"]
+        denyFields:
+          - account_primary_contact.full_name
+          - account_primary_contact.email
+          - account_primary_contact.phone
+          - account_primary_contact.job_title
+      - name: privacy_admin
+        allowMetrics: ["*"]

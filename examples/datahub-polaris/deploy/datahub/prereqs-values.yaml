@@ -1,0 +1,37 @@
+# DataHub prerequisites for the local kind cluster.
+#
+# The bundled MySQL and neo4j are OFF: DataHub stores relational metadata in the
+# shared Postgres 'datahub' database (see deploy/postgres) and uses the
+# Elasticsearch-backed graph (global.graph_service_impl=elasticsearch). What
+# remains is OpenSearch (single node) and Kafka (KRaft, single controller, no
+# ZooKeeper) — the chart defaults are already single-node/kind-friendly; we only
+# disable MySQL and trim heap/resources to fit a single node.
+#
+# NOTE: install this release as 'prerequisites' so the service names DataHub
+# expects by default (prerequisites-kafka, opensearch-cluster-master) resolve.
+
+elasticsearch:
+  enabled: false
+
+opensearch:
+  enabled: true
+  singleNode: true
+  opensearchJavaOpts: "-Xms512m -Xmx512m"
+  resources:
+    requests: {cpu: "100m", memory: "1024Mi"}
+    limits: {memory: "1536Mi"}
+  persistence:
+    size: 3Gi
+
+neo4j:
+  enabled: false
+
+mysql:
+  enabled: false
+
+# The chart's bundled Kafka is a bitnami image (no longer maintained), so it is
+# disabled here. A single-node Apache Kafka (KRaft) is deployed separately via
+# deploy/datahub/kafka.yaml, as Service 'prerequisites-kafka' — the same name
+# the chart would have used — so DataHub's kafka bootstrap is unchanged.
+kafka:
+  enabled: false

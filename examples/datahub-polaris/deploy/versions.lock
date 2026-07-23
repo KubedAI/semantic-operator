@@ -1,0 +1,41 @@
+# Pinned versions for the local kind demo. Change deliberately; every
+# value here is loaded once and reused so a cluster recreate needs no re-pull.
+#
+# amd64 only. Image repo/tag names marked (confirm-on-pull) could not be
+# verified from the authoring sandbox (no network); the first `make images-pull`
+# will surface any wrong reference immediately.
+
+# --- Tooling ---
+KIND_VERSION=v0.32.0
+# Both v1.32.11 and v1.35.0 node images are cached locally. v1.35.0 selected.
+KIND_NODE_IMAGE=kindest/node:v1.35.0
+
+# --- Component versions ---
+STARROCKS_VERSION=4.0.13
+POLARIS_VERSION=1.6.0
+GARAGE_VERSION=v2.3.0
+DATAHUB_HELM_CHART_VERSION=1.0.3
+POSTGRES_MAJOR=16
+
+# Resolved by the first `make charts-vendor` run (it prints available versions).
+# Pin them here, then re-run charts-vendor to actually pull.
+DATAHUB_PREREQ_CHART_VERSION=0.3.0
+# kube-starrocks 1.11.6 default appVersion is 4.1-latest; we override the FE/CN
+# image tag to STARROCKS_VERSION (4.0.13) via chart values.
+KUBE_STARROCKS_CHART_VERSION=1.11.6
+
+# --- Images I control directly (raw manifests) (confirm-on-pull) ---
+GARAGE_IMAGE=dxflrs/garage:v2.3.0
+POLARIS_IMAGE=apache/polaris:1.6.0
+POSTGRES_IMAGE=postgres:16
+STARROCKS_FE_IMAGE=starrocks/fe-ubuntu:4.0.13
+STARROCKS_CN_IMAGE=starrocks/cn-ubuntu:4.0.13
+# Apache Kafka (KRaft) deployed via deploy/datahub/kafka.yaml — replaces the
+# DataHub prerequisites chart's unmaintained bundled broker image.
+KAFKA_IMAGE=apache/kafka:3.9.0
+
+# --- Images resolved from vendored charts after `make charts-vendor` ---
+# DataHub GMS/frontend + prerequisites (OpenSearch only; Kafka is deployed
+# separately from an upstream Apache image, and the bundled MySQL/neo4j are off)
+# are enumerated by `make charts-images` (helm template on the vendored chart)
+# and written to deploy/images/images.txt. Do not hand-maintain them here.

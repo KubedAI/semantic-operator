@@ -1,0 +1,94 @@
+# Single-node Apache Kafka (official apache/kafka image, KRaft mode) for the
+# local demo. Replaces the DataHub prerequisites chart's bundled Kafka, which
+# shipped a bitnami image (bitnami/bitnamilegacy is no longer maintained).
+#
+# The Service is named 'prerequisites-kafka' so DataHub's default bootstrap
+# (global.kafka.bootstrap.server=prerequisites-kafka:9092) resolves unchanged.
+# Combined broker+controller in one pod; PLAINTEXT only (in-cluster, dev). Data
+# persists on a PVC (kind's default storage class) across pod restarts.
+apiVersion: v1
+kind: Service
+metadata:
+  name: prerequisites-kafka
+  namespace: datahub
+  labels: { app: prerequisites-kafka }
+spec:
+  selector: { app: prerequisites-kafka }
+  ports:
+    - { name: broker, port: 9092, targetPort: 9092 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prerequisites-kafka-hl
+  namespace: datahub
+  labels: { app: prerequisites-kafka }
+spec:
+  clusterIP: None
+  selector: { app: prerequisites-kafka }
+  ports:
+    - { name: broker, port: 9092, targetPort: 9092 }
+    - { name: controller, port: 9093, targetPort: 9093 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prerequisites-kafka
+  namespace: datahub
+  labels: { app: prerequisites-kafka }
+spec:
+  serviceName: prerequisites-kafka-hl
+  replicas: 1
+  selector:
+    matchLabels: { app: prerequisites-kafka }
+  template:
+    metadata:
+      labels: { app: prerequisites-kafka }
+    spec:
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+      containers:
+        - name: kafka
+          image: apache/kafka:3.9.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: broker, containerPort: 9092 }
+            - { name: controller, containerPort: 9093 }
+          env:
+            # KRaft combined single node.
+            - { name: KAFKA_NODE_ID, value: "1" }
+            - { name: KAFKA_PROCESS_ROLES, value: "broker,controller" }
+            - { name: KAFKA_CONTROLLER_QUORUM_VOTERS, value: "1@localhost:9093" }
+            - { name: KAFKA_LISTENERS, value: "PLAINTEXT://:9092,CONTROLLER://:9093" }
+            - { name: KAFKA_ADVERTISED_LISTENERS, value: "PLAINTEXT://prerequisites-kafka.datahub.svc.cluster.local:9092" }
+            - { name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP, value: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT" }
+            - { name: KAFKA_CONTROLLER_LISTENER_NAMES, value: "CONTROLLER" }
+            - { name: KAFKA_INTER_BROKER_LISTENER_NAME, value: "PLAINTEXT" }
+            - { name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR, value: "1" }
+            - { name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR, value: "1" }
+            - { name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR, value: "1" }
+            - { name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS, value: "0" }
+            - { name: KAFKA_NUM_PARTITIONS, value: "1" }
+            - { name: KAFKA_AUTO_CREATE_TOPICS_ENABLE, value: "true" }
+            # Fixed cluster id so the log dir formats deterministically. Must be
+            # a base64url-encoded 16-byte UUID (22 chars) or kafka-storage rejects it.
+            - { name: CLUSTER_ID, value: "4L6g3nShT-eMCtK--X86sw" }
+            - { name: KAFKA_LOG_DIRS, value: "/var/lib/kafka/data" }
+            - { name: KAFKA_HEAP_OPTS, value: "-Xmx768m -Xms768m" }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/kafka/data }
+          readinessProbe:
+            tcpSocket: { port: 9092 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "100m", memory: "768Mi" }
+            limits: { memory: "1280Mi" }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests: { storage: 3Gi }
