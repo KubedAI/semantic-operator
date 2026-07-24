@@ -9,7 +9,7 @@ Polaris, queried by StarRocks, governed by the Semantic Operator, and surfaced
 for discovery in DataHub.
 
 
-## Architecture (all in-cluster, single node, no Argo)
+## Architecture
 
 ```
 host ──► kind (1 node) ──┬─ Garage             S3-compatible object store (Iceberg data)
@@ -20,13 +20,8 @@ host ──► kind (1 node) ──┬─ Garage             S3-compatible objec
                          └─ DataHub            GMS + frontend + OpenSearch + Kafka; Iceberg ingestion from Polaris
 ```
 
-The interactive LLM agent runs **on the host** (not in-cluster) and is the
-final piece, added only after everything above is solid.
 
 ## How it works (through the agent's eyes)
-
-> **Planned.** The agent is the last piece and isn't built in this
-> example yet — this is the intended behavior.
 
 One agent answers a question by composing both MCP servers, with a strict split:
 
@@ -53,6 +48,18 @@ If DataHub is unavailable, discovery and trust questions fail rather than guess.
 - **amd64** host.
 - Substantial resources. DataHub's OpenSearch + Kafka dominate;
   budget **~10 GB RAM** and several CPUs for the Docker VM.
+- **inotify limits.** A single node running this many pods can exhaust the
+  host's default inotify limits — you may see pods crash-loop with
+  `too many open files` or `User limit of inotify instances reached`. 
+  If that happens, raise the limits on the host and restart the affected pod:
+
+  ```bash
+  sudo tee /etc/sysctl.d/99-kind-inotify.conf >/dev/null <<'EOF'
+  fs.inotify.max_user_instances = 1024
+  fs.inotify.max_user_watches   = 1048576
+  EOF
+  sudo sysctl --system
+  ```
 
 ## Offline / one-time fetch
 
@@ -119,8 +126,34 @@ make operator-build operator-up models-apply
 make datahub-up datahub-ingest datahub-enrich
 ```
 
-The interactive local agent runs on the host and is added last. The steps and
-their order mirror the pipeline map at the top of the [`Makefile`](Makefile).
+8. Build and deploy the DataHub MCP server, then ask questions interactively.
+   `make agent` needs an OpenAI-compatible LLM endpoint — for Amazon Bedrock,
+   set `OPENAI_BASE_URL` to the `bedrock-mantle` endpoint, `OPENAI_API_KEY` to a
+   Bedrock API key, and `BEDROCK_MODEL_ID` to a model that supports the
+   **Responses API and tool calling** (e.g. the `gpt-5.6` family):
+
+```bash
+make datahub-mcp-build datahub-mcp-up
+export OPENAI_BASE_URL="https://bedrock-mantle.<region>.api.aws/openai/v1"
+export OPENAI_API_KEY="<your Bedrock API key>"
+export BEDROCK_MODEL_ID="<your enabled model id>"
+make agent                       # or: make agent ROLE=finance_analyst
+```
+
+Then ask questions in the REPL. See [`agent/`](agent/README.md) for example
+questions, the governance roles (`ROLE=`), and what to check in the results.
+Step order mirrors the pipeline map at the top of the [`Makefile`](Makefile).
+
+## Teardown
+
+`make cluster-down` deletes the kind cluster but preserves the persisted host
+state under `data/` (Garage objects + Postgres), so a rebuild reuses the loaded
+data. To reset completely, remove it:
+
+```bash
+make cluster-down     # delete the kind cluster (data/ preserved)
+rm -rf data/          # drop the persisted Garage + Postgres state for a clean slate
+```
 
 ## Datasets
 

@@ -26,7 +26,9 @@ nodes:
       - { containerPort: 30803, hostPort: 8030, protocol: TCP }
       # Semantic Operator server (MCP + REST) — the host agent connects here
       - { containerPort: 30809, hostPort: 8090, protocol: TCP }
-      # DataHub GMS (metadata API + the DataHub MCP server)
+      # DataHub GMS (metadata API)
       - { containerPort: 30808, hostPort: 8080, protocol: TCP }
+      # DataHub MCP server (the host agent connects here)
+      - { containerPort: 30811, hostPort: 8091, protocol: TCP }
       # DataHub frontend UI
       - { containerPort: 30902, hostPort: 9002, protocol: TCP }

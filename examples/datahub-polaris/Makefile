@@ -17,6 +17,9 @@
 #     make data-load
 #     make operator-build operator-up models-apply
 #     make datahub-up datahub-ingest datahub-enrich
+#   Ask questions interactively (needs an OpenAI-compatible LLM endpoint):
+#     make datahub-mcp-build datahub-mcp-up
+#     make agent
 #   Tear down (host data/ is preserved):
 #     make cluster-down
 #
@@ -146,6 +149,26 @@ datahub-ingest: ## Ingest Iceberg tables (Polaris chd) into DataHub via uv (clie
 .PHONY: datahub-enrich
 datahub-enrich: ## Enrich ingested datasets with semantic metadata via uv (client-side)
 	@bash $(SCRIPTS)/datahub-enrich.sh
+
+# =============================================================================
+# Interactive agent — a host-side analyst that composes the Semantic Operator
+# MCP and the in-cluster DataHub MCP over an OpenAI-compatible LLM endpoint
+# (Amazon Bedrock's bedrock-mantle). The model never writes SQL.
+# =============================================================================
+.PHONY: datahub-mcp-build
+datahub-mcp-build: ## Build + kind-load the DataHub MCP server image (installs mcp-server-datahub from PyPI)
+	@bash $(SCRIPTS)/datahub-mcp-build.sh
+
+.PHONY: datahub-mcp-up
+datahub-mcp-up: ## Deploy the in-cluster DataHub MCP server (namespace datahub)
+	@bash $(SCRIPTS)/datahub-mcp-up.sh
+
+.PHONY: agent
+agent: ## Run the interactive agent (set OPENAI_BASE_URL, OPENAI_API_KEY, BEDROCK_MODEL_ID; optional ROLE=, QUESTION=)
+	@cd $(LOCAL_DIR)/agent && \
+	  SEMANTIC_MCP_URL="$${SEMANTIC_MCP_URL:-http://localhost:8090/mcp}" \
+	  DATAHUB_MCP_URL="$${DATAHUB_MCP_URL:-http://localhost:8091/mcp}" \
+	  go run . $(if $(ROLE),-role $(ROLE),) $(if $(QUESTION),-question "$(QUESTION)",)
 
 # =============================================================================
 # Teardown + utilities
