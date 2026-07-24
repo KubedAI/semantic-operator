@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Enrich the ingested Iceberg datasets with the semantic-operator
 # metadata (structured properties, glossary, ownership, PII/confidential tags,
-# certification/deprecation, lineage). Runs the shared enrichment engine
-# client-side via uv (PEP 723 inline deps in datahub_enrich.py) against the GMS
-# NodePort. Uses the local metadata (physical_table bound to the iceberg
-# catalog) and the same platform/instance the ingestion emitted.
+# certification/deprecation, lineage). Runs the enrichment engine client-side
+# via uv (PEP 723 inline deps in enrich.py) against the GMS NodePort. Uses the
+# local metadata (physical_table bound to the iceberg catalog) and the same
+# platform/instance the ingestion emitted.
 #
 # Extra args pass through, e.g.:  make datahub-enrich ARGS=--dry-run
 . "$(dirname "$0")/lib.sh"
