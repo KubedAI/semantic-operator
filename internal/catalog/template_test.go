@@ -3,6 +3,7 @@ package catalog_test
 import (
 	"bytes"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -76,6 +77,28 @@ func TestRenderTemplate_ValidOutOfBox(t *testing.T) {
 	}
 }
 
+func TestRenderTemplate_Golden(t *testing.T) {
+	var buf bytes.Buffer
+	opts := catalog.TemplateOptions{
+		CRName:    "derived-model",
+		Namespace: "semantic-system",
+		Catalog:   "glue",
+		Database:  "tpcds_3tb",
+		Model:     "tpcds_3tb_model",
+	}
+	if err := catalog.RenderTemplate(&buf, opts, sampleTables()); err != nil {
+		t.Fatalf("RenderTemplate: %v", err)
+	}
+
+	want, err := os.ReadFile("testdata/semanticmodel.golden.yaml")
+	if err != nil {
+		t.Fatalf("read golden file: %v", err)
+	}
+	if !bytes.Equal(buf.Bytes(), want) {
+		t.Errorf("rendered template differs from golden file\n--- want\n%s\n--- got\n%s", want, buf.Bytes())
+	}
+}
+
 // TestRenderTemplate_TimeDimensionAndFields checks physical extraction: fields
 // are populated, is_time is set on date columns, and descriptions are carried.
 func TestRenderTemplate_TimeDimensionAndFields(t *testing.T) {
@@ -143,6 +166,94 @@ func TestRenderTemplate_EdgeCases(t *testing.T) {
 	}
 }
 
+func TestRenderTemplate_QuotesDynamicStrings(t *testing.T) {
+	comment := "line one\nline \"two\" \\ done"
+	tables := []catalog.Table{{
+		Name: "true",
+		Columns: []catalog.Column{{
+			Name:    "null",
+			Type:    "varchar",
+			Comment: comment,
+		}},
+	}}
+	opts := catalog.TemplateOptions{
+		CRName:    "true",
+		Namespace: "null",
+		Catalog:   "catalog: prod #1",
+		Database:  "2026",
+		Model:     "false",
+	}
+
+	var buf bytes.Buffer
+	if err := catalog.RenderTemplate(&buf, opts, tables); err != nil {
+		t.Fatalf("RenderTemplate: %v", err)
+	}
+	var cr v1alpha1.SemanticModel
+	if err := yaml.UnmarshalStrict(buf.Bytes(), &cr); err != nil {
+		t.Fatalf("quoted template is not parseable YAML: %v\n---\n%s", err, buf.String())
+	}
+
+	if cr.Name != opts.CRName || cr.Namespace != opts.Namespace {
+		t.Errorf("metadata = %q/%q, want %q/%q", cr.Namespace, cr.Name, opts.Namespace, opts.CRName)
+	}
+	if cr.Spec.Connection.Catalog != opts.Catalog || cr.Spec.Connection.Database != opts.Database {
+		t.Errorf("connection = %+v, want catalog=%q database=%q", cr.Spec.Connection, opts.Catalog, opts.Database)
+	}
+	if cr.Spec.Ossie.Name != opts.Model {
+		t.Errorf("ossie.name = %q, want %q", cr.Spec.Ossie.Name, opts.Model)
+	}
+	dataset := cr.Spec.Ossie.FindDataset("true")
+	if dataset == nil {
+		t.Fatal("quoted dataset name did not round-trip")
+	}
+	field := dataset.FindField("null")
+	if field == nil || field.Description != comment {
+		t.Errorf("quoted field did not round-trip: %+v", field)
+	}
+
+	for _, want := range []string{
+		`name: "true"`,
+		`namespace: "null"`,
+		`catalog: "catalog: prod #1"`,
+		`database: "2026"`,
+		`name: "false"`,
+		`description: "line one\nline \"two\" \\ done"`,
+	} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("rendered template missing quoted value %q\n%s", want, buf.String())
+		}
+	}
+}
+
+func TestRenderTemplate_QuotesUnicodeLineSeparatorInRelationshipComment(t *testing.T) {
+	tables := []catalog.Table{
+		{
+			Name:    "orders",
+			Columns: []catalog.Column{{Name: "o_item_sk", Type: "bigint"}},
+		},
+		{
+			Name:    "item_\u2028injected",
+			Columns: []catalog.Column{{Name: "i_item_sk", Type: "bigint"}},
+		},
+	}
+	opts := catalog.TemplateOptions{CRName: "m", Namespace: "ns", Catalog: "glue", Database: "db", Model: "m"}
+
+	var buf bytes.Buffer
+	if err := catalog.RenderTemplate(&buf, opts, tables); err != nil {
+		t.Fatalf("RenderTemplate: %v", err)
+	}
+	var cr v1alpha1.SemanticModel
+	if err := yaml.UnmarshalStrict(buf.Bytes(), &cr); err != nil {
+		t.Fatalf("template with Unicode line separator is not parseable YAML: %v\n---\n%s", err, buf.String())
+	}
+	if strings.Contains(buf.String(), "\u2028") {
+		t.Fatalf("relationship comment contains an unescaped Unicode line separator:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), `\u2028`) {
+		t.Fatalf("relationship comment does not contain the escaped Unicode line separator:\n%s", buf.String())
+	}
+}
+
 // TestRenderTemplate_WriteError verifies write failures are surfaced rather than
 // silently swallowed.
 func TestRenderTemplate_WriteError(t *testing.T) {
@@ -181,7 +292,7 @@ func TestRenderTemplate_Placeholders(t *testing.T) {
 
 	// Candidate relationships should be inferred from the *_sk naming and
 	// emitted commented-out (never as live relationships).
-	if !strings.Contains(out, "#  - name: store_sales_to_store") {
+	if !strings.Contains(out, `#  - name: "store_sales_to_store"`) {
 		t.Errorf("expected commented candidate relationship store_sales_to_store, got:\n%s", out)
 	}
 }
