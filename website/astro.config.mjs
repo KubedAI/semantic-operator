@@ -27,6 +27,7 @@ export default defineConfig({
       { icon: 'github', label: 'GitHub', href: 'https://github.com/KubedAI/semantic-operator' },
     ],
     customCss: ['./src/styles/theme.css'],
+    components: { Hero: './src/components/Hero.astro' },
     editLink: {
       baseUrl: 'https://github.com/KubedAI/semantic-operator/edit/main/website/',
     },

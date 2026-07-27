@@ -80,8 +80,33 @@ for (const file of files) {
       if (href.startsWith('http')) external.add(href);
       continue;
     }
-    if (href.startsWith('mailto:') || href.startsWith('#') || !href.startsWith('/')) continue;
+    if (href.startsWith('mailto:') || href.startsWith('#')) continue;
+    if (/^(data|javascript|tel):/.test(href) || href.startsWith('?')) continue;
+
+    // A relative link resolves against the current URL, so it silently depends
+    // on whether that URL ends in a slash. /semantic-operator and
+    // /semantic-operator/ send it to two different places, and the dev server
+    // prints the version without the slash. Every internal link is written
+    // root-relative and has the base applied for it, so a relative one is a
+    // mistake even when the page it names exists.
+    if (!href.startsWith('/')) {
+      if (!ASSET.test(href)) {
+        problems.push({
+          from,
+          href,
+          why: 'relative link. Write it root-relative, starting with /, so the base is applied',
+        });
+      }
+      continue;
+    }
     if (ASSET.test(href)) continue;
+
+    // A root-relative link that never got the base is broken everywhere except
+    // when the base is /.
+    if (BASE !== '' && !href.startsWith(`${BASE}/`) && href !== BASE) {
+      problems.push({ from, href, why: `internal link is missing the base ${BASE}` });
+      continue;
+    }
 
     const [rawPath, fragment] = href.split('#');
     const path = rawPath.replace(/\/$/, '') || BASE;

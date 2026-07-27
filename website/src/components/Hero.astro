@@ -1,0 +1,41 @@
+---
+/*
+  Starlight passes each hero action's `link` straight through to the anchor
+  without applying the site base. A link written as `start/quickstart` is
+  therefore relative and resolves against whatever the current URL happens to
+  be. At /semantic-operator/ that gives the right page, but at
+  /semantic-operator, with no trailing slash, the browser drops the last
+  segment and asks for /start/quickstart, which does not exist. Astro's dev
+  server prints the URL without the trailing slash, so this is the common case.
+
+  Prefix root-relative action links with the base, matching how links in page
+  content are handled by plugins/base-links.mjs. Authors write `/start/quickstart`
+  and the base is applied in one place.
+*/
+import Default from '@astrojs/starlight/components/Hero.astro';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const route = Astro.locals.starlightRoute;
+const hero = route.entry.data.hero;
+
+if (hero?.actions?.length) {
+  // Copied rather than mutated. The entry comes from the content collection and
+  // is shared between renders, so writing to it in place would compound.
+  route.entry = {
+    ...route.entry,
+    data: {
+      ...route.entry.data,
+      hero: {
+        ...hero,
+        actions: hero.actions.map((action) =>
+          action.link.startsWith('/') && !action.link.startsWith(`${base}/`)
+            ? { ...action, link: `${base}${action.link}` }
+            : action
+        ),
+      },
+    },
+  };
+}
+---
+
+<Default><slot /></Default>
