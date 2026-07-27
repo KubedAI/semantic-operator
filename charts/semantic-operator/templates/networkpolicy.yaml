@@ -1,0 +1,88 @@
+{{- /* Nil-safe: `helm upgrade --reuse-values` replays values stored before
+     this key existed, so .Values.networkPolicy can be absent entirely. */ -}}
+{{- $np := .Values.networkPolicy | default dict -}}
+{{- if $np.enabled }}
+{{/*
+  Ingress lockdown. The semantic server answers governed queries, so only
+  callers you name should reach it. Without a policy any pod in the cluster
+  can open a connection and assert an identity, which is the same class of
+  problem as exposing the Service publicly.
+
+  Allowed by default: pods in this release's namespace. Anything else
+  (an agent or app in another namespace) must be named in
+  networkPolicy.allowFrom. `kubectl port-forward` is unaffected: it is
+  proxied by the kubelet, not pod-to-pod traffic.
+
+  Egress is left open by default because the engine, Valkey, the Kubernetes
+  API, and DNS all live at deployment-specific addresses; set
+  networkPolicy.restrictEgress=true with networkPolicy.egress to lock it down.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "semantic-operator.name" . }}-server
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "semantic-operator.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "semantic-operator.name" . }}
+      app.kubernetes.io/component: server
+  policyTypes:
+    - Ingress
+    {{- if $np.restrictEgress }}
+    - Egress
+    {{- end }}
+  ingress:
+    # Callers inside this namespace.
+    - from:
+        - podSelector: {}
+      ports:
+        - {protocol: TCP, port: {{ .Values.server.listenPort }}}
+    {{- with $np.allowFrom }}
+    # Explicitly named callers (agents, apps, BI gateways).
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - {protocol: TCP, port: {{ $.Values.server.listenPort }}}
+    {{- end }}
+    {{- with $np.allowMetricsFrom }}
+    # Prometheus scraping the server's /metrics.
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - {protocol: TCP, port: {{ $.Values.server.listenPort }}}
+    {{- end }}
+  {{- if $np.restrictEgress }}
+  egress:
+    {{- toYaml $np.egress | nindent 4 }}
+  {{- end }}
+---
+{{/*
+  The manager serves only metrics and health probes. Nothing should call it,
+  so ingress is closed except for an explicitly named metrics scraper. The
+  kubelet's probe traffic is not pod-to-pod and is unaffected.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "semantic-operator.name" . }}-manager
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "semantic-operator.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "semantic-operator.name" . }}
+      app.kubernetes.io/component: manager
+  policyTypes:
+    - Ingress
+  ingress:
+    {{- with $np.allowMetricsFrom }}
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - {protocol: TCP, port: 8080}
+    {{- else }}
+    []
+    {{- end }}
+{{- end }}

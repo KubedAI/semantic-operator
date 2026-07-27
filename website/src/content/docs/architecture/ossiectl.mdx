@@ -1,0 +1,93 @@
+---
+title: ossiectl, the authoring tool
+description: The command line tool that generates a semantic model from your catalog, validates it offline, and converts between the portable Ossie document and the Kubernetes resource.
+---
+
+import OssiectlDiagram from '../../../components/OssiectlDiagram.astro';
+
+`ossiectl` is where a model comes from. It runs on a workstation, reads metadata, writes a
+YAML file, and exits. It never runs inside the cluster and it is never in the query path.
+
+Everything it touches, it touches with the credentials of the person running it.
+
+<OssiectlDiagram />
+
+## What it does
+
+### Generate a model
+
+`derive` reads your catalog and writes a complete, schema valid model. Datasets and fields
+arrive populated, with `is_time` already flagged on date and timestamp columns. Candidate
+joins are inferred from key naming conventions and left commented out for a human to
+confirm. Metrics, primary keys, governance, and views are left as clearly marked
+placeholders.
+
+Two sources of physical structure ship.
+
+```bash
+# From AWS Glue, over the AWS SDK. No cluster needed.
+ossiectl derive -source glue -region us-west-2 -database sales -out model.yaml
+
+# From the live engine's information_schema. Works for any catalog the engine
+# mounts, including Polaris, Hive Metastore, Unity, and Glue.
+export SQL_DIALECT=trino ENGINE_HOST=127.0.0.1 ENGINE_PORT=8080
+ossiectl derive -source engine -catalog polaris -database sales -out model.yaml
+```
+
+Both produce identical dataset and field structure for the same tables.
+
+### Import business meaning
+
+`-enrich` adds the meaning a data steward already curated somewhere else, so you write less
+by hand.
+
+```bash
+export DATAHUB_TOKEN=<personal access token>
+ossiectl derive -source engine -catalog polaris -database sales \
+  -enrich datahub -datahub-url http://localhost:8080 \
+  -datahub-platform trino -datahub-dataset-prefix polaris \
+  -out model.yaml
+```
+
+Descriptions become documentation. Glossary terms become the synonyms an agent uses to map
+a person's words onto a certified metric. PII and sensitivity tags become `denyFields`
+entries, so a request for a classified column fails to compile. Deprecated datasets are
+flagged for review rather than dropped silently.
+
+Metrics are never imported. Certifying a formula stays a human decision.
+
+Physical structure always comes from `-source`, never from the metadata platform. A
+metadata platform serves an ingested copy of the schema that can lag reality, and a model
+built on stale structure fails its first drift check.
+
+### Validate offline
+
+```bash
+ossiectl validate -f model.yaml
+```
+
+Structural checks plus a compile dry run, with no cluster involved. This is the fastest
+feedback loop in the project and the one to wire into CI.
+
+### Convert between formats
+
+`unwrap` extracts the portable Apache Ossie document from a Kubernetes resource. `wrap`
+does the reverse. The round trip is byte for byte, which is what keeps your semantics
+owned by the standard rather than by this implementation.
+
+## Access it needs
+
+| Target | Access | Why |
+|---|---|---|
+| AWS Glue | Read metadata | Lists tables and columns for `-source glue`. Uses your local AWS credential chain. |
+| Query engine | Read metadata | `-source engine` reads `information_schema`. |
+| DataHub | Read metadata | `-enrich datahub` imports descriptions, terms, and tags. |
+| Kubernetes | Apply, as you | Only for `kubectl apply` of the finished model. `validate` needs no cluster. |
+
+It never needs table data, never writes to a catalog or engine, and has no in cluster
+identity of its own.
+
+## Next
+
+[Authoring a model](/guides/authoring) walks through the full loop, from generated scaffold
+to certified metrics and governance.

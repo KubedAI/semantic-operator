@@ -32,11 +32,35 @@ spec:
           image: "{{ required "image.repository is required" .Values.image.repository }}/server:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
-            {{- include "semantic-operator.engineEnv" . | nindent 12 }}
+            {{- include "semantic-operator.engineEnv" (dict "root" . "component" "server") | nindent 12 }}
             - name: LISTEN_ADDR
               value: ":{{ .Values.server.listenPort }}"
             - name: LOG_LEVEL
               value: {{ .Values.server.logLevel | quote }}
+            {{- /* Nil-safe for --reuse-values from a release predating auth. */ -}}
+            {{- $auth := .Values.server.auth | default dict }}
+            - name: AUTH_MODE
+              value: {{ $auth.mode | default "header" | quote }}
+            {{- if eq ($auth.mode | default "header") "jwt" }}
+            - name: OIDC_JWKS_URL
+              value: {{ required "server.auth.jwksURL is required when auth.mode is jwt" $auth.jwksURL | quote }}
+            {{- with $auth.issuer }}
+            - name: OIDC_ISSUER
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $auth.audience }}
+            - name: OIDC_AUDIENCE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $auth.roleClaim }}
+            - name: OIDC_ROLE_CLAIM
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $auth.claimsToCopy }}
+            - name: OIDC_CLAIMS_TO_COPY
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- end }}
             - name: WATCH_NAMESPACE
               value: {{ .Release.Namespace | quote }}
             - name: PLAN_CACHE_TTL
@@ -85,6 +109,18 @@ spec:
       affinity: {{- toYaml . | nindent 8 }}
       {{- end }}
 ---
+{{/*
+  Refuse to expose the semantic server outside the cluster by default. The
+  server authorizes callers from the X-Semantic-Role header and expects an
+  authenticating proxy in front of it (see docs/ARCHITECTURE.md), so a
+  LoadBalancer here means an unauthenticated query endpoint on a public IP.
+  Access it with `kubectl port-forward` instead. A deployment that really has
+  an authenticating ingress in front can opt in explicitly.
+*/}}
+{{- $svcType := .Values.server.service.type -}}
+{{- if and (ne $svcType "ClusterIP") (not .Values.server.service.allowExternalExposure) -}}
+{{- fail (printf "\n\nserver.service.type=%s would publish the semantic server outside the cluster.\nThe server trusts the X-Semantic-Role header, so exposing it directly means an\nunauthenticated query endpoint (on EKS, a public load balancer).\n\nUse the default ClusterIP and reach it with:\n  kubectl -n <ns> port-forward svc/%s-server %v:%v\n\nIf an authenticating proxy or ingress already fronts this service, opt in with:\n  --set server.service.allowExternalExposure=true\n" $svcType (include "semantic-operator.name" .) .Values.server.service.port .Values.server.service.port) -}}
+{{- end -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -92,7 +128,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels: {{- include "semantic-operator.labels" . | nindent 4 }}
 spec:
-  type: {{ .Values.server.service.type }}
+  type: {{ $svcType }}
   selector:
     app.kubernetes.io/name: {{ include "semantic-operator.name" . }}
     app.kubernetes.io/component: server

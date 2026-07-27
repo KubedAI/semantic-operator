@@ -33,6 +33,17 @@ jobs:
       - uses: azure/setup-helm@v4
       - name: Lint chart
         run: helm lint charts/semantic-operator
+      - name: Chart must refuse to expose the server publicly
+        run: |
+          helm template charts/semantic-operator \
+            --set image.repository=example.com/semantic-operator \
+            --set engine.host=engine.example \
+            --set server.service.type=LoadBalancer >/dev/null 2>&1 \
+            && { echo "chart allowed a LoadBalancer Service"; exit 1; } || true
+          helm template charts/semantic-operator \
+            --set image.repository=example.com/semantic-operator \
+            --set engine.host=engine.example \
+            | grep -q 'type: ClusterIP' || { echo "default Service is not ClusterIP"; exit 1; }
       - name: Render templates (starrocks, legacy values)
         run: >
           helm template charts/semantic-operator
@@ -43,6 +54,18 @@ jobs:
           helm template charts/semantic-operator
           --set image.repository=example.com/semantic-operator
           --set engine.type=trino --set engine.host=trino.example >/dev/null
+      - name: Chart must reject an unknown engine
+        run: |
+          helm template charts/semantic-operator \
+            --set image.repository=example.com/semantic-operator \
+            --set engine.host=engine.example \
+            --set engine.type=nonesuch >/dev/null 2>&1 \
+            && { echo "chart accepted an unknown engine.type"; exit 1; } || true
+      # The chart checks above only cover the chart. This scans every manifest
+      # in the repository, which is where a stray LoadBalancer actually crept in
+      # once.
+      - name: No public Service exposure anywhere in the repository
+        run: bash hack/check-no-public-services.sh
 
   image:
     runs-on: ubuntu-latest

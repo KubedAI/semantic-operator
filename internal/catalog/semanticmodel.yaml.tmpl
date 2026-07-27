@@ -5,6 +5,11 @@
 # business semantics (metrics, relationships, synonyms, governance) are
 # placeholders marked TODO for a human to fill. connection/governance/views
 # are operator extensions kept outside the portable spec.ossie block.
+{{- if .Enriched }}
+# Descriptions, synonyms, and denyFields below were imported from your
+# metadata catalog. Review them: they reflect what that catalog recorded, and
+# you own what this model certifies. Metrics are never imported.
+{{- end }}
 apiVersion: {{ yamlValue .APIVersion }}
 kind: SemanticModel
 metadata:
@@ -26,12 +31,25 @@ spec:
     datasets:
 {{- range .Datasets }}
       - name: {{ yamlValue .Name }}
+{{- if .Deprecated }}
+        # REVIEW: your metadata catalog marks this dataset deprecated.
+        # Remove it from the model, or confirm it is still certified.
+{{- end }}
         source: {{ yamlValue .Source }}
         primary_key: []              # TODO: set PK column(s), e.g. [{{ yamlValue .ExampleKey }}]; required for fan-out-safe ratio metrics
         # unique_keys:               # TODO: optional; other unique keys, each [col] or [col1, col2]
+{{- if .Description }}
+        description: {{ yamlValue .Description }}
+{{- else }}
         # description: ""            # TODO: describe this dataset
+{{- end }}
+{{- if .Synonyms }}
+        ai_context:
+          synonyms: {{ yamlValue .Synonyms }}
+{{- else }}
         # ai_context:
         #   synonyms: []             # TODO: business names, e.g. ["sales", "transactions"]
+{{- end }}
 {{- if .Fields }}
         fields:
 {{- range .Fields }}
@@ -46,6 +64,13 @@ spec:
 {{- end }}
 {{- if .Description }}
             description: {{ yamlValue .Description }}
+{{- end }}
+{{- if .Synonyms }}
+            ai_context:
+              synonyms: {{ yamlValue .Synonyms }}
+{{- end }}
+{{- if .Sensitive }}
+            # Classified sensitive upstream; denied in governance below.
 {{- end }}
 {{- end }}
 {{- else }}
@@ -78,6 +103,25 @@ spec:
     #    ai_context:
     #      synonyms: ["revenue", "total sales", "gross sales"]
 
+{{- if .DeniedFields }}
+
+  # governance: compile-time row/column access policy. The denied fields below
+  # were classified sensitive in your metadata catalog. A request for one of
+  # them fails to compile (HTTP 403) before any SQL reaches the engine.
+  governance:
+    defaultRole: analyst
+    roles:
+      - name: analyst
+        allowMetrics: ["*"]
+        denyFields:
+{{- range .DeniedFields }}
+          - {{ yamlValue . }}
+{{- end }}
+        # rowFilters: []               # TODO: optional row policy, e.g.
+                                       #   - dataset: store
+                                       #     predicate: "s_state = 'TX'"
+{{- else }}
+
   # governance: compile-time row/column access policy. Uncomment and edit.
   # governance:
   #   defaultRole: analyst
@@ -85,6 +129,7 @@ spec:
   #     - name: analyst
   #       allowMetrics: ["*"]
   #       denyFields: []                 # e.g. ["customer.c_email_address"]
+{{- end }}
 
   # views: governed BI views materialized in StarRocks. Uncomment and edit.
   # views:

@@ -1,0 +1,56 @@
+---
+// OssiectlDiagram: inline SVG so the diagram is editable text and themes with the site.
+// Colours come from theme.css tokens; never hard-code a hex here.
+const { caption = 'Authoring is a one-way flow into a file. No component in the cluster ever calls back out to Glue, DataHub, or Polaris.' } = Astro.props;
+---
+<figure class="so-figure">
+  <svg viewBox="0 0 720 250" role="img" aria-label="ossiectl reads catalogs and the engine, writes model YAML, and a human applies it with kubectl">
+      <rect class="zone" x="8" y="26" width="470" height="204" rx="8"/>
+      <text class="zone-label" x="20" y="45">Outside the cluster — human credentials</text>
+      <rect class="zone" x="496" y="26" width="216" height="204" rx="8"/>
+      <text class="zone-label" x="508" y="45">Cluster</text>
+
+      <rect class="box" x="26" y="66" width="132" height="46" rx="6"/>
+      <text class="t-mono" x="38" y="86">Glue</text>
+      <text class="t-sub" x="38" y="102">AWS SDK · local creds</text>
+
+      <rect class="box" x="26" y="124" width="132" height="46" rx="6"/>
+      <text class="t-mono" x="38" y="144">DataHub</text>
+      <text class="t-sub" x="38" y="160">GraphQL · PAT token</text>
+
+      <rect class="box" x="26" y="182" width="132" height="40" rx="6"/>
+      <text class="t-mono" x="38" y="203">Query engine</text>
+      <text class="t-sub" x="38" y="216">information_schema</text>
+
+      <rect class="box-strong" x="230" y="112" width="118" height="58" rx="6"/>
+      <text class="t-mono" x="244" y="136">ossiectl</text>
+      <text class="t-sub" x="244" y="152">derive · validate</text>
+      <text class="t-sub" x="244" y="164">wrap · unwrap</text>
+
+      <rect class="box" x="380" y="112" width="84" height="58" rx="6"/>
+      <text class="t" x="394" y="136">model</text>
+      <text class="t-mono" x="394" y="154">.yaml</text>
+
+      <rect class="box" x="524" y="112" width="160" height="58" rx="6"/>
+      <text class="t-mono" x="538" y="136">SemanticModel</text>
+      <text class="t-sub" x="538" y="153">custom resource</text>
+
+      <path class="flow meta" d="M158 89 L224 128" marker-end="url(#ossiectl-am)"/>
+      <path class="flow meta" d="M158 147 L224 143" marker-end="url(#ossiectl-am)"/>
+      <path class="flow meta" d="M158 200 L224 158" marker-end="url(#ossiectl-am)"/>
+      <text class="flow-t meta" x="166" y="112">read metadata only</text>
+
+      <path class="flow k8s" d="M348 141 L374 141" marker-end="url(#ossiectl-ak)"/>
+      <path class="flow k8s" d="M464 141 L518 141" marker-end="url(#ossiectl-ak)"/>
+      <text class="flow-t k8s" x="470" y="132">kubectl apply</text>
+      <text class="flow-t k8s" x="470" y="164">human kubeconfig</text>
+
+      <defs>
+        <marker id="ossiectl-am" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 L8 4 L0 8 z" fill="var(--meta)"/></marker>
+        <marker id="ossiectl-ak" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 L8 4 L0 8 z" fill="var(--k8s)"/></marker>
+      </defs>
+    </svg>
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>

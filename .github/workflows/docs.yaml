@@ -1,0 +1,76 @@
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths: ['website/**', '.github/workflows/docs.yaml']
+  pull_request:
+    paths: ['website/**', '.github/workflows/docs.yaml']
+  # Link rot happens without anyone touching the repository, so probe outbound
+  # links on a schedule rather than only on change.
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and let a newer commit supersede an in flight one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: website
+
+jobs:
+  build:
+    name: Build and check links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - run: npm ci
+
+      - name: Build site
+        run: npm run build
+
+      # Fast and deterministic. Catches a page being renamed or removed while
+      # something still links to it, and anchors that no longer match a heading.
+      - name: Check internal links and anchors
+        run: node scripts/check-links.mjs
+
+      # Network dependent, so it runs on the weekly schedule and on manual runs
+      # rather than on every pull request.
+      - name: Check external links
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: node scripts/check-links.mjs --external
+
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    # Publish only from main. Pull requests just prove the site builds and that
+    # its links resolve.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

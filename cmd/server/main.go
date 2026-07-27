@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	_ "github.com/KubedAI/semantic-operator/internal/emitter/trino"
 	"github.com/KubedAI/semantic-operator/internal/observability"
 	"github.com/KubedAI/semantic-operator/internal/serving"
+	"github.com/KubedAI/semantic-operator/internal/serving/auth"
 	mcpadapter "github.com/KubedAI/semantic-operator/internal/serving/mcp"
 	"github.com/KubedAI/semantic-operator/internal/serving/rest"
 	_ "github.com/KubedAI/semantic-operator/internal/starrocks"
@@ -105,9 +107,29 @@ func run() error {
 		Tracer:  tracer,
 	}
 
+	// Identity resolution. Header mode trusts X-Semantic-Role and therefore
+	// requires an authenticating proxy in front; jwt mode validates a bearer
+	// token against the issuer's JWKS and ignores the header entirely.
+	authn, err := auth.New(ctx, auth.Options{
+		Mode:         auth.Mode(envOr("AUTH_MODE", string(auth.ModeHeader))),
+		JWKSURL:      os.Getenv("OIDC_JWKS_URL"),
+		Issuer:       os.Getenv("OIDC_ISSUER"),
+		Audience:     os.Getenv("OIDC_AUDIENCE"),
+		RoleClaim:    os.Getenv("OIDC_ROLE_CLAIM"),
+		ClaimsToCopy: splitList(os.Getenv("OIDC_CLAIMS_TO_COPY")),
+	})
+	if err != nil {
+		log.Error("configuring authentication", "err", err)
+		return err
+	}
+	if authn.Mode() == auth.ModeHeader {
+		log.Warn("AUTH_MODE=header: the X-Semantic-Role header is trusted verbatim; " +
+			"put an authenticating proxy in front of this service or set AUTH_MODE=jwt")
+	}
+
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", mcpadapter.Handler(svc, version))
-	mux.Handle("/v1/", rest.Handler(svc))
+	mux.Handle("/mcp", mcpadapter.Handler(svc, version, authn))
+	mux.Handle("/v1/", rest.Handler(svc, authn))
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("/readyz", readyzHandler(store, srClient, engine))
@@ -127,6 +149,17 @@ func run() error {
 		return err
 	}
 	return nil
+}
+
+// splitList parses a comma-separated env value, ignoring blanks.
+func splitList(v string) []string {
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func envOr(key, def string) string {

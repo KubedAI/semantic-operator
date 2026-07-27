@@ -24,6 +24,21 @@ engine:
   passwordSecret:
     name: ""
     key: password
+  # Per-deployment credentials. Least privilege wants two database users:
+  # the operator reads metadata and creates views, the server only selects.
+  # Unset values fall back to the shared engine.user / engine.passwordSecret.
+  #   manager: metadata read (information_schema/DESC) + DDL on the view schema
+  #   server:  SELECT on the schemas the models bind, no DDL
+  manager:
+    user: ""
+    passwordSecret:
+      name: ""
+      key: password
+  server:
+    user: ""
+    passwordSecret:
+      name: ""
+      key: password
 
 # Legacy StarRocks block. Still honored when the engine block above leaves
 # host/user/passwordSecret empty and engine.type is starrocks.
@@ -49,11 +64,6 @@ valkey:
     key: password
   db: 0
 
-aws:
-  # Region for Glue catalog-source calls from the operator (IRSA supplies
-  # credentials; annotate the manager service account below).
-  region: us-west-2
-
 manager:
   replicas: 1
   leaderElect: true
@@ -68,6 +78,26 @@ manager:
 server:
   replicas: 2
   logLevel: info
+  # How the caller's identity is established.
+  #
+  #   header  the X-Semantic-Role header is trusted verbatim. Only safe behind
+  #           a proxy that authenticates the caller AND overwrites that header,
+  #           because any client that reaches the port can otherwise claim any
+  #           role. The server logs a warning at startup in this mode.
+  #   jwt     a bearer token is required and validated against the issuer's
+  #           JWKS; the role comes from a claim and any inbound
+  #           X-Semantic-Role is ignored. Use this in production.
+  auth:
+    mode: header
+    # jwt mode only. jwksURL is required; issuer and audience are enforced
+    # when set; roleClaim may address a nested claim with dots, e.g.
+    # "resource_access.semantic.role".
+    jwksURL: ""
+    issuer: ""
+    audience: ""
+    roleClaim: role
+    # Claims copied into the identity for future attribute-based policies.
+    claimsToCopy: []
   listenPort: 8090
   planCacheTTL: 24h
   resultCacheTTL: 60s
@@ -77,14 +107,45 @@ server:
     requests: {cpu: 250m, memory: 256Mi}
     limits: {memory: 512Mi}
   service:
+    # ClusterIP only. The server authorizes callers from the X-Semantic-Role
+    # header and expects an authenticating proxy in front, so publishing it
+    # directly (LoadBalancer/NodePort) creates an unauthenticated query
+    # endpoint. Reach it with `kubectl port-forward`. The chart refuses any
+    # other type unless allowExternalExposure is set, which you should only
+    # do when an authenticating ingress already fronts the service.
     type: ClusterIP
+    allowExternalExposure: false
     port: 8090
+
+# Ingress lockdown for the two deployments. Requires a CNI that enforces
+# NetworkPolicy (Calico, Cilium, or the EKS VPC CNI with
+# --enable-network-policy=true; without enforcement these objects are inert).
+# Pods in the release namespace can always reach the server; callers elsewhere
+# must be named in allowFrom. kubectl port-forward is unaffected.
+networkPolicy:
+  enabled: true
+  # Extra ingress peers for the server, in NetworkPolicyPeer form, e.g.
+  #   - namespaceSelector:
+  #       matchLabels: {kubernetes.io/metadata.name: agents}
+  #   - podSelector:
+  #       matchLabels: {app: my-bi-gateway}
+  allowFrom: []
+  # Peers allowed to scrape /metrics on both deployments, e.g.
+  #   - namespaceSelector:
+  #       matchLabels: {kubernetes.io/metadata.name: monitoring}
+  allowMetricsFrom: []
+  # Egress is open by default: the query engine, Valkey, the Kubernetes API,
+  # and DNS are all deployment-specific. Set restrictEgress and supply the
+  # rules to lock it down.
+  restrictEgress: false
+  egress: []
 
 serviceAccount:
   manager:
     create: true
     name: ""
-    # IRSA: eks.amazonaws.com/role-arn: arn:aws:iam::<acct>:role/<glue-read-role>
+    # The operator needs no cloud credentials: catalog sources (Glue, DataHub,
+    # Polaris) are used only by ossiectl, which runs with a human's credentials.
     annotations: {}
   server:
     create: true

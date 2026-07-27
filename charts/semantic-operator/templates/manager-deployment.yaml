@@ -30,13 +30,11 @@ spec:
           args:
             - --leader-elect={{ .Values.manager.leaderElect }}
           env:
-            {{- include "semantic-operator.engineEnv" . | nindent 12 }}
+            {{- include "semantic-operator.engineEnv" (dict "root" . "component" "manager") | nindent 12 }}
             - name: VIEW_DATABASE
               value: {{ .Values.manager.viewDatabase | quote }}
             - name: RESYNC_PERIOD
               value: {{ .Values.manager.resyncPeriod | quote }}
-            - name: AWS_REGION
-              value: {{ .Values.aws.region | quote }}
           ports:
             - {containerPort: 8080, name: metrics}
             - {containerPort: 8081, name: health}

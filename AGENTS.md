@@ -43,8 +43,10 @@ internal/planner/      semantic request -> logical plan -> SQL; expr/ bounded gr
 internal/governance/   compile-time row/column/metric policies
 internal/emitter/      Dialect interface; emitter/starrocks/, emitter/trino/ implementations
 internal/dbclient/     engine connection interface + factory (SQL_DIALECT selects dialect+client)
-internal/catalog/      Source interface; catalog/glue/ implementation; derive + template
+internal/catalog/      Source (physical) + Enricher (business meaning) interfaces;
+                       catalog/glue/, catalog/infoschema/ (any engine), catalog/datahub/ (enrich)
 internal/cache/        Valkey plan + result caches (nil *Cache = valid no-op)
+internal/serving/auth/ identity resolution: header mode vs JWKS-validated JWT
 internal/serving/      Store (informer-fed model registry) + Service (one query path);
                        adapters: mcp/ (streamable HTTP), rest/, views/ (governed StarRocks views)
 internal/starrocks/    MySQL-protocol client + schema introspection (DESC / SHOW CREATE TABLE)
@@ -54,8 +56,11 @@ internal/observability/ slog logger, Prometheus metrics, optional OTLP tracing
 charts/semantic-operator/  Helm chart (crds/, templates/, values.yaml)
 examples/              use cases by engine; starrocks/retail/ (data, model, nl, bench)
                        and starrocks/flights/ (model-only). See examples/README.md
-docs/                  OVERVIEW, AUTHORING, ARCHITECTURE, DEVELOPER, EXTENDING-ENGINES, ROADMAP;
-                       diagrams/ (mermaid sources), img/ (hand-authored SVGs)
+website/               the documentation site (Astro + Starlight). ALL prose lives here,
+                       in website/src/content/docs/. Diagrams are inline-SVG Astro
+                       components in website/src/components/, themed via
+                       website/src/styles/theme.css. `make docs` serves it locally.
+docs/diagrams/         mermaid sources for reference (the site uses the components)
 hack/                  tools.go (build-time tool deps)
 ```
 
@@ -95,10 +100,17 @@ leading `/* semantic-layer model=... version=... request=... */` comment for aud
   (`internal/planner/expr`); anything outside them fails at validation, never at query time.
 
 **Trust model:** the CR author is trusted (field expressions are raw SQL scalars by design).
-Governance protects **query-time callers**, not against the model author. Adapters trust the
-`X-Semantic-Role` header; deployments put an authenticating proxy in front (documented in
-ARCHITECTURE.md). Row-filter predicates are grammar-bounded so a policy typo can't smuggle
+Governance protects **query-time callers**, not against the model author. Identity is resolved
+by `internal/serving/auth`: `AUTH_MODE=header` (default) trusts `X-Semantic-Role` and therefore
+requires an authenticating proxy in front, while `AUTH_MODE=jwt` validates a bearer token against
+the issuer's JWKS and **ignores that header entirely**. 401 means unverified caller, 403 means
+verified but disallowed. Row-filter predicates are grammar-bounded so a policy typo can't smuggle
 arbitrary SQL through the control plane.
+
+**Least privilege:** the manager and server resolve separate engine credentials
+(`engine.manager.*` / `engine.server.*`). Manager = metadata read + DDL on the view schema only;
+server = SELECT only. The operator imports no catalog package, so it needs no cloud credentials;
+Glue/DataHub/Polaris are read only by `ossiectl` under a human's credentials.
 
 ## Common commands (via Makefile)
 
@@ -112,10 +124,10 @@ make helm-lint    # lint the chart
 # Images (registry/tags are variables; nothing hardcoded to an account)
 make docker-build docker-push REGISTRY=<acct>.dkr.ecr.us-west-2.amazonaws.com
 
-# Demo / benchmark (need a live cluster; see examples/starrocks/retail/README.md for env)
+# Demo / benchmark (need a live cluster; see examples/retail/README.md for env)
 make demo-data                                  # load TPC-DS subset as Iceberg tables
 make demo-nl QUESTION="..."                     # answer both ways: raw text-to-SQL vs semantic layer
-make bench                                       # write examples/starrocks/retail/bench/RESULTS.md
+make bench                                       # write examples/retail/bench/RESULTS.md
 ```
 
 Plain Go also works: `go build ./...`, `go test ./...`, `go vet ./...`.
@@ -127,6 +139,16 @@ mocked/faked); prefer running all of it.
 
 ## Conventions & guardrails
 
+- **Never publish a Service outside the cluster.** `ClusterIP` only, reached with
+  `kubectl port-forward`; no `LoadBalancer`, no `NodePort`, in the chart, in any
+  example, or in any deploy instruction. The server authorizes callers from the
+  `X-Semantic-Role` header and expects an authenticating proxy in front, so an
+  exposed Service is an unauthenticated query endpoint (on EKS, a public IP —
+  this has already caused one security incident). The chart hard-fails on any
+  other Service type, `hack/check-no-public-services.sh` enforces it repo-wide
+  from `make lint` and CI, and third-party charts must be installed with their
+  service type overridden to `ClusterIP` (many default to `LoadBalancer`) and
+  audited afterwards with `kubectl get svc -A`.
 - After changing anything in `api/`, run `make generate` and commit the regenerated
   `zz_generated.deepcopy.go` and `charts/semantic-operator/crds/`. CI fails otherwise
   (`git diff --exit-code` after regeneration).
@@ -140,8 +162,12 @@ mocked/faked); prefer running all of it.
   `catalog.Source` — see docs/ARCHITECTURE.md#extension-points for scope guardrails.
 - Nothing is hardcoded to an account/endpoint: registry, StarRocks host, Valkey addr,
   AWS region, and catalog names are all Helm values / env vars.
-- docs/ARCHITECTURE.md is the build spec: if code and that document disagree, fix one of them
-  in the same change.
+- The docs site is the build spec. `website/src/content/docs/architecture.mdx` and its
+  child pages describe intended behaviour; if code and those pages disagree, fix one of
+  them in the same change. Only README.md and AGENTS.md remain as repo-root markdown, and
+  each example directory keeps a stub pointing at its page.
+- Docs prose style: short declarative sentences, no em dashes, no semicolons joining
+  clauses, no colon splices. Link with the page's name, never a file path.
 - Commit under the user's own git identity only; do not add AI attribution trailers.
 
 ## Gotchas

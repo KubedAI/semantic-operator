@@ -46,8 +46,9 @@ test: ## Unit and smoke tests
 	go test ./... -count=1
 
 .PHONY: lint
-lint: $(GOLANGCI_LINT) ## Check Go formatting and static analysis
+lint: $(GOLANGCI_LINT) ## Check Go formatting, static analysis, and Service exposure
 	$(GOLANGCI_LINT) run ./...
+	./hack/check-no-public-services.sh
 
 .PHONY: cover
 cover:
@@ -74,6 +75,28 @@ docker-push:
 	docker push $(IMAGE_BASE)/manager:$(TAG)
 	docker push $(IMAGE_BASE)/server:$(TAG)
 
+## Documentation site
+
+.PHONY: docs
+docs: docs-install ## Serve the docs site locally at http://localhost:4321
+	cd website && npm run dev
+
+.PHONY: docs-install
+docs-install:
+	cd website && npm install
+
+.PHONY: docs-build
+docs-build: docs-install ## Production build into website/dist
+	cd website && npm run build
+
+.PHONY: docs-check
+docs-check: docs-build ## Build the site and fail on any broken internal link
+	cd website && node scripts/check-links.mjs
+
+.PHONY: docs-check-external
+docs-check-external: docs-build ## Also probe outbound links (needs network)
+	cd website && node scripts/check-links.mjs --external
+
 ## Deployment
 
 .PHONY: helm-lint
@@ -86,19 +109,19 @@ deploy: ## Install/upgrade the chart (override values on the command line)
 	  --namespace semantic-system --create-namespace \
 	  --set image.repository=$(IMAGE_BASE) --set image.tag=$(TAG)
 
-## Demo and benchmark (see examples/starrocks/retail/README.md for required env)
+## Demo and benchmark (see examples/retail/README.md for required env)
 
 .PHONY: demo-data
 demo-data: ## Load the TPC-DS subset as Iceberg tables through StarRocks
-	go run ./examples/starrocks/retail/data
+	go run ./examples/retail/data
 
 .PHONY: demo-nl
 demo-nl: ## Answer QUESTION both ways (raw text-to-SQL vs semantic layer)
-	go run ./examples/starrocks/retail/nl -question "$(QUESTION)"
+	go run ./examples/retail/nl -question "$(QUESTION)"
 
 .PHONY: bench
 bench: ## Run the accuracy benchmark and write the retail example RESULTS.md
-	go run ./examples/starrocks/retail/bench/runner -out examples/starrocks/retail/bench/RESULTS.md
+	go run ./examples/retail/bench/runner -out examples/retail/bench/RESULTS.md
 
 .PHONY: help
 help:

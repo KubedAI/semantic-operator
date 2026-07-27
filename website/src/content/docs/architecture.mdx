@@ -1,0 +1,137 @@
+---
+title: How it works
+description: The three components, the write path and the read path, and the extension points that keep the compiler independent of any engine or catalog.
+---
+
+import CombinedDiagram from '../../components/CombinedDiagram.astro';
+
+Think of this as a compiler with a control plane, not a query service.
+
+A person authors a model. A controller compiles it and publishes the result. A stateless
+server turns each incoming question into exactly one SQL statement. Those three jobs belong
+to three different programs, and separating them is what makes the system safe to operate.
+
+<CombinedDiagram />
+
+## The three components
+
+Each has its own page with the detail.
+
+- **[ossiectl](/architecture/ossiectl)** runs on a workstation. It generates a model from
+  your catalog, validates it offline, and converts between the portable Apache Ossie
+  document and the Kubernetes resource. It never runs in the cluster.
+- **[The operator](/architecture/operator)** is the control plane. It validates, compiles,
+  drift checks, publishes, and creates governed views. It is the only component that writes
+  to the query engine.
+- **[The semantic server](/architecture/server)** is the data plane. It authenticates the
+  caller, compiles the request, applies governance, and runs the statement. It is stateless
+  and scales sideways.
+
+Their credentials differ sharply, which matters when you scope database grants. That is
+covered in [Access and credentials](/architecture/access).
+
+## The write path
+
+When you apply a model, the operator drives it through five steps.
+
+1. **Validate.** Structural checks on the Ossie document. Names are unique, relationships
+   point at datasets that exist, metric expressions parse under a small bounded grammar, and
+   the join graph is a tree. This step is pure, so it never fails because of a network
+   problem.
+2. **Compile.** The spec is frozen into an artifact. Its version is a hash of the spec, so
+   applying the same model twice is a no operation.
+3. **Bind and drift check.** For every dataset the operator asks the engine what it can
+   actually see. A missing table or column is drift. Drift blocks publication of the new
+   version while the last good version keeps serving. A connection failure is not drift, so
+   it retries instead.
+4. **Publish.** The compiled artifact is written to a ConfigMap owned by the resource and
+   labelled with the model name and version.
+5. **Create views.** Each declared view is compiled through the same planner under its own
+   role and applied to the engine. Views removed from the model are dropped. A finalizer
+   cleans them up if the resource is deleted.
+
+Drift detection deliberately asks the engine rather than the catalog. A table can exist in
+Glue and still be unreadable by Trino because of a permissions or metadata problem. What
+matters is what the engine can resolve at query time, so that is what gets checked.
+
+## The read path
+
+The server watches those published ConfigMaps and keeps the compiled models in memory. A
+request then flows through five stages.
+
+1. **Identity.** The caller is resolved to a role, either from a verified bearer token or
+   from a trusted header. An unverified caller is rejected with 401.
+2. **Resolve.** Metric and dimension names are looked up in the compiled model. Unknown
+   names fail here with a helpful message.
+3. **Authorize.** The role's policy is checked before any SQL exists. This covers requested
+   metrics, requested dimensions, filters, and every field inside every metric expression,
+   so a forbidden column cannot be read through an aggregate. A violation is 403.
+4. **Plan.** The planner picks the smallest join tree that connects the required datasets,
+   handles ratio metrics that would otherwise be distorted by fan out, applies the role's
+   row filters, and renders everything through the engine's dialect.
+5. **Execute.** One statement runs. The response carries the rows, the SQL, the model
+   version, and a request hash.
+
+The same request, from the same role, against the same model version, always produces
+byte identical SQL. That is what makes plans and results cacheable and what lets you trace
+a query in the engine's log back to the request that caused it.
+
+## Why the two halves never talk
+
+The operator and the server do not call each other. They coordinate through the Kubernetes
+API, with the compiled ConfigMap as the only handoff.
+
+That decoupling buys three things. The server holds no state of its own, so replicas are
+interchangeable and scale horizontally. Serving continues normally while the operator is
+down, restarting, or being upgraded. And the operator can be a single active replica with
+a standby, which is the right shape for a controller.
+
+## Compile time governance
+
+Governance runs inside the compiler, before any SQL string exists.
+
+A role policy has three parts. `allowMetrics` is a glob allowlist. `denyFields` names
+columns the role may never read, including through a metric expression. `rowFilters` are
+predicates conjoined into the WHERE clause during planning, so they participate in join
+resolution and appear in the emitted SQL.
+
+Because the policy is applied while the statement is built, an unauthorized request fails
+to compile. There is no filtered result set and no post processing step that could be
+skipped. The effective role is also part of the cache key, so a cached plan cannot leak
+across identities.
+
+## Bounded grammars
+
+Two places accept SQL fragments from the model author, and both are parsed under small
+grammars rather than passed through.
+
+Metric expressions allow an aggregate over a scalar, optionally divided by another
+aggregate. Every column reference must be qualified as `dataset.field`.
+
+Row filter predicates allow comparisons, `IN`, `LIKE`, `IS NULL`, and boolean combinations
+over bare column names. Statement terminators, comments, subqueries, and function calls are
+rejected.
+
+Anything outside those grammars fails at validation time, when a human is watching, rather
+than at query time.
+
+## Extension points
+
+Everything engine specific sits behind two small interfaces, and everything else is
+engine agnostic.
+
+An engine is a **dialect** that renders SQL atoms such as identifier quoting, literals,
+date truncation, and null safe equality, plus a **client** that carries statements to the
+engine and introspects schemas. Both register themselves by name, and one setting selects
+the pair. StarRocks and Trino ship today. See
+[Adding a query engine](/guides/adding-an-engine).
+
+A catalog source supplies physical structure for model generation, and an enricher supplies
+business meaning. Neither is used at runtime, which is why the operator needs no cloud
+credentials at all. See [Adding a catalog source](/guides/adding-a-catalog).
+
+## What is deliberately not built
+
+Full MetricFlow semantics such as multi hop metrics and cumulative metrics. Multi engine
+federation in a single query. A bundled BI tool. Those are out of scope so the compiler
+stays small enough to reason about.

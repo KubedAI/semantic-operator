@@ -1,0 +1,448 @@
+# Demo SemanticModel: OSI TPC-DS retail subset, adapted from
+# https://github.com/open-semantic-interchange/OSI/blob/main/examples/tpcds_semantic_model.yaml
+# to the tables loaded by the retail data loader (../data). spec.ossie is a plain OSI semantic_model
+# entry; ossiectl unwrap extracts it as an OSI document.
+apiVersion: semantic.ossie.io/v1alpha1
+kind: SemanticModel
+metadata:
+  name: tpcds-retail
+  namespace: semantic-system
+spec:
+  connection:
+    catalog: polaris          # Polaris Iceberg REST catalog (via Trino)
+    database: osi_demo
+    viewDatabase: polaris.semantic_views
+  ossie:
+    name: tpcds_retail_model
+    description: TPC-DS retail semantic model for sales and customer analytics
+    ai_context:
+      instructions: >-
+        Use this model for retail analytics over store sales. Metrics are
+        certified definitions; never re-derive them from raw columns.
+        customer_lifetime_value and store_productivity have exact formulas
+        that differ from naive per-row averages.
+    datasets:
+      - name: store_sales
+        source: store_sales
+        primary_key: [ss_item_sk, ss_ticket_number]
+        description: Fact table of store sales line items
+        ai_context:
+          synonyms: ["sales transactions", "store purchases", "retail sales", "POS data"]
+        fields:
+          - name: ss_sold_date_sk
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: ss_sold_date_sk
+            description: Foreign key to date dimension
+          - name: ss_item_sk
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: ss_item_sk
+            description: Foreign key to item dimension
+          - name: ss_customer_sk
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: ss_customer_sk
+            description: Foreign key to customer dimension (NULL for anonymous sales)
+          - name: ss_store_sk
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: ss_store_sk
+            description: Foreign key to store dimension
+          - name: ss_ticket_number
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: ss_ticket_number
+            description: Sales ticket number
+          - name: ss_quantity
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: ss_quantity
+            description: Units sold on the line item
+            ai_context:
+              synonyms: ["units sold", "quantity"]
+          - name: ss_sales_price
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: ss_sales_price
+            description: Unit sales price
+            ai_context:
+              synonyms: ["unit price", "price"]
+          - name: ss_ext_sales_price
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: ss_ext_sales_price
+            description: Extended sales price (quantity times unit price)
+            ai_context:
+              synonyms: ["line total", "extended price", "sales amount"]
+          - name: ss_net_profit
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: ss_net_profit
+            description: Net profit on the line item
+            ai_context:
+              synonyms: ["profit", "margin"]
+
+      - name: date_dim
+        source: date_dim
+        primary_key: [d_date_sk]
+        description: Calendar date dimension
+        ai_context:
+          synonyms: ["calendar", "dates", "time periods"]
+        fields:
+          - name: d_date_sk
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: d_date_sk
+            description: Surrogate key (YYYYMMDD)
+          - name: d_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: d_date
+            dimension:
+              is_time: true
+            description: Calendar date
+            ai_context:
+              synonyms: ["date", "day"]
+          - name: d_year
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: d_year
+            description: Calendar year (2000-2002 in the demo data)
+            ai_context:
+              synonyms: ["year"]
+          - name: d_moy
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: d_moy
+            description: Month of year (1-12)
+          - name: d_quarter_name
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: d_quarter_name
+            description: Quarter name, e.g. 2001Q3
+            ai_context:
+              synonyms: ["quarter", "fiscal quarter"]
+          - name: d_month_name
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: d_month_name
+            description: Month name
+            ai_context:
+              synonyms: ["month"]
+
+      - name: customer
+        source: customer
+        primary_key: [c_customer_sk]
+        description: Customer dimension
+        ai_context:
+          synonyms: ["customers", "shoppers", "buyers"]
+        fields:
+          - name: c_customer_sk
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: c_customer_sk
+            description: Surrogate key
+          - name: c_customer_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: c_customer_id
+            description: Business key
+            ai_context:
+              synonyms: ["customer ID", "customer number"]
+          - name: c_first_name
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: c_first_name
+            description: First name
+          - name: c_last_name
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: c_last_name
+            description: Last name
+          - name: customer_full_name
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: c_first_name || ' ' || c_last_name
+            description: Full name (computed)
+            ai_context:
+              synonyms: ["full name", "customer name"]
+          - name: c_email_address
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: c_email_address
+            description: Email address (PII, denied to the analyst role)
+            ai_context:
+              synonyms: ["email", "contact"]
+          - name: c_birth_year
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: c_birth_year
+            description: Birth year
+
+      - name: item
+        source: item
+        primary_key: [i_item_sk]
+        description: Item/product dimension
+        ai_context:
+          synonyms: ["products", "items", "merchandise"]
+        fields:
+          - name: i_item_sk
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: i_item_sk
+            description: Surrogate key
+          - name: i_item_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: i_item_id
+            description: Business key
+            ai_context:
+              synonyms: ["item ID", "product ID", "SKU"]
+          - name: i_item_desc
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: i_item_desc
+            description: Item description
+            ai_context:
+              synonyms: ["product description", "item name"]
+          - name: i_brand
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: i_brand
+            description: Brand
+            ai_context:
+              synonyms: ["brand", "manufacturer"]
+          - name: i_category
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: i_category
+            description: Product category
+            ai_context:
+              synonyms: ["category", "product category", "department"]
+          - name: i_current_price
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: i_current_price
+            description: Current list price
+            ai_context:
+              synonyms: ["list price"]
+
+      - name: store
+        source: store
+        primary_key: [s_store_sk]
+        description: Store dimension
+        ai_context:
+          synonyms: ["stores", "retail locations", "branches"]
+        fields:
+          - name: s_store_sk
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: s_store_sk
+            description: Surrogate key
+          - name: s_store_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: s_store_id
+            description: Business key
+            ai_context:
+              synonyms: ["store ID", "store number"]
+          - name: s_store_name
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: s_store_name
+            description: Store name
+          - name: s_city
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: s_city
+            description: City
+            ai_context:
+              synonyms: ["city"]
+          - name: s_state
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: s_state
+            description: Two-letter state code
+            ai_context:
+              synonyms: ["state", "region"]
+          - name: s_number_employees
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: s_number_employees
+            description: Employee headcount at the store
+            ai_context:
+              synonyms: ["employee count", "staff size", "headcount"]
+
+    relationships:
+      - name: store_sales_to_date
+        from: store_sales
+        to: date_dim
+        from_columns: [ss_sold_date_sk]
+        to_columns: [d_date_sk]
+        ai_context:
+          synonyms: ["when the sale occurred"]
+      - name: store_sales_to_customer
+        from: store_sales
+        to: customer
+        from_columns: [ss_customer_sk]
+        to_columns: [c_customer_sk]
+        ai_context:
+          synonyms: ["who bought"]
+      - name: store_sales_to_item
+        from: store_sales
+        to: item
+        from_columns: [ss_item_sk]
+        to_columns: [i_item_sk]
+        ai_context:
+          synonyms: ["what was sold"]
+      - name: store_sales_to_store
+        from: store_sales
+        to: store
+        from_columns: [ss_store_sk]
+        to_columns: [s_store_sk]
+        ai_context:
+          synonyms: ["where the sale occurred"]
+
+    metrics:
+      - name: total_sales
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: SUM(store_sales.ss_ext_sales_price)
+        description: Total sales revenue (sum of extended sales price)
+        ai_context:
+          synonyms: ["total revenue", "gross sales", "sales amount", "revenue", "sales"]
+      - name: total_profit
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: SUM(store_sales.ss_net_profit)
+        description: Total net profit
+        ai_context:
+          synonyms: ["net profit", "total earnings", "profit", "earnings"]
+      - name: total_quantity
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: SUM(store_sales.ss_quantity)
+        description: Total units sold
+        ai_context:
+          synonyms: ["units sold", "volume", "quantity sold"]
+      - name: transaction_count
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: COUNT(store_sales.ss_ticket_number)
+        description: Number of sales line items
+        ai_context:
+          synonyms: ["number of sales", "sales count", "transactions"]
+      - name: customer_lifetime_value
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: SUM(store_sales.ss_ext_sales_price) / COUNT(DISTINCT customer.c_customer_sk)
+        description: >-
+          Average lifetime sales per distinct purchasing customer: total
+          revenue divided by distinct customers with at least one sale.
+          Anonymous sales count in the numerator but not the denominator.
+        ai_context:
+          synonyms: ["CLV", "LTV", "customer value", "lifetime value", "revenue per customer"]
+      - name: store_productivity
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: SUM(store_sales.ss_ext_sales_price) / NULLIF(SUM(store.s_number_employees), 0)
+        description: >-
+          Sales per employee: total revenue divided by total employee
+          headcount, each store's headcount counted exactly once. Naive SQL
+          that joins and sums headcount per sales row overstates the
+          denominator by orders of magnitude.
+        ai_context:
+          synonyms: ["sales per employee", "employee productivity", "revenue per employee"]
+      - name: sales_by_brand
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: SUM(store_sales.ss_ext_sales_price)
+        description: Total sales, intended to be grouped by item.i_brand
+        ai_context:
+          synonyms: ["brand sales", "brand performance", "brand revenue"]
+
+  governance:
+    defaultRole: analyst
+    roles:
+      - name: analyst
+        allowMetrics: ["*"]
+        denyFields: ["customer.c_email_address"]
+      - name: tx_analyst
+        allowMetrics: ["*"]
+        denyFields: ["customer.c_email_address"]
+        rowFilters:
+          - dataset: store
+            predicate: "s_state = 'TX'"
+      - name: admin
+        allowMetrics: ["*"]
+
+  views:
+    - name: sales_by_category_year
+      metrics: [total_sales, total_profit, total_quantity]
+      dimensions: [item.i_category, date_dim.d_year]
+      role: admin
+    - name: sales_by_brand_year
+      metrics: [sales_by_brand]
+      dimensions: [item.i_brand, date_dim.d_year]
+      role: admin
+    - name: monthly_sales
+      metrics: [total_sales, total_profit, transaction_count]
+      dimensions: [date_dim.d_date]
+      timeGrain: month
+      role: admin
+    - name: store_productivity_by_state
+      metrics: [store_productivity]
+      dimensions: [store.s_state]
+      role: admin
+    - name: clv_by_year
+      metrics: [customer_lifetime_value]
+      dimensions: [date_dim.d_year]
+      role: admin
+
+  # Operator extension: per-relationship join type (INNER default), kept outside
+  # the ossie block. ~2% of sales are anonymous, so keep them in revenue metrics.
+  joins:
+    - relationship: store_sales_to_customer
+      type: LEFT

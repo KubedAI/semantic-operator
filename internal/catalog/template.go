@@ -40,19 +40,31 @@ type semanticModelTemplateData struct {
 	Options       TemplateOptions
 	Datasets      []templateDataset
 	Relationships []templateRelationship
+	// DeniedFields are dataset.field references an upstream classification
+	// marks sensitive. Non-empty means the governance block is rendered as
+	// real policy instead of a commented placeholder.
+	DeniedFields []string
+	// Enriched reports whether any business metadata was applied, so the
+	// template can explain where the descriptions came from.
+	Enriched bool
 }
 
 type templateDataset struct {
-	Name       string
-	Source     string
-	ExampleKey string
-	Fields     []templateField
+	Name        string
+	Source      string
+	ExampleKey  string
+	Description string
+	Synonyms    []string
+	Deprecated  bool
+	Fields      []templateField
 }
 
 type templateField struct {
 	Name        string
 	Expression  string
 	Description string
+	Synonyms    []string
+	Sensitive   bool
 	IsTime      bool
 }
 
@@ -76,21 +88,36 @@ type templateRelationship struct {
 // The generated file mirrors the shape of a hand-authored SemanticModel so
 // business users edit in place rather than learning the schema from scratch.
 func RenderTemplate(w io.Writer, opts TemplateOptions, tables []Table) error {
-	return semanticModelTemplate.Execute(w, prepareTemplateData(opts, tables))
+	return RenderTemplateEnriched(w, opts, tables, Enrichment{})
 }
 
-func prepareTemplateData(opts TemplateOptions, tables []Table) semanticModelTemplateData {
+// RenderTemplateEnriched renders the scaffold with business metadata from an
+// Enricher applied. Enriched values are emitted as real YAML (descriptions,
+// ai_context synonyms, governance denyFields) while everything still unknown
+// stays a TODO placeholder, so the remaining TODOs are exactly the decisions
+// a human must still make.
+func RenderTemplateEnriched(w io.Writer, opts TemplateOptions, tables []Table, enrichment Enrichment) error {
+	return semanticModelTemplate.Execute(w, prepareTemplateData(opts, tables, enrichment))
+}
+
+func prepareTemplateData(opts TemplateOptions, tables []Table, enrichment Enrichment) semanticModelTemplateData {
 	data := semanticModelTemplateData{
-		APIVersion:  v1alpha1.GroupVersion.String(),
-		SpecVersion: ossieSpecVersion,
-		Options:     opts,
+		APIVersion:   v1alpha1.GroupVersion.String(),
+		SpecVersion:  ossieSpecVersion,
+		Options:      opts,
+		DeniedFields: enrichment.DeniedFields,
+		Enriched:     !enrichment.Empty(),
 	}
 
 	for _, dataset := range DeriveDatasets(tables) {
+		tableMeta, _ := enrichment.Table(dataset.Name)
 		templateDataset := templateDataset{
-			Name:       dataset.Name,
-			Source:     dataset.Source,
-			ExampleKey: exampleKey(dataset),
+			Name:        dataset.Name,
+			Source:      dataset.Source,
+			ExampleKey:  exampleKey(dataset),
+			Description: tableMeta.Description,
+			Synonyms:    tableMeta.Synonyms,
+			Deprecated:  tableMeta.Deprecated,
 		}
 		for i := range dataset.Fields {
 			field := &dataset.Fields[i]
@@ -98,10 +125,19 @@ func prepareTemplateData(opts TemplateOptions, tables []Table) semanticModelTemp
 			if !ok || expression == "" {
 				expression = field.Name
 			}
+			fieldMeta, _ := enrichment.Field(dataset.Name, field.Name)
+			description := field.Description
+			if fieldMeta.Description != "" {
+				// Upstream metadata is curated by data owners; prefer it over
+				// a raw catalog column comment.
+				description = fieldMeta.Description
+			}
 			templateDataset.Fields = append(templateDataset.Fields, templateField{
 				Name:        field.Name,
 				Expression:  expression,
-				Description: field.Description,
+				Description: description,
+				Synonyms:    fieldMeta.Synonyms,
+				Sensitive:   fieldMeta.Sensitive,
 				IsTime:      field.Dimension != nil && field.Dimension.IsTime,
 			})
 		}

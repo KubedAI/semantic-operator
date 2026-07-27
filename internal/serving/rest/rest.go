@@ -10,14 +10,17 @@ import (
 	"github.com/KubedAI/semantic-operator/internal/governance"
 	"github.com/KubedAI/semantic-operator/internal/planner"
 	"github.com/KubedAI/semantic-operator/internal/serving"
+	"github.com/KubedAI/semantic-operator/internal/serving/auth"
 )
 
-// RoleHeader names the trusted identity header. Deployments are expected to
-// terminate authentication in front of the service (see ARCHITECTURE.md).
-const RoleHeader = "X-Semantic-Role"
+// RoleHeader names the identity header. It is trusted only when the
+// authenticator runs in header mode; see internal/serving/auth.
+const RoleHeader = auth.RoleHeader
 
-// Handler mounts the REST API onto a mux.
-func Handler(svc *serving.Service) http.Handler {
+// Handler mounts the REST API onto a mux. The authenticator resolves the
+// caller for every request; a nil authenticator falls back to header mode so
+// tests and embedders keep working.
+func Handler(svc *serving.Service, authn *auth.Authenticator) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"models": svc.Models()})
@@ -39,15 +42,15 @@ func Handler(svc *serving.Service) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"model": m.Name, "dimensions": svc.ListDimensions(m)})
 	})
 	mux.HandleFunc("POST /v1/models/{model}/query", func(w http.ResponseWriter, r *http.Request) {
-		handleQuery(svc, w, r, true)
+		handleQuery(svc, authn, w, r, true)
 	})
 	mux.HandleFunc("POST /v1/models/{model}/sql", func(w http.ResponseWriter, r *http.Request) {
-		handleQuery(svc, w, r, false)
+		handleQuery(svc, authn, w, r, false)
 	})
 	return mux
 }
 
-func handleQuery(svc *serving.Service, w http.ResponseWriter, r *http.Request, execute bool) {
+func handleQuery(svc *serving.Service, authn *auth.Authenticator, w http.ResponseWriter, r *http.Request, execute bool) {
 	m, err := svc.Resolve(r.PathValue("model"))
 	if err != nil {
 		writeErr(w, err)
@@ -58,7 +61,11 @@ func handleQuery(svc *serving.Service, w http.ResponseWriter, r *http.Request, e
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body: " + err.Error()})
 		return
 	}
-	id := governance.Identity{Role: r.Header.Get(RoleHeader)}
+	id, err := identity(authn, r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	if !execute {
 		plan, cached, err := svc.Plan(r.Context(), m, req, id)
 		if err != nil {
@@ -76,10 +83,21 @@ func handleQuery(svc *serving.Service, w http.ResponseWriter, r *http.Request, e
 	writeJSON(w, http.StatusOK, res)
 }
 
+// identity resolves the caller, defaulting to header mode when no
+// authenticator was supplied.
+func identity(authn *auth.Authenticator, r *http.Request) (governance.Identity, error) {
+	if authn == nil {
+		return governance.Identity{Role: r.Header.Get(RoleHeader)}, nil
+	}
+	return authn.Identity(r)
+}
+
 func writeErr(w http.ResponseWriter, err error) {
 	status := http.StatusBadRequest
 	var unknown serving.ErrUnknownModel
 	switch {
+	case errors.Is(err, auth.ErrUnauthenticated):
+		status = http.StatusUnauthorized
 	case errors.Is(err, governance.ErrUnauthorized):
 		status = http.StatusForbidden
 	case errors.As(err, &unknown):

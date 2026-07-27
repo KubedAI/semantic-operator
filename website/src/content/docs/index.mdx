@@ -1,0 +1,142 @@
+---
+title: Semantic Operator
+description: A Kubernetes operator and server that compile certified business metrics into deterministic, governed SQL for AI agents, apps, and BI tools.
+template: splash
+editUrl: false
+lastUpdated: false
+hero:
+  tagline: A Kubernetes operator for your semantic layer. Define a business metric once, and a compiler turns every request into exactly one governed SQL statement, so an agent, a dashboard, and an app always return the same number.
+  actions:
+    - text: Quickstart
+      link: start/quickstart
+      icon: right-arrow
+      variant: primary
+    - text: What a semantic layer is
+      link: start/introduction
+      icon: open-book
+      variant: minimal
+    - text: View on GitHub
+      link: https://github.com/KubedAI/semantic-operator
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+import CombinedDiagram from '../../components/CombinedDiagram.astro';
+
+export const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+## Why agents get the number wrong
+
+Ask an agent for sales per employee. It joins stores to sales and adds up the headcount.
+That counts each store once for every sale it made, so the total is far too high.
+
+Nothing fails. The query runs, the result is formatted neatly, and the number is off by
+about ten thousand times. Unless you already knew the right answer, you would ship it.
+
+We tested 30 business questions, each asked three different ways.
+
+<div class="so-stats">
+  <div class="so-stat">
+    <span class="so-stat-label">Agent writes the SQL</span>
+    <span class="so-stat-figure">69%</span>
+    <span class="so-stat-note">correct. All 28 misses ran without an error and returned a
+    confidently wrong number.</span>
+  </div>
+  <div class="so-stat win">
+    <span class="so-stat-label">Agent picks a certified metric</span>
+    <span class="so-stat-figure">97%</span>
+    <span class="so-stat-note">correct, and the same question worded three ways gives the
+    same answer.</span>
+  </div>
+</div>
+
+The fix is not a better prompt. It is deciding once, in one place, what a metric means, and
+then never letting anything compute it another way.
+
+[See the full benchmark and method](/examples/benchmark-results)
+
+## Three pieces, running on Kubernetes
+
+<div class="so-cards-lg">
+<CardGrid>
+  <Card title="ossiectl writes the model" icon="laptop">
+    Point it at your catalog and it generates the model. Tables, columns, and likely joins
+    are filled in. Descriptions and PII tags can come from DataHub. You certify the metrics
+    and the access rules.
+  </Card>
+  <Card title="The operator runs the lifecycle" icon="setting">
+    Apply the model like any Kubernetes resource. It is validated, checked against the live
+    database, compiled into a versioned artifact, and published. A drifted version is
+    refused rather than served.
+  </Card>
+  <Card title="The server answers questions" icon="rocket">
+    One request becomes exactly one SQL statement, with access rules already applied. MCP
+    for agents, REST for applications, SQL views for BI. Stateless, so it scales sideways.
+  </Card>
+</CardGrid>
+</div>
+
+<CombinedDiagram caption="Authoring happens once, by a person. Reconciliation and serving run continuously and independently. They coordinate through the Kubernetes API and never call each other, which is why queries keep being answered while the operator is upgrading." />
+
+## Start here
+
+<CardGrid>
+  <LinkCard
+    title="What a semantic layer is"
+    href={`${base}/start/introduction`}
+    description="Why business meaning needs a home, and what breaks without one."
+  />
+  <LinkCard
+    title="Quickstart"
+    href={`${base}/start/quickstart`}
+    description="Install, load demo data, apply a model, run a governed query."
+  />
+  <LinkCard
+    title="How it works"
+    href={`${base}/architecture`}
+    description="The compiler, the reconcile loop, governance, and the extension points."
+  />
+  <LinkCard
+    title="Authoring a model"
+    href={`${base}/guides/authoring`}
+    description="Generate a scaffold, then certify the metrics and access rules."
+  />
+  <LinkCard
+    title="Developing and testing"
+    href={`${base}/guides/developing`}
+    description="Clone, build, run the offline suite, try changes on a cluster."
+  />
+  <LinkCard
+    title="Examples"
+    href={`${base}/examples`}
+    description="Walkthroughs on StarRocks, Trino, Polaris, and a local laptop stack."
+  />
+</CardGrid>
+
+## Bring your own engine
+
+The engine is two pluggable halves chosen by one setting. **StarRocks** and **Trino** ship
+today, and the same model compiled for both returns identical numbers on a live cluster.
+Glue, Polaris, Hive Metastore, and Unity all work through the engine's own catalog, and
+your definitions stay portable because the model is plain
+[Apache Ossie](https://ossie.apache.org/).
+
+<div class="so-band">
+  <div class="so-band-cell">
+    <span class="so-band-figure">100%</span>
+    <span class="so-band-label">Vendor neutral</span>
+  </div>
+  <div class="so-band-cell">
+    <span class="so-band-figure">YAML</span>
+    <span class="so-band-label">Configuration</span>
+  </div>
+  <div class="so-band-cell">
+    <span class="so-band-figure">Apache 2.0</span>
+    <span class="so-band-label">Open source</span>
+  </div>
+  <div class="so-band-cell">
+    <span class="so-band-figure">AI ready</span>
+    <span class="so-band-label">MCP native</span>
+  </div>
+</div>

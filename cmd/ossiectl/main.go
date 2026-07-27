@@ -1,7 +1,7 @@
 // ossiectl: offline tooling for SemanticModel resources.
 //
 //	ossiectl validate -f model.yaml          validate a SemanticModel CR
-//	ossiectl derive   -region us-west-2 -database osi_demo [-out model.yaml]
+//	ossiectl derive   -database osi_demo [-source engine|glue] [-enrich datahub] [-out model.yaml]
 //	                                       scaffold an Ossie SemanticModel from a Glue
 //	                                       database (fields populated; metrics/joins/
 //	                                       governance emitted as TODO placeholders)
@@ -20,9 +20,17 @@ import (
 
 	"github.com/KubedAI/semantic-operator/api/v1alpha1"
 	"github.com/KubedAI/semantic-operator/internal/catalog"
+	"github.com/KubedAI/semantic-operator/internal/catalog/datahub"
 	"github.com/KubedAI/semantic-operator/internal/catalog/glue"
+	"github.com/KubedAI/semantic-operator/internal/catalog/infoschema"
+	"github.com/KubedAI/semantic-operator/internal/dbclient"
+	"github.com/KubedAI/semantic-operator/internal/emitter"
+	_ "github.com/KubedAI/semantic-operator/internal/emitter/starrocks"
+	_ "github.com/KubedAI/semantic-operator/internal/emitter/trino"
 	"github.com/KubedAI/semantic-operator/internal/ossie"
 	"github.com/KubedAI/semantic-operator/internal/planner"
+	_ "github.com/KubedAI/semantic-operator/internal/starrocks"
+	_ "github.com/KubedAI/semantic-operator/internal/trino"
 )
 
 // ossieDocument is the top-level Ossie file shape: version + semantic_model list.
@@ -86,28 +94,93 @@ func cmdValidate(args []string) error {
 
 func cmdDerive(args []string) (err error) {
 	fs := flag.NewFlagSet("derive", flag.ExitOnError)
-	region := fs.String("region", os.Getenv("AWS_REGION"), "AWS region")
-	database := fs.String("database", "", "Glue database")
+	source := fs.String("source", "glue", "catalog source: glue (AWS SDK) or engine (the live query engine's information_schema; connection from ENGINE_* env; works for any catalog the engine mounts, e.g. Polaris, Hive, Glue)")
+	engine := fs.String("engine", envOr("SQL_DIALECT", "starrocks"), "query engine for -source engine: starrocks or trino")
+	region := fs.String("region", os.Getenv("AWS_REGION"), "AWS region (glue source)")
+	database := fs.String("database", "", "database/schema to scan")
 	modelName := fs.String("model", "derived_model", "Ossie model name")
 	crName := fs.String("name", "derived-model", "CR metadata.name")
 	namespace := fs.String("namespace", "semantic-system", "CR namespace")
-	cat := fs.String("catalog", "iceberg", "StarRocks external catalog name")
+	cat := fs.String("catalog", "iceberg", "engine catalog name (also written to spec.connection.catalog)")
 	out := fs.String("out", "", "write to this file instead of stdout")
+	enrich := fs.String("enrich", "", "metadata source for business meaning: datahub (optional; physical structure always comes from -source)")
+	datahubURL := fs.String("datahub-url", os.Getenv("DATAHUB_URL"), "DataHub GMS base URL, e.g. http://datahub-gms.datahub.svc:8080")
+	datahubPlatform := fs.String("datahub-platform", "iceberg", "DataHub data platform in dataset URNs (iceberg, trino, hive)")
+	datahubPrefix := fs.String("datahub-dataset-prefix", "", "leading component of the DataHub dataset path, when the ingestion source qualifies tables with a catalog (DataHub's trino source names datasets <catalog>.<schema>.<table>, so pass the Trino catalog name; leave empty for the iceberg and hive sources)")
+	datahubEnv := fs.String("datahub-env", "PROD", "DataHub fabric type in dataset URNs")
 	_ = fs.Parse(args)
 	if *database == "" {
 		return fmt.Errorf("-database is required")
 	}
 
-	src, err := glue.New(context.Background(), *region)
-	if err != nil {
-		return err
+	ctx := context.Background()
+	var src catalog.Source
+	switch *source {
+	case "glue":
+		src, err = glue.New(ctx, *region)
+		if err != nil {
+			return err
+		}
+	case "engine":
+		d, derr := emitter.Get(*engine)
+		if derr != nil {
+			return derr
+		}
+		cfg, cerr := dbclient.EnvConfig()
+		if cerr != nil {
+			return fmt.Errorf("-source engine needs the engine connection env: %w", cerr)
+		}
+		db, oerr := dbclient.Open(*engine, cfg)
+		if oerr != nil {
+			return oerr
+		}
+		defer func() { _ = db.Close() }()
+		src = infoschema.New(db, d, *cat)
+	default:
+		return fmt.Errorf("unknown -source %q: use glue or engine", *source)
 	}
-	tables, err := src.ListTables(context.Background(), *database)
+
+	tables, err := src.ListTables(ctx, *database)
 	if err != nil {
 		return err
 	}
 	if len(tables) == 0 {
-		return fmt.Errorf("no tables found in Glue database %q", *database)
+		return fmt.Errorf("no tables found in database %q", *database)
+	}
+
+	// Enrichment decorates the physical scaffold with business meaning. It is
+	// deliberately separate from -source: physical truth comes from what the
+	// engine sees, meaning comes from the metadata platform.
+	var enrichment catalog.Enrichment
+	switch *enrich {
+	case "":
+	case "datahub":
+		dh, derr := datahub.New(datahub.Options{
+			URL:           *datahubURL,
+			Token:         os.Getenv("DATAHUB_TOKEN"),
+			Platform:      *datahubPlatform,
+			DatasetPrefix: *datahubPrefix,
+			Env:           *datahubEnv,
+		})
+		if derr != nil {
+			return derr
+		}
+		// Report a broken enrichment endpoint rather than silently emitting a
+		// bare scaffold: the user explicitly asked for enrichment. Fetch once
+		// and interpret the result locally.
+		names := make([]string, 0, len(tables))
+		for _, t := range tables {
+			names = append(names, t.Name)
+		}
+		meta, perr := dh.DescribeTables(ctx, *database, names)
+		if perr != nil {
+			return fmt.Errorf("enrich datahub: %w", perr)
+		}
+		enrichment = catalog.EnrichWith(tables, meta)
+		fmt.Fprintf(os.Stderr, "enriched %d/%d tables from DataHub (%d sensitive columns, %d deprecated)\n",
+			len(enrichment.Tables), len(tables), len(enrichment.DeniedFields), len(enrichment.DeprecatedTables))
+	default:
+		return fmt.Errorf("unknown -enrich %q: use datahub", *enrich)
 	}
 
 	w := os.Stdout
@@ -118,7 +191,7 @@ func cmdDerive(args []string) (err error) {
 		}
 		defer func() {
 			if closeErr := f.Close(); err == nil && closeErr != nil {
-				err = createErr
+				err = closeErr
 			}
 		}()
 		w = f
@@ -131,7 +204,7 @@ func cmdDerive(args []string) (err error) {
 		Database:  *database,
 		Model:     *modelName,
 	}
-	if err := catalog.RenderTemplate(w, opts, tables); err != nil {
+	if err := catalog.RenderTemplateEnriched(w, opts, tables, enrichment); err != nil {
 		return err
 	}
 	if *out != "" {
@@ -212,4 +285,11 @@ func cmdWrap(args []string) error {
 		return err
 	}
 	return nil
+}
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }

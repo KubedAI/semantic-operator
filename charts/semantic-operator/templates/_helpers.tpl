@@ -17,26 +17,46 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- default (printf "%s-server" (include "semantic-operator.name" .)) .Values.serviceAccount.server.name -}}
 {{- end -}}
 
-{{/* Shared query-engine env for both deployments. engine.* is the source of
-     truth. The legacy starrocks.* values are honored ONLY when
-     engine.type is "starrocks": StarRocks credentials, host, and port must
-     never bleed into a Trino (or future engine) install, where a leaked
-     password would force the client into HTTPS basic-auth mode and a leaked
-     host would silently point at the wrong database. */}}
+{{/* Query-engine env for one deployment. Call with a dict:
+       (dict "root" . "component" "manager"|"server")
+
+     engine.* is the source of truth for the endpoint. Credentials resolve
+     per component so the two deployments can hold different database users:
+     the manager needs metadata reads plus DDL on the views schema only, while
+     the server needs SELECT on the model's tables and no DDL at all. Sharing
+     one user gives the query path the ability to alter schemas. Set
+     engine.manager.* / engine.server.* to split them; unset falls back to the
+     shared engine.* credential.
+
+     The legacy starrocks.* values are honored ONLY when engine.type is
+     "starrocks": StarRocks credentials, host, and port must never bleed into
+     a Trino (or future engine) install, where a leaked password would force
+     the client into HTTPS basic-auth mode and a leaked host would silently
+     point at the wrong database. */}}
 {{- define "semantic-operator.engineEnv" -}}
-{{- $legacy := eq .Values.engine.type "starrocks" -}}
-{{- $host := .Values.engine.host -}}
-{{- $user := .Values.engine.user -}}
-{{- $port := .Values.engine.port -}}
-{{- $sec := .Values.engine.passwordSecret -}}
+{{- $root := .root -}}
+{{- $per := index $root.Values.engine .component | default dict -}}
+{{- /* Catch a typo here rather than in a CrashLoopBackOff. The binary only
+       knows the engines registered with dbclient, so keep this list in step
+       with them. */ -}}
+{{- $engines := list "starrocks" "trino" -}}
+{{- if not (has $root.Values.engine.type $engines) -}}
+{{- fail (printf "engine.type %q is not supported. Supported engines are %s" $root.Values.engine.type (join ", " $engines)) -}}
+{{- end -}}
+{{- $legacy := eq $root.Values.engine.type "starrocks" -}}
+{{- $host := $root.Values.engine.host -}}
+{{- $user := $per.user | default $root.Values.engine.user -}}
+{{- $port := $root.Values.engine.port -}}
+{{- $sec := $per.passwordSecret | default $root.Values.engine.passwordSecret -}}
 {{- if $legacy -}}
-{{- $host = default .Values.starrocks.host $host -}}
-{{- $user = default .Values.starrocks.user $user -}}
-{{- $port = default .Values.starrocks.port $port -}}
+{{- $host = default $root.Values.starrocks.host $host -}}
+{{- $user = default $root.Values.starrocks.user $user -}}
+{{- $port = default $root.Values.starrocks.port $port -}}
 {{- if not $sec.name -}}
-{{- $sec = .Values.starrocks.passwordSecret -}}
+{{- $sec = $root.Values.starrocks.passwordSecret -}}
 {{- end -}}
 {{- end -}}
+{{- with $root -}}
 - name: SQL_DIALECT
   value: {{ .Values.engine.type | quote }}
 - name: ENGINE_HOST
@@ -56,4 +76,5 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
       name: {{ $sec.name }}
       key: {{ $sec.key }}
 {{- end }}
+{{- end -}}
 {{- end -}}

@@ -1,0 +1,108 @@
+---
+// CombinedDiagram: the three components and how work flows between them.
+//
+// Inline SVG so the diagram is editable text and themes with the site.
+// Colours come from theme.css tokens, never hard-coded here.
+//
+// Layout rules that keep it readable. Every zone reserves its top 34px for the
+// zone label and the component name, so no box may sit above y+36 of its zone.
+// Cross-zone arrows travel in the 16px gutters between zones.
+const { caption = "Authoring happens once, by a person. Reconciliation and serving run continuously and independently. They coordinate through the Kubernetes API and never call each other, which is why queries keep being answered while the operator is upgrading." } = Astro.props;
+---
+<figure class="so-figure">
+  <svg viewBox="0 0 720 460" role="img" aria-label="Three zones. A person authors a model with ossiectl outside the cluster. The Semantic Operator reconciles it into a published artifact. The Semantic Server answers queries against the query engine.">
+    <!-- zone 1, author -->
+    <rect class="zone" x="8" y="26" width="704" height="118" rx="8"/>
+    <text class="zone-label" x="22" y="48">1 · Author · outside the cluster</text>
+    <text class="zone-name" x="698" y="48" text-anchor="end">ossiectl</text>
+
+    <rect class="box" x="26" y="72" width="122" height="54" rx="6"/>
+    <text class="t-mono" x="38" y="91">Glue</text>
+    <text class="t-mono" x="38" y="106">DataHub</text>
+    <text class="t-sub" x="38" y="119">Polaris / Hive</text>
+
+    <rect class="box-strong" x="216" y="78" width="114" height="42" rx="6"/>
+    <text class="t-mono" x="230" y="97">ossiectl</text>
+    <text class="t-sub" x="230" y="111">derive · validate</text>
+
+    <rect class="box" x="396" y="78" width="96" height="42" rx="6"/>
+    <text class="t" x="410" y="97">model</text>
+    <text class="t-mono" x="410" y="112">.yaml</text>
+
+    <rect class="box" x="558" y="78" width="132" height="42" rx="6"/>
+    <text class="t-mono" x="570" y="97">SemanticModel</text>
+    <text class="t-sub" x="570" y="111">git → kubectl</text>
+
+    <path class="flow meta" d="M148 99 L210 99" marker-end="url(#c-meta)"/>
+    <path class="flow k8s" d="M330 99 L390 99" marker-end="url(#c-k8s)"/>
+    <path class="flow k8s" d="M492 99 L552 99" marker-end="url(#c-k8s)"/>
+
+    <!-- zone 2, reconcile -->
+    <rect class="zone" x="8" y="160" width="704" height="120" rx="8"/>
+    <text class="zone-label" x="22" y="182">2 · Reconcile · control plane</text>
+    <text class="zone-name" x="698" y="182" text-anchor="end">Semantic Operator</text>
+
+    <rect class="box-strong" x="216" y="204" width="132" height="60" rx="6"/>
+    <text class="t-mono" x="230" y="224">manager</text>
+    <text class="t-sub" x="230" y="240">validate · compile</text>
+    <text class="t-sub" x="230" y="254">drift · publish</text>
+
+    <rect class="box" x="418" y="212" width="132" height="46" rx="6"/>
+    <text class="t-mono" x="430" y="231">ConfigMap</text>
+    <text class="t-sub" x="430" y="247">versioned artifact</text>
+
+    <path class="flow k8s" d="M624 122 C 624 146, 400 142, 352 210" marker-end="url(#c-k8s)"/>
+    <text class="flow-t k8s" x="396" y="152">watch</text>
+
+    <path class="flow k8s" d="M348 236 L412 236" marker-end="url(#c-k8s)"/>
+    <text class="flow-t k8s" x="352" y="228">publish</text>
+
+    <!-- zone 3, serve -->
+    <rect class="zone" x="8" y="296" width="704" height="150" rx="8"/>
+    <text class="zone-label" x="22" y="318">3 · Serve · data plane</text>
+    <text class="zone-name" x="698" y="318" text-anchor="end">Semantic Server</text>
+
+    <rect class="box" x="26" y="352" width="122" height="48" rx="6"/>
+    <text class="t" x="38" y="372">Agents · apps</text>
+    <text class="t-sub" x="38" y="389">MCP · REST</text>
+
+    <rect class="box-strong" x="216" y="346" width="132" height="60" rx="6"/>
+    <text class="t-mono" x="230" y="366">server × N</text>
+    <text class="t-sub" x="230" y="382">authn · govern</text>
+    <text class="t-sub" x="230" y="396">plan · execute</text>
+
+    <rect class="box" x="558" y="344" width="132" height="46" rx="6"/>
+    <text class="t" x="570" y="363">Query engine</text>
+    <text class="t-sub" x="570" y="380">StarRocks · Trino</text>
+
+    <rect class="box" x="558" y="402" width="132" height="32" rx="6"/>
+    <text class="t-mono" x="570" y="422">semantic_views</text>
+
+    <path class="flow k8s" d="M484 260 C 484 280, 330 290, 292 340" marker-end="url(#c-k8s)"/>
+    <text class="flow-t k8s" x="332" y="292">watch artifact</text>
+
+    <path class="flow k8s" d="M148 376 L210 376" marker-end="url(#c-k8s)"/>
+
+    <path class="flow data" d="M348 374 L552 370" marker-end="url(#c-data)"/>
+    <text class="flow-t data" x="388" y="366">one governed SELECT</text>
+
+    <!-- operator to engine, routed round the right margin clear of every box -->
+    <path class="flow ddl" d="M348 210 C 486 190, 706 206, 706 330 L 702 342" marker-end="url(#c-ddl)"/>
+    <text class="flow-t ddl" x="560" y="200">view DDL</text>
+
+    <path class="flow meta" d="M348 260 C 428 288, 470 306, 552 340" marker-end="url(#c-meta)"/>
+    <text class="flow-t meta" x="410" y="318">drift-check</text>
+
+    <defs>
+      <marker id="c-meta" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0 0 L8 4 L0 8 z" fill="var(--so-meta)"/></marker>
+      <marker id="c-k8s" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0 0 L8 4 L0 8 z" fill="var(--so-k8s)"/></marker>
+      <marker id="c-data" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0 0 L8 4 L0 8 z" fill="var(--so-data)"/></marker>
+      <marker id="c-ddl" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0 0 L8 4 L0 8 z" fill="var(--so-ddl)"/></marker>
+    </defs>
+  </svg>
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>

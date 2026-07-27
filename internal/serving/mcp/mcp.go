@@ -13,10 +13,12 @@ import (
 	"github.com/KubedAI/semantic-operator/internal/governance"
 	"github.com/KubedAI/semantic-operator/internal/planner"
 	"github.com/KubedAI/semantic-operator/internal/serving"
+	"github.com/KubedAI/semantic-operator/internal/serving/auth"
 )
 
-// RoleHeader mirrors the REST adapter's identity header.
-const RoleHeader = "X-Semantic-Role"
+// RoleHeader mirrors the REST adapter's identity header. It is trusted only
+// when the authenticator runs in header mode; see internal/serving/auth.
+const RoleHeader = auth.RoleHeader
 
 type listModelsIn struct{}
 
@@ -140,16 +142,29 @@ func NewServer(svc *serving.Service, version string) *sdk.Server {
 	return srv
 }
 
-// Handler wraps the MCP server in the stateless streamable HTTP transport
-// and injects the caller identity from headers into the request context.
-func Handler(svc *serving.Service, version string) http.Handler {
+// Handler wraps the MCP server in the stateless streamable HTTP transport and
+// injects the resolved caller identity into the request context. A request the
+// authenticator rejects never reaches the MCP server, so an agent cannot call
+// a tool without a verified identity. A nil authenticator falls back to header
+// mode so tests and embedders keep working.
+func Handler(svc *serving.Service, version string, authn *auth.Authenticator) http.Handler {
 	srv := NewServer(svc, version)
 	h := sdk.NewStreamableHTTPHandler(
 		func(*http.Request) *sdk.Server { return srv },
 		&sdk.StreamableHTTPOptions{Stateless: true},
 	)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := governance.Identity{Role: r.Header.Get(RoleHeader)}
+		var id governance.Identity
+		if authn == nil {
+			id = governance.Identity{Role: r.Header.Get(RoleHeader)}
+		} else {
+			var err error
+			id, err = authn.Identity(r)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
+				return
+			}
+		}
 		h.ServeHTTP(w, r.WithContext(serving.WithIdentity(r.Context(), id)))
 	})
 }

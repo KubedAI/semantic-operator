@@ -1,0 +1,113 @@
+# Apache Polaris 1.6.0 on EKS. Iceberg REST catalog, relational-jdbc
+# persistence on the in-cluster Postgres. AWS access is EKS Pod Identity on the
+# polaris-sa ServiceAccount, so there are no static keys anywhere. The SDK
+# default chain inside the pod resolves whichever role you associated with this
+# ServiceAccount, and that role should hold read and write on the warehouse
+# bucket only.
+#
+# Credentials (polaris-credentials, postgres-credentials) are created by
+# eks-up.sh with generated values; nothing sensitive lives in this file.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: polaris-sa
+  namespace: chd
+---
+# One-shot: bootstrap realm POLARIS + root principal. The -c argument takes
+# the root secret via Kubernetes $(VAR) expansion from the Secret, so the
+# credential never appears in a manifest.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: polaris-bootstrap
+  namespace: chd
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels: {app: polaris-bootstrap}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: apache/polaris-admin-tool:1.6.0
+          args: ["bootstrap", "-r", "POLARIS", "-c", "POLARIS,root,$(ROOT_CLIENT_SECRET)"]
+          env:
+            - name: ROOT_CLIENT_SECRET
+              valueFrom: {secretKeyRef: {name: polaris-credentials, key: ROOT_CLIENT_SECRET}}
+            - {name: QUARKUS_DATASOURCE_DB_KIND, value: postgresql}
+            - {name: QUARKUS_DATASOURCE_USERNAME, value: polaris}
+            - name: QUARKUS_DATASOURCE_PASSWORD
+              valueFrom: {secretKeyRef: {name: postgres-credentials, key: POLARIS_DB_PASSWORD}}
+            - {name: QUARKUS_DATASOURCE_JDBC_URL, value: "jdbc:postgresql://postgres.chd.svc.cluster.local:5432/polaris"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: polaris
+  namespace: chd
+  labels: {app: polaris}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: polaris}
+  template:
+    metadata:
+      labels: {app: polaris}
+    spec:
+      serviceAccountName: polaris-sa
+      initContainers:
+        - name: wait-bootstrap
+          image: postgres:16
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              until psql -h postgres.chd.svc.cluster.local -U polaris -d polaris \
+                    -tAc "SELECT 1 FROM polaris_schema.version LIMIT 1" >/dev/null 2>&1; do
+                echo "waiting for polaris bootstrap..."; sleep 3
+              done
+              echo "bootstrap present"
+          env:
+            - name: PGPASSWORD
+              valueFrom: {secretKeyRef: {name: postgres-credentials, key: POLARIS_DB_PASSWORD}}
+      containers:
+        - name: polaris
+          image: apache/polaris:1.6.0
+          ports:
+            - {name: catalog, containerPort: 8181}
+            - {name: mgmt, containerPort: 8182}
+          env:
+            - {name: QUARKUS_DATASOURCE_DB_KIND, value: postgresql}
+            - {name: QUARKUS_DATASOURCE_USERNAME, value: polaris}
+            - name: QUARKUS_DATASOURCE_PASSWORD
+              valueFrom: {secretKeyRef: {name: postgres-credentials, key: POLARIS_DB_PASSWORD}}
+            - {name: QUARKUS_DATASOURCE_JDBC_URL, value: "jdbc:postgresql://postgres.chd.svc.cluster.local:5432/polaris"}
+            - {name: POLARIS_PERSISTENCE_TYPE, value: relational-jdbc}
+            - {name: POLARIS_REALM_CONTEXT_REALMS, value: POLARIS}
+            # No AWS_* credentials: Pod Identity supplies the role through the
+            # SDK default chain. Region only.
+            - {name: AWS_REGION, value: us-west-2}
+            - {name: JAVA_OPTS_APPEND, value: "-XX:MaxRAMPercentage=50.0"}
+          readinessProbe:
+            httpGet: {path: /q/health, port: 8182}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /q/health/live, port: 8182}
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {memory: 1Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: polaris
+  namespace: chd
+  labels: {app: polaris}
+spec:
+  selector: {app: polaris}
+  ports:
+    - {name: catalog, port: 8181, targetPort: 8181}
+    - {name: mgmt, port: 8182, targetPort: 8182}

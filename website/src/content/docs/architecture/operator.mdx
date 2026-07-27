@@ -1,0 +1,115 @@
+---
+title: The operator
+description: The control plane. It validates a SemanticModel, checks it against the live database, compiles it into a versioned artifact, and creates governed views.
+---
+
+import OperatorDiagram from '../../../components/OperatorDiagram.astro';
+
+The operator is a controller in the ordinary Kubernetes sense. It watches `SemanticModel`
+resources and works to make reality match them. Reconciliation is level triggered and
+idempotent, so it behaves correctly under GitOps tools such as ArgoCD.
+
+It is the only component that writes to the query engine, and its write scope is exactly
+one schema.
+
+<OperatorDiagram />
+
+## The reconcile loop
+
+### 1. Validate
+
+Structural checks on the Ossie document. Every dataset and metric name is unique.
+Relationships point at datasets that exist. Metric expressions parse under the bounded
+grammar. The join graph is a tree rather than a cycle. Governance policies reference fields
+that exist.
+
+This step is pure, with no network calls, so the same model always validates the same way.
+Failures set `Validated=False` with every problem listed at once rather than the first one
+found.
+
+### 2. Compile
+
+The validated spec is frozen into an artifact. Metric expressions are parsed into a typed
+form, dataset sources are resolved to physical tables, and dialect specific expressions are
+selected.
+
+The version is a hash of the spec. Applying the same model twice produces the same version,
+so republishing is a no operation and rollbacks are exact.
+
+### 3. Bind and drift check
+
+For every dataset the operator asks the engine what it can actually see, using `DESC` on
+StarRocks or `information_schema` on Trino. It cross checks the columns the model
+references, the join columns on both sides of every relationship, and the columns named in
+row filter predicates.
+
+A missing table or column is drift. Drift sets `DriftDetected=True` and **blocks
+publication of the new version**, while the previously published artifact keeps serving. A
+connection failure is not drift, so it retries with backoff instead of raising a false
+alarm.
+
+Checking the engine rather than the catalog is deliberate. A table can exist in Glue and
+still be unreadable by Trino because of a permissions or metadata problem. What matters is
+what the engine can resolve at query time.
+
+### 4. Publish
+
+The compiled artifact goes into a ConfigMap owned by the resource, labelled with the model
+name and version. Ownership means Kubernetes garbage collects it when the model is deleted.
+The write is idempotent through content comparison, so an unchanged model causes no API
+traffic.
+
+This ConfigMap is the only handoff to the server.
+
+### 5. Create governed views
+
+Each entry in `spec.views` is compiled through the same planner, under its declared role,
+and applied as `CREATE OR REPLACE VIEW`. BI tools then read certified numbers over the
+engine's own protocol without going through the server at all.
+
+The operator tracks the views it created in an annotation. Views removed from the model are
+dropped. A finalizer removes them if the resource is deleted.
+
+## Status conditions
+
+The resource reports its state through standard conditions, so `kubectl get` and `kubectl
+describe` tell the whole story.
+
+| Condition | Meaning |
+|---|---|
+| `Validated` | The document passed structural validation |
+| `Compiled` | The spec was frozen into an artifact |
+| `DriftDetected` | Physical schema no longer matches the bindings |
+| `Published` | The artifact ConfigMap is current |
+| `ViewsReady` | Declared views exist in the engine |
+
+`status.bindings` shows which physical table each dataset resolved to, which is the first
+place to look when something does not line up.
+
+## Access it needs
+
+| Target | Access | Why |
+|---|---|---|
+| Engine schemas | Read metadata | `DESC` or `information_schema` for binding and drift detection |
+| Engine view schema | DDL, one schema only | Creating and dropping governed views |
+| `semanticmodels` | get, list, watch, update, patch | Reconcile and write status |
+| `configmaps` | Full, on owned objects | Publish the compiled artifact |
+| `leases` | Namespace scoped | Leader election |
+| `events` | create, patch | Surface drift and failures to `kubectl describe` |
+
+It needs **no table data access** and **no cloud or catalog credentials**. Glue, DataHub,
+and Polaris are the authoring tool's business, not the operator's.
+
+## Scaling and deployment
+
+This is a controller, so it does not scale horizontally. One active replica does the work
+and leader election lets a standby wait without a second writer. Its load is driven by the
+resync period, which defaults to five minutes, rather than by query traffic.
+
+One engine per install today. The engine type selects both the SQL dialect and the
+connection client. Serving two engines means two installs in two namespaces.
+
+## Next
+
+[The semantic server](/architecture/server) picks up the published artifact and answers
+questions.

@@ -1,6 +1,12 @@
 bin/
 dist/
+# Locally built demo agent. `go build` in that directory drops an 18M binary
+# next to its sources, which is easy to stage by accident.
+examples/stacks/kind/datahub-polaris-starrocks/agent/agent
 *.out
 coverage.txt
 .DS_Store
 .tmp/
+website/node_modules/
+website/dist/
+website/.astro/

@@ -1,0 +1,74 @@
+---
+// ServerDiagram: inline SVG so the diagram is editable text and themes with the site.
+// Colours come from theme.css tokens; never hard-code a hex here.
+const { caption = 'The server connects to the engine as a single service identity. Per-caller identity is enforced above it, at compile time.' } = Astro.props;
+---
+<figure class="so-figure">
+  <svg viewBox="0 0 720 300" role="img" aria-label="Agents and apps authenticate to the server, which watches compiled artifacts, caches in Valkey, and reads table data from the engine">
+      <rect class="zone" x="8" y="26" width="176" height="254" rx="8"/>
+      <text class="zone-label" x="20" y="45">Callers</text>
+      <rect class="zone" x="200" y="26" width="312" height="254" rx="8"/>
+      <text class="zone-label" x="212" y="45">Data plane — in cluster</text>
+      <rect class="zone" x="528" y="26" width="184" height="254" rx="8"/>
+      <text class="zone-label" x="540" y="45">Query engine</text>
+
+      <rect class="box" x="24" y="72" width="144" height="44" rx="6"/>
+      <text class="t" x="36" y="91">AI agent</text>
+      <text class="t-sub" x="36" y="107">MCP · /mcp</text>
+
+      <rect class="box" x="24" y="128" width="144" height="44" rx="6"/>
+      <text class="t" x="36" y="147">Application</text>
+      <text class="t-sub" x="36" y="163">REST · /v1</text>
+
+      <rect class="box" x="24" y="184" width="144" height="44" rx="6"/>
+      <text class="t" x="36" y="203">BI tool</text>
+      <text class="t-sub" x="36" y="219">SQL, via views</text>
+
+      <rect class="box-strong" x="222" y="86" width="140" height="112" rx="6"/>
+      <text class="t-mono" x="234" y="108">server</text>
+      <text class="t-sub" x="234" y="126">authenticate</text>
+      <text class="t-sub" x="234" y="140">plan + govern</text>
+      <text class="t-sub" x="234" y="154">execute</text>
+      <text class="t-sub" x="234" y="176">× N replicas</text>
+
+      <rect class="box" x="222" y="222" width="140" height="42" rx="6"/>
+      <text class="t-mono" x="234" y="241">ConfigMap</text>
+      <text class="t-sub" x="234" y="256">compiled artifact</text>
+
+      <rect class="box" x="392" y="96" width="100" height="42" rx="6"/>
+      <text class="t-mono" x="404" y="115">Valkey</text>
+      <text class="t-sub" x="404" y="130">optional</text>
+
+      <rect class="box" x="556" y="112" width="132" height="52" rx="6"/>
+      <text class="t" x="568" y="132">Model tables</text>
+      <text class="t-sub" x="568" y="149">SELECT only</text>
+
+      <path class="flow k8s" d="M168 94 L216 116" marker-end="url(#server-ck)"/>
+      <path class="flow k8s" d="M168 150 L216 140" marker-end="url(#server-ck)"/>
+      <text class="flow-t k8s" x="106" y="126">401 / 403 gate</text>
+
+      <path class="flow k8s" d="M292 218 L292 202" marker-end="url(#server-ck)"/>
+      <text class="flow-t k8s" x="298" y="214">watch</text>
+
+      <path class="flow none" d="M362 117 L388 117" marker-end="url(#server-cn)"/>
+      <text class="flow-t none" x="392" y="158">cache, never</text>
+      <text class="flow-t none" x="392" y="170">correctness</text>
+
+      <path class="flow data" d="M362 150 L550 138" marker-end="url(#server-cd)"/>
+      <text class="flow-t data" x="404" y="204">one governed SELECT</text>
+      <text class="flow-t data" x="404" y="216">per request</text>
+
+      <path class="flow data" d="M168 206 C 420 262, 520 220, 620 170" marker-end="url(#server-cd)"/>
+      <text class="flow-t data" x="196" y="276">BI reads governed views directly on the engine</text>
+
+      <defs>
+        <marker id="server-ck" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 L8 4 L0 8 z" fill="var(--k8s)"/></marker>
+        <marker id="server-cd" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 L8 4 L0 8 z" fill="var(--data)"/></marker>
+        <marker id="server-cn" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 L8 4 L0 8 z" fill="var(--none)"/></marker>
+      </defs>
+    </svg>
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>

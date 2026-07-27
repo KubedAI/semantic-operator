@@ -1,0 +1,116 @@
+---
+title: The semantic server
+description: The data plane. It authenticates the caller, compiles each request into exactly one governed SQL statement, runs it, and returns the rows alongside the SQL.
+---
+
+import ServerDiagram from '../../../components/ServerDiagram.astro';
+
+The server is the query path. It holds no state of its own, writes nothing, and is the only
+component that reads table data. Because all of its state lives in ConfigMaps and an
+optional cache, replicas are interchangeable and it scales sideways.
+
+<ServerDiagram />
+
+## How a request becomes SQL
+
+### Identity
+
+The caller is resolved to a role before anything else happens. Two modes exist and the
+difference is a security boundary.
+
+In `header` mode the role is read from the `X-Semantic-Role` header. This is only safe
+behind a proxy that authenticates the caller and overwrites that header, because otherwise
+any client that reaches the port can claim any role. The server logs a warning at startup
+in this mode.
+
+In `jwt` mode a bearer token is required and validated against the issuer's JWKS. Signature,
+expiry, issuer, and audience are all checked, and only asymmetric algorithms are accepted
+because the key set is public. The role comes from a claim that may be nested. Any inbound
+`X-Semantic-Role` is ignored outright, so a caller cannot assert its own identity.
+
+An unverified caller gets 401. A verified caller that policy rejects gets 403. The
+distinction matters when you are debugging.
+
+### Resolve and authorize
+
+Metric and dimension names are looked up in the compiled model. Then governance runs,
+**before any SQL exists**.
+
+The check covers requested metrics against the role's allowlist, requested dimensions and
+filters against denied fields, and every field inside every requested metric expression.
+That last part is what stops a caller reading a forbidden column through an aggregate.
+
+### Plan
+
+The planner picks the smallest join tree that connects the datasets the request needs. A
+query touching only a dimension table does not detour through the fact table.
+
+Ratio metrics get special care. If a ratio's denominator aggregates a dimension across a
+join, summing it directly would multiply it by the number of fact rows. The planner splits
+those into separate aggregations and deduplicates on the dimension's primary key. This is
+the single most common way hand written and generated SQL produce a wrong number.
+
+Row filters from the role's policy are conjoined into the WHERE clause. Everything is
+rendered through the engine's dialect, so identifier quoting and literal syntax match the
+target.
+
+### Execute and report
+
+One statement runs. The response carries the rows, the exact SQL, the model version, and a
+request hash. Every statement begins with a comment holding those same three values, so a
+query in the engine's log traces back to the request that caused it.
+
+The same request, from the same role, against the same model version, produces byte
+identical SQL every time.
+
+## Three surfaces, one compiler
+
+Agents connect over **MCP** and call `list_metrics`, `list_dimensions`, and `query_metric`.
+The tool descriptions and the model's own synonyms let an agent ground a user's wording
+onto a certified metric. The agent never writes SQL.
+
+Applications use **REST**. `POST /v1/models/{model}/query` runs a request.
+`POST /v1/models/{model}/sql` returns the plan without executing it, which is useful in
+review and in tests.
+
+BI tools read the **governed views** directly from the engine over its native protocol.
+
+All three go through the same compiler, so they cannot disagree about what a metric means.
+
+## Caching
+
+An optional Valkey cache stores compiled plans and query results. Caching is an
+optimisation and never a correctness dependency, so a cache miss or an unreachable cache
+degrades to recompute and rerun.
+
+The plan cache key includes the dialect, the model name, the model version, and a hash of
+the request that already covers the effective role. Results are keyed on the emitted SQL,
+which already contains any row filters. Both properties mean a cached entry cannot leak
+across roles, versions, or engines.
+
+## Access it needs
+
+| Target | Access | Why |
+|---|---|---|
+| Engine model tables | SELECT | Executes the compiled statement |
+| `configmaps` | get, list, watch | An informer keeps compiled models in memory |
+| Valkey | Optional | Plan and result caches |
+| JWKS endpoint | Read, in jwt mode | Validate bearer tokens |
+
+It needs **no DDL of any kind**, no access to `SemanticModel` resources, and no catalog or
+cloud credentials.
+
+## Scaling and deployment
+
+Stateless and horizontal. The default is two replicas and you scale on request rate.
+Determinism makes the caches effective, so repeated questions can skip the engine entirely.
+
+The Service is `ClusterIP` and the chart refuses any other type unless you explicitly
+override it, because a load balancer in front of a header mode server is an unauthenticated
+query endpoint. Reach it with `kubectl port-forward`, or put an authenticating ingress in
+front and opt in deliberately.
+
+## Next
+
+[Access and credentials](/architecture/access) sets out the full grant matrix for all three
+components.

@@ -1,0 +1,57 @@
+---
+// OperatorDiagram: inline SVG so the diagram is editable text and themes with the site.
+// Colours come from theme.css tokens; never hard-code a hex here.
+const { caption = 'Two engine privileges, deliberately narrow: read any schema, write exactly one. Drift is detected by asking the engine what it can actually resolve, not by trusting a catalog.' } = Astro.props;
+---
+<figure class="so-figure">
+  <svg viewBox="0 0 720 268" role="img" aria-label="The operator watches SemanticModel resources, reads engine metadata, publishes a ConfigMap artifact, and creates governed views">
+      <rect class="zone" x="8" y="26" width="452" height="222" rx="8"/>
+      <text class="zone-label" x="20" y="45">Control plane — in cluster</text>
+      <rect class="zone" x="478" y="26" width="234" height="222" rx="8"/>
+      <text class="zone-label" x="490" y="45">Data plane — query engine</text>
+
+      <rect class="box" x="26" y="70" width="140" height="50" rx="6"/>
+      <text class="t-mono" x="38" y="90">SemanticModel</text>
+      <text class="t-sub" x="38" y="107">the desired state</text>
+
+      <rect class="box-strong" x="212" y="98" width="130" height="86" rx="6"/>
+      <text class="t-mono" x="226" y="120">manager</text>
+      <text class="t-sub" x="226" y="138">validate → compile</text>
+      <text class="t-sub" x="226" y="152">drift-check</text>
+      <text class="t-sub" x="226" y="166">publish → views</text>
+
+      <rect class="box" x="26" y="166" width="140" height="56" rx="6"/>
+      <text class="t-mono" x="38" y="186">ConfigMap</text>
+      <text class="t-sub" x="38" y="202">compiled artifact,</text>
+      <text class="t-sub" x="38" y="215">content-addressed</text>
+
+      <rect class="box" x="506" y="70" width="178" height="52" rx="6"/>
+      <text class="t" x="518" y="90">Model tables</text>
+      <text class="t-sub" x="518" y="107">read schema only, never rows</text>
+
+      <rect class="box" x="506" y="152" width="178" height="52" rx="6"/>
+      <text class="t-mono" x="518" y="172">semantic_views</text>
+      <text class="t-sub" x="518" y="189">the only writable schema</text>
+
+      <path class="flow k8s" d="M166 95 L206 118" marker-end="url(#operator-bk)"/>
+      <text class="flow-t k8s" x="168" y="86">watch</text>
+      <path class="flow k8s" d="M240 184 L166 190" marker-end="url(#operator-bk)"/>
+      <text class="flow-t k8s" x="176" y="176">publish</text>
+
+      <path class="flow meta" d="M342 118 L500 96" marker-end="url(#operator-bm)"/>
+      <text class="flow-t meta" x="356" y="100">DESC / information_schema</text>
+
+      <path class="flow ddl" d="M342 164 L500 176" marker-end="url(#operator-bd)"/>
+      <text class="flow-t ddl" x="356" y="190">CREATE OR REPLACE VIEW</text>
+
+      <defs>
+        <marker id="operator-bk" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 L8 4 L0 8 z" fill="var(--k8s)"/></marker>
+        <marker id="operator-bm" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 L8 4 L0 8 z" fill="var(--meta)"/></marker>
+        <marker id="operator-bd" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 L8 4 L0 8 z" fill="var(--ddl)"/></marker>
+      </defs>
+    </svg>
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>
