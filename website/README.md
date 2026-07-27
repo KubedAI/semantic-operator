@@ -29,6 +29,13 @@ npm run build
 npm run preview
 ```
 
+One dev server message is expected and harmless. Browsers ask the origin root
+for `/favicon.ico` no matter which icons a page declares, and that path sits
+outside the base, so the router logs that it could not match it. The page
+itself returns 200. Vite serves the public directory before any hook the site
+can register, so there is nowhere to intercept the request, and it does not
+happen in production because the origin root is a different host.
+
 ## Check your links before pushing
 
 The build does not fail on a link to a page that no longer exists, so there is a separate
