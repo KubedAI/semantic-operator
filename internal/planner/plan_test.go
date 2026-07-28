@@ -108,7 +108,7 @@ func TestSimpleMetricByDimension(t *testing.T) {
 		Metrics:    []string{"total_sales"},
 		Dimensions: []string{"item.i_category"},
 		Filters:    []Filter{{Field: "date_dim.d_year", Op: "=", Value: 2001}},
-	}, governance.Identity{Role: "admin"})
+	}, governance.Single("admin"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,12 +133,12 @@ func TestDeterminism(t *testing.T) {
 		Dimensions: []string{"item.i_category", "date_dim.d_year"},
 		Filters:    []Filter{{Field: "store.s_state", Op: "IN", Values: []any{"TX", "CA"}}},
 	}
-	first, err := Build(cm, testDialect(t), req, governance.Identity{Role: "admin"})
+	first, err := Build(cm, testDialect(t), req, governance.Single("admin"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 50; i++ {
-		p, err := Build(cm, testDialect(t), req, governance.Identity{Role: "admin"})
+		p, err := Build(cm, testDialect(t), req, governance.Single("admin"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -154,7 +154,7 @@ func TestCLVIsInlineFanoutSafe(t *testing.T) {
 	plan, err := Build(cm, testDialect(t), Request{
 		Metrics:    []string{"customer_lifetime_value"},
 		Dimensions: []string{"date_dim.d_year"},
-	}, governance.Identity{Role: "admin"})
+	}, governance.Single("admin"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestStoreProductivitySplitsOnFanOut(t *testing.T) {
 	plan, err := Build(cm, testDialect(t), Request{
 		Metrics:    []string{"store_productivity"},
 		Dimensions: []string{"store.s_state"},
-	}, governance.Identity{Role: "admin"})
+	}, governance.Single("admin"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestStoreProductivityDedupAcrossFactDims(t *testing.T) {
 	plan, err := Build(cm, testDialect(t), Request{
 		Metrics:    []string{"store_productivity"},
 		Dimensions: []string{"item.i_category"},
-	}, governance.Identity{Role: "admin"})
+	}, governance.Single("admin"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestTimeGrain(t *testing.T) {
 		Metrics:    []string{"total_sales"},
 		Dimensions: []string{"date_dim.d_date"},
 		TimeGrain:  "month",
-	}, governance.Identity{Role: "admin"})
+	}, governance.Single("admin"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func TestTimeGrainRequiresTimeDimension(t *testing.T) {
 		Metrics:    []string{"total_sales"},
 		Dimensions: []string{"item.i_category"},
 		TimeGrain:  "month",
-	}, governance.Identity{Role: "admin"})
+	}, governance.Single("admin"))
 	if err == nil || !strings.Contains(err.Error(), "time dimension") {
 		t.Fatalf("expected time-dimension error, got %v", err)
 	}
@@ -242,7 +242,7 @@ func TestComputedFieldDimension(t *testing.T) {
 	plan, err := Build(cm, testDialect(t), Request{
 		Metrics:    []string{"total_sales"},
 		Dimensions: []string{"customer.customer_full_name"},
-	}, governance.Identity{Role: "admin"})
+	}, governance.Single("admin"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestGovernanceDeniedMetric(t *testing.T) {
 	cm := compiled(t)
 	// analyst's allowMetrics covers all four; restrict to test denial.
 	cm.Governance.Roles[0].AllowMetrics = []string{"total_sales"}
-	_, err := Build(cm, testDialect(t), Request{Metrics: []string{"total_profit"}}, governance.Identity{Role: "analyst"})
+	_, err := Build(cm, testDialect(t), Request{Metrics: []string{"total_profit"}}, governance.Single("analyst"))
 	if !errors.Is(err, governance.ErrUnauthorized) {
 		t.Fatalf("expected ErrUnauthorized, got %v", err)
 	}
@@ -266,7 +266,7 @@ func TestGovernanceDeniedFieldAsDimension(t *testing.T) {
 	_, err := Build(cm, testDialect(t), Request{
 		Metrics:    []string{"total_sales"},
 		Dimensions: []string{"customer.c_email_address"},
-	}, governance.Identity{Role: "analyst"})
+	}, governance.Single("analyst"))
 	if !errors.Is(err, governance.ErrUnauthorized) {
 		t.Fatalf("expected ErrUnauthorized, got %v", err)
 	}
@@ -275,7 +275,7 @@ func TestGovernanceDeniedFieldAsDimension(t *testing.T) {
 func TestGovernanceDeniedFieldInsideMetric(t *testing.T) {
 	cm := compiled(t)
 	cm.Governance.Roles[0].DenyFields = []string{"store_sales.ss_net_profit"}
-	_, err := Build(cm, testDialect(t), Request{Metrics: []string{"total_profit"}}, governance.Identity{Role: "analyst"})
+	_, err := Build(cm, testDialect(t), Request{Metrics: []string{"total_profit"}}, governance.Single("analyst"))
 	if !errors.Is(err, governance.ErrUnauthorized) {
 		t.Fatalf("expected ErrUnauthorized for denied field inside metric, got %v", err)
 	}
@@ -286,7 +286,7 @@ func TestGovernanceRowFilterInjected(t *testing.T) {
 	plan, err := Build(cm, testDialect(t), Request{
 		Metrics:    []string{"total_sales"},
 		Dimensions: []string{"item.i_category"},
-	}, governance.Identity{Role: "tx_analyst"})
+	}, governance.Single("tx_analyst"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +301,7 @@ func TestGovernanceRowFilterInjected(t *testing.T) {
 
 func TestGovernanceUnknownRoleDenied(t *testing.T) {
 	cm := compiled(t)
-	_, err := Build(cm, testDialect(t), Request{Metrics: []string{"total_sales"}}, governance.Identity{Role: "ghost"})
+	_, err := Build(cm, testDialect(t), Request{Metrics: []string{"total_sales"}}, governance.Single("ghost"))
 	if !errors.Is(err, governance.ErrUnauthorized) {
 		t.Fatalf("expected ErrUnauthorized, got %v", err)
 	}
@@ -337,11 +337,11 @@ func TestRequestHashStability(t *testing.T) {
 
 func TestRoleChangesPlanNotJustKey(t *testing.T) {
 	cm := compiled(t)
-	admin, err := Build(cm, testDialect(t), Request{Metrics: []string{"total_sales"}}, governance.Identity{Role: "admin"})
+	admin, err := Build(cm, testDialect(t), Request{Metrics: []string{"total_sales"}}, governance.Single("admin"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	tx, err := Build(cm, testDialect(t), Request{Metrics: []string{"total_sales"}}, governance.Identity{Role: "tx_analyst"})
+	tx, err := Build(cm, testDialect(t), Request{Metrics: []string{"total_sales"}}, governance.Single("tx_analyst"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -355,7 +355,7 @@ func TestRoleChangesPlanNotJustKey(t *testing.T) {
 
 func TestUnknownMetricListsAvailable(t *testing.T) {
 	cm := compiled(t)
-	_, err := Build(cm, testDialect(t), Request{Metrics: []string{"revenue"}}, governance.Identity{Role: "admin"})
+	_, err := Build(cm, testDialect(t), Request{Metrics: []string{"revenue"}}, governance.Single("admin"))
 	if err == nil || !strings.Contains(err.Error(), "total_sales") {
 		t.Fatalf("expected helpful unknown-metric error, got %v", err)
 	}
@@ -367,7 +367,7 @@ func TestLimit(t *testing.T) {
 		Metrics:    []string{"total_sales"},
 		Dimensions: []string{"item.i_brand"},
 		Limit:      10,
-	}, governance.Identity{Role: "admin"})
+	}, governance.Single("admin"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -11,3 +11,31 @@ Next steps:
   3. Query it:
      kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "semantic-operator.name" . }}-server 8090:{{ .Values.server.service.port }}
      curl -s localhost:8090/v1/models | jq
+
+{{- $unserved := list }}
+{{- range .Values.manager.watchNamespaces }}
+{{- if ne . $.Release.Namespace }}
+{{- $unserved = append $unserved . }}
+{{- end }}
+{{- end }}
+{{- if $unserved }}
+
+WARNING
+  The manager reconciles {{ join ", " $unserved }}, but this release's server
+  only loads compiled artifacts from {{ .Release.Namespace }}.
+
+  Models in {{ join ", " $unserved }} will validate, compile, publish an
+  artifact, and get governed views created in the engine, and this server will
+  not answer queries for them.
+
+  That is the right setup if you wanted manager-only view management there.
+  Otherwise add {{ .Release.Namespace }} to manager.watchNamespaces, or install
+  a second release with its server in each of those namespaces.
+{{- end }}
+{{- if .Values.manager.watchAllNamespaces }}
+
+WARNING
+  manager.watchAllNamespaces grants a ClusterRole over SemanticModels and
+  ConfigMaps in every namespace. This server still only serves models in
+  {{ .Release.Namespace }}.
+{{- end }}

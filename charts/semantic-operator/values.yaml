@@ -67,6 +67,29 @@ valkey:
 manager:
   replicas: 1
   leaderElect: true
+  # Namespaces the manager reconciles. Empty means the release namespace only,
+  # which is the default and needs no ClusterRole.
+  #
+  # The default matches what this release's server can serve. The server loads
+  # compiled artifacts from its own namespace, so a manager reconciling models
+  # elsewhere would introspect the engine, create views, and publish artifacts
+  # that this server never reads.
+  #
+  # Listing namespaces issues one Role and RoleBinding in each. Anything
+  # outside the server's namespace is reconciled and published but NOT served
+  # by this release. That is a valid manager-only or view-management setup, and
+  # the chart prints a warning so it is never a surprise. To serve those models
+  # too, install a second release with its server in that namespace.
+  #
+  #   watchNamespaces:
+  #     - analytics
+  #     - finance
+  watchNamespaces: []
+  # Cluster-wide operation. Grants a ClusterRole over SemanticModels and
+  # ConfigMaps in every namespace, so a compromised manager can rewrite
+  # compiled artifacts anywhere the CRD exists. Opt in deliberately. Mutually
+  # exclusive with watchNamespaces; setting both fails rendering.
+  watchAllNamespaces: false
   # Drift-detection cadence.
   resyncPeriod: 5m
   # StarRocks default-catalog database where governed views are created.
@@ -78,6 +101,57 @@ manager:
 server:
   replicas: 2
   logLevel: info
+  # Bounds on one request and its result. Every value here is optional and
+  # overrides a built-in default, shown in brackets. Leaving one unset means
+  # the default applies, never that the bound is removed.
+  #
+  # A request over a bound is refused rather than trimmed, because a silently
+  # truncated result cannot be told apart from a complete one.
+  query:
+    # Applied when a request names no limit. [1000]
+    defaultRowLimit: ~
+    # Largest limit a caller may ask for. [10000]
+    maxRowLimit: ~
+    maxMetrics: ~       # [25]
+    maxDimensions: ~    # [25]
+    maxFilters: ~       # [50]
+    maxFilterValues: ~  # [1000] values in one IN list
+    # Encoded result ceiling in bytes. Catches results that are small in rows
+    # but large in bytes. [33554432, 32Mi]
+    maxResultBytes: ~
+    # Results above this are returned but not cached. [8388608, 8Mi]
+    maxCacheEntryBytes: ~
+    # Include each metric's raw SQL expression in listings. Off by default:
+    # the expression is the definition itself, and an agent grounds on the
+    # name, description, and synonyms.
+    exposeMetricExpressions: false
+    # Maximum decoded JSON request body in bytes. [1048576, 1Mi]
+    maxRequestBytes: ~
+    # Requests in flight at once. This is a memory budget, not a throughput
+    # setting: each in-flight request can hold a whole result until its
+    # response is written, so
+    #
+    #   maxConcurrent x maxResultBytes  +  the encoded copy made while
+    #   serializing
+    #
+    # must stay comfortably under server.resources.limits.memory. The defaults
+    # are 4 x 32Mi, about 128Mi of results against a 512Mi pod. Raising either
+    # one means raising the memory limit too. [4]
+    maxConcurrent: ~
+    # How long a request waits for a slot before it is refused with 503.
+    # Waiting forever turns a load problem into a timeout problem further
+    # out, so the queue is bounded. [5]
+    queueWaitSeconds: ~
+  # HTTP server bounds. Defaults in brackets, all optional.
+  #
+  # There is deliberately no global write timeout. MCP streams its responses,
+  # so a server-wide write deadline would truncate them. The REST routes carry
+  # their own deadline instead, set by restTimeoutSeconds.
+  http:
+    readTimeoutSeconds: ~   # [30] whole request including body
+    idleTimeoutSeconds: ~   # [120] keep-alive idle
+    restTimeoutSeconds: ~   # [60] deadline on /v1/ routes only
+    maxHeaderBytes: ~       # [1048576, 1Mi]
   # How the caller's identity is established.
   #
   #   header  the X-Semantic-Role header is trusted verbatim. Only safe behind
@@ -88,11 +162,25 @@ server:
   #           JWKS; the role comes from a claim and any inbound
   #           X-Semantic-Role is ignored. Use this in production.
   auth:
+    # jwt is the production profile. header mode is refused unless
+    # allowInsecureHeaderAuth is also set, because it trusts whatever the
+    # caller sends.
+    #
+    # Running header mode safely means the proxy in front must, in this order,
+    # authenticate the caller, strip any inbound X-Semantic-Role, and then set
+    # the header itself. Skipping the strip is the whole vulnerability: a
+    # client simply sends the header it wants.
     mode: header
+    allowInsecureHeaderAuth: false
     # jwt mode only. jwksURL is required; issuer and audience are enforced
     # when set; roleClaim may address a nested claim with dots, e.g.
     # "resource_access.semantic.role".
+    #
+    # groupsClaim names a claim holding a list of roles, which is how most
+    # issuers model membership. Roles from both claims are combined, and
+    # permissions across them are additive.
     jwksURL: ""
+    groupsClaim: ""
     issuer: ""
     audience: ""
     roleClaim: role
@@ -106,6 +194,42 @@ server:
   resources:
     requests: {cpu: 250m, memory: 256Mi}
     limits: {memory: 512Mi}
+  # Keeps at most one server pod unavailable during a voluntary disruption
+  # such as a node drain. maxUnavailable rather than minAvailable, so a
+  # single-replica install can still be drained instead of blocking forever.
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
+  # Prefer spreading server pods across nodes. ScheduleAnyway by default, so a
+  # single-node or kind cluster still schedules them.
+  topologySpread:
+    enabled: true
+    maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+  # Pause before shutdown so endpoint removal reaches every proxy and in-flight
+  # requests are not cut off. Uses the native sleep lifecycle action, which
+  # needs Kubernetes 1.29 or newer; on older clusters the hook is skipped
+  # because the distroless image has no shell to run an exec hook.
+  gracefulShutdown:
+    enabled: true
+    preStopSleepSeconds: 5
+    # Must exceed preStopSleepSeconds plus the server's 10s shutdown deadline.
+    terminationGracePeriodSeconds: 30
+  # For a cold start slower than the liveness probe tolerates, usually a
+  # distant JWKS or query engine. Off by default.
+  startupProbe:
+    enabled: false
+    periodSeconds: 5
+    failureThreshold: 30
+  # Needs metrics-server, so off by default. When on, the Deployment stops
+  # setting replicas and the autoscaler owns the count.
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 75
+    targetMemoryUtilizationPercentage: ~
   service:
     # ClusterIP only. The server authorizes callers from the X-Semantic-Role
     # header and expects an authenticating proxy in front, so publishing it

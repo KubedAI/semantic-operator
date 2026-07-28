@@ -78,7 +78,7 @@ func NewServer(svc *serving.Service, version string) *sdk.Server {
 		Name:        "list_models",
 		Description: "List published semantic models.",
 	}, func(ctx context.Context, req *sdk.CallToolRequest, _ listModelsIn) (*sdk.CallToolResult, listModelsOut, error) {
-		return nil, listModelsOut{Models: svc.Models()}, nil
+		return nil, listModelsOut{Models: svc.Models(serving.IdentityFrom(ctx))}, nil
 	})
 
 	sdk.AddTool(srv, &sdk.Tool{
@@ -91,7 +91,11 @@ func NewServer(svc *serving.Service, version string) *sdk.Server {
 		if err != nil {
 			return nil, listMetricsOut{}, err
 		}
-		return nil, listMetricsOut{Model: m.Name, Metrics: svc.ListMetrics(m)}, nil
+		metrics, err := svc.ListMetrics(m, serving.IdentityFrom(ctx))
+		if err != nil {
+			return nil, listMetricsOut{}, err
+		}
+		return nil, listMetricsOut{Model: m.Name, Metrics: metrics}, nil
 	})
 
 	sdk.AddTool(srv, &sdk.Tool{
@@ -103,14 +107,19 @@ func NewServer(svc *serving.Service, version string) *sdk.Server {
 		if err != nil {
 			return nil, listDimensionsOut{}, err
 		}
-		return nil, listDimensionsOut{Model: m.Name, Dimensions: svc.ListDimensions(m)}, nil
+		dims, err := svc.ListDimensions(m, serving.IdentityFrom(ctx))
+		if err != nil {
+			return nil, listDimensionsOut{}, err
+		}
+		return nil, listDimensionsOut{Model: m.Name, Dimensions: dims}, nil
 	})
 
 	sdk.AddTool(srv, &sdk.Tool{
 		Name: "query_metric",
 		Description: "Query one or more certified metrics grouped by dimensions with " +
 			"optional filters and time grain. The semantic planner compiles the request " +
-			"into deterministic, governed SQL and executes it on StarRocks. The response " +
+			"into deterministic, governed SQL and executes it on the configured query " +
+			"engine. The response " +
 			"includes the SQL for provenance. Do not write SQL yourself.",
 	}, func(ctx context.Context, req *sdk.CallToolRequest, in queryIn) (*sdk.CallToolResult, queryOut, error) {
 		m, err := svc.Resolve(in.Model)
@@ -156,7 +165,7 @@ func Handler(svc *serving.Service, version string, authn *auth.Authenticator) ht
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var id governance.Identity
 		if authn == nil {
-			id = governance.Identity{Role: r.Header.Get(RoleHeader)}
+			id = governance.Single(r.Header.Get(RoleHeader))
 		} else {
 			var err error
 			id, err = authn.Identity(r)

@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,8 +89,8 @@ func TestHeaderModeTrustsHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id.Role != "analyst" {
-		t.Errorf("role = %q, want analyst", id.Role)
+	if got := strings.Join(id.Roles, ","); got != "analyst" {
+		t.Errorf("roles = %q, want analyst", got)
 	}
 	// The default (empty mode) must behave the same, so existing installs
 	// keep working.
@@ -115,8 +116,8 @@ func TestJWTModeIgnoresRoleHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id.Role != "analyst" {
-		t.Fatalf("role = %q; the header must be ignored in jwt mode", id.Role)
+	if got := strings.Join(id.Roles, ","); got != "analyst" {
+		t.Fatalf("roles = %q; the header must be ignored in jwt mode", got)
 	}
 }
 
@@ -203,8 +204,8 @@ func TestNestedRoleClaimAndCopiedClaims(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id.Role != "tx_analyst" {
-		t.Errorf("nested single-element role claim = %q", id.Role)
+	if got := strings.Join(id.Roles, ","); got != "tx_analyst" {
+		t.Errorf("nested single-element role claim = %q", got)
 	}
 	if id.Claims["tenant"] != "acme" || id.Claims["sub"] != "agent-7" {
 		t.Errorf("claims = %v", id.Claims)

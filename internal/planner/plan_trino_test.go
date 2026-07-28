@@ -29,7 +29,7 @@ func TestTrinoSimplePlanHasNoBackticks(t *testing.T) {
 		Metrics:    []string{"total_sales"},
 		Dimensions: []string{"item.i_category"},
 		Filters:    []Filter{{Field: "date_dim.d_year", Op: "=", Value: 2001}},
-	}, governance.Identity{Role: "admin"})
+	}, governance.Single("admin"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestTrinoCompositeRatioWithRowFilterHasNoBackticks(t *testing.T) {
 	plan, err := Build(cm, trinoDialect(t), Request{
 		Metrics:    []string{"store_productivity"},
 		Dimensions: []string{"store.s_state"},
-	}, governance.Identity{Role: "tx_analyst"})
+	}, governance.Single("tx_analyst"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,11 +81,11 @@ func TestTrinoPlanIsDeterministic(t *testing.T) {
 		Metrics:    []string{"customer_lifetime_value", "total_sales"},
 		Dimensions: []string{"date_dim.d_year"},
 	}
-	a, err := Build(cm, trinoDialect(t), req, governance.Identity{Role: "admin"})
+	a, err := Build(cm, trinoDialect(t), req, governance.Single("admin"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := Build(cm, trinoDialect(t), req, governance.Identity{Role: "admin"})
+	b, err := Build(cm, trinoDialect(t), req, governance.Single("admin"))
 	if err != nil {
 		t.Fatal(err)
 	}

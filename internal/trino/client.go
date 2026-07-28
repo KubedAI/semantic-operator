@@ -29,6 +29,9 @@ func init() {
 type Client struct {
 	db      *sql.DB
 	timeout time.Duration
+	// maxBytes bounds one result while it is being read. Never zero after
+	// Open, so a client cannot exist without a ceiling.
+	maxBytes int
 }
 
 // Open creates a pooled client. It does not dial; use Ping for readiness.
@@ -65,7 +68,11 @@ func Open(cfg dbclient.Config) (*Client, error) {
 	if t == 0 {
 		t = 60 * time.Second
 	}
-	return &Client{db: db, timeout: t}, nil
+	maxBytes := cfg.MaxResultBytes
+	if maxBytes <= 0 {
+		maxBytes = dbclient.DefaultMaxResultBytes
+	}
+	return &Client{db: db, timeout: t, maxBytes: maxBytes}, nil
 }
 
 // Ping verifies connectivity by running a trivial query. The driver's own
@@ -101,27 +108,9 @@ func (c *Client) Query(ctx context.Context, query string) (cols []string, out []
 			err = closeErr
 		}
 	}()
-	cols, err = rows.Columns()
-	if err != nil {
-		return nil, nil, err
-	}
-	for rows.Next() {
-		vals := make([]any, len(cols))
-		ptrs := make([]any, len(cols))
-		for i := range vals {
-			ptrs[i] = &vals[i]
-		}
-		if err := rows.Scan(ptrs...); err != nil {
-			return nil, nil, err
-		}
-		for i, v := range vals {
-			if b, ok := v.([]byte); ok {
-				vals[i] = string(b)
-			}
-		}
-		out = append(out, vals)
-	}
-	return cols, out, rows.Err()
+	// Bounded while scanning, so an oversized result is abandoned rather than
+	// fully allocated and then rejected.
+	return dbclient.ScanRows(rows, c.maxBytes)
 }
 
 // DescribeTable introspects a table through information_schema, which every

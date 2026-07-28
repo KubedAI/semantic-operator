@@ -5,6 +5,7 @@ package rest
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/KubedAI/semantic-operator/internal/governance"
@@ -22,24 +23,42 @@ const RoleHeader = auth.RoleHeader
 // tests and embedders keep working.
 func Handler(svc *serving.Service, authn *auth.Authenticator) http.Handler {
 	mux := http.NewServeMux()
+	// Discovery is authenticated for the same reason querying is. The listing
+	// names every certified metric and every column, so an unauthenticated
+	// caller would learn the shape of the warehouse without running a query.
 	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"models": svc.Models()})
+		id, err := identity(authn, r)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"models": svc.Models(id)})
 	})
 	mux.HandleFunc("GET /v1/models/{model}/metrics", func(w http.ResponseWriter, r *http.Request) {
-		m, err := svc.Resolve(r.PathValue("model"))
+		m, id, err := resolve(svc, authn, r)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"model": m.Name, "metrics": svc.ListMetrics(m)})
+		metrics, err := svc.ListMetrics(m, id)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"model": m.Name, "metrics": metrics})
 	})
 	mux.HandleFunc("GET /v1/models/{model}/dimensions", func(w http.ResponseWriter, r *http.Request) {
-		m, err := svc.Resolve(r.PathValue("model"))
+		m, id, err := resolve(svc, authn, r)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"model": m.Name, "dimensions": svc.ListDimensions(m)})
+		dims, err := svc.ListDimensions(m, id)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"model": m.Name, "dimensions": dims})
 	})
 	mux.HandleFunc("POST /v1/models/{model}/query", func(w http.ResponseWriter, r *http.Request) {
 		handleQuery(svc, authn, w, r, true)
@@ -50,20 +69,30 @@ func Handler(svc *serving.Service, authn *auth.Authenticator) http.Handler {
 	return mux
 }
 
-func handleQuery(svc *serving.Service, authn *auth.Authenticator, w http.ResponseWriter, r *http.Request, execute bool) {
+// resolve authenticates the caller and then looks up the model. The order
+// matters: resolving first would let an unauthenticated caller tell a real
+// model name from a made-up one by the difference between 404 and 401.
+func resolve(svc *serving.Service, authn *auth.Authenticator, r *http.Request) (*planner.CompiledModel, governance.Identity, error) {
+	id, err := identity(authn, r)
+	if err != nil {
+		return nil, governance.Identity{}, err
+	}
 	m, err := svc.Resolve(r.PathValue("model"))
+	if err != nil {
+		return nil, governance.Identity{}, err
+	}
+	return m, id, nil
+}
+
+func handleQuery(svc *serving.Service, authn *auth.Authenticator, w http.ResponseWriter, r *http.Request, execute bool) {
+	m, id, err := resolve(svc, authn, r)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
 	var req planner.Request
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body: " + err.Error()})
-		return
-	}
-	id, err := identity(authn, r)
-	if err != nil {
-		writeErr(w, err)
+	if err := decodeJSON(w, r, svc.MaxRequestBytes(), &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	if !execute {
@@ -83,11 +112,44 @@ func handleQuery(svc *serving.Service, authn *auth.Authenticator, w http.Respons
 	writeJSON(w, http.StatusOK, res)
 }
 
+// decodeJSON reads exactly one JSON document into dst under a byte ceiling.
+//
+// Three things beyond a plain Decode:
+//
+// MaxBytesReader bounds the body, so an unbounded upload cannot be buffered
+// into a pod with a fixed memory limit.
+//
+// DisallowUnknownFields turns a misspelled field into an error instead of a
+// silent omission. Sending "dimension" for "dimensions" used to compile and
+// run a different query than the caller wrote, and return a confidently wrong
+// answer. That is the failure this project exists to prevent, so it is worth a
+// 400.
+//
+// The trailing-document check rejects a body holding more than one JSON value,
+// which would otherwise be silently ignored after the first.
+func decodeJSON(w http.ResponseWriter, r *http.Request, maxBytes int64, dst any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+
+	if err := dec.Decode(dst); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return fmt.Errorf("request body exceeds the %d byte maximum", maxBytes)
+		}
+		return fmt.Errorf("invalid JSON body: %w", err)
+	}
+	if dec.More() {
+		return errors.New("body must contain exactly one JSON object")
+	}
+	return nil
+}
+
 // identity resolves the caller, defaulting to header mode when no
 // authenticator was supplied.
 func identity(authn *auth.Authenticator, r *http.Request) (governance.Identity, error) {
 	if authn == nil {
-		return governance.Identity{Role: r.Header.Get(RoleHeader)}, nil
+		return governance.Single(r.Header.Get(RoleHeader)), nil
 	}
 	return authn.Identity(r)
 }

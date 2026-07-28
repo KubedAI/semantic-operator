@@ -38,6 +38,7 @@ export default defineConfig({
         label: 'Start here',
         items: [
           { label: 'What a semantic layer is', slug: 'start/introduction' },
+          { label: 'Where ontology fits', slug: 'start/ontology' },
           { label: 'Quickstart', slug: 'start/quickstart' },
         ],
       },

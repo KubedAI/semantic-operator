@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -18,6 +19,7 @@ import (
 	sr "github.com/KubedAI/semantic-operator/internal/dbclient"
 	"github.com/KubedAI/semantic-operator/internal/emitter"
 	_ "github.com/KubedAI/semantic-operator/internal/emitter/starrocks"
+	"github.com/KubedAI/semantic-operator/internal/planner"
 )
 
 // fakeStarRocks serves canned DESC output and records DDL.
@@ -319,3 +321,59 @@ func TestReconcileRehomesOwnerEvenWhenContentCurrent(t *testing.T) {
 }
 
 func ptrBool(v bool) *bool { return &v }
+
+// A compiled artifact larger than a ConfigMap can hold must be reported
+// clearly and must not be retried. The API server would otherwise reject the
+// write with an etcd-shaped message that never names the model, and backoff
+// would repeat it forever.
+func TestOversizedArtifactIsTerminalAndExplained(t *testing.T) {
+	scheme := testScheme(t)
+	cr := demoCR()
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).
+		WithStatusSubresource(&semanticv1alpha1.SemanticModel{}).Build()
+	d, _ := emitter.Get("starrocks")
+	r := &SemanticModelReconciler{Client: cl, DB: &fakeStarRocks{tables: healthyTables()}, Dialect: d}
+
+	// A description far past the ceiling is the simplest way to make the
+	// marshalled artifact too large without inventing thousands of fields.
+	huge := &planner.CompiledModel{
+		Name: "retail", Version: "v1",
+		Description: strings.Repeat("x", maxArtifactBytes+1),
+	}
+	_, err := r.publish(context.Background(), cr, huge)
+	if !errors.Is(err, ErrArtifactTooLarge) {
+		t.Fatalf("want ErrArtifactTooLarge, got %v", err)
+	}
+	// The message has to tell an operator what to do about it.
+	for _, want := range []string{"exceeds", "split"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error should contain %q, got: %v", want, err)
+		}
+	}
+
+	// Nothing may be published.
+	var cm corev1.ConfigMap
+	if err := cl.Get(context.Background(),
+		types.NamespacedName{Name: "sm-retail-compiled", Namespace: "default"}, &cm); err == nil {
+		t.Fatal("an oversized artifact must not be published")
+	}
+}
+
+// An artifact just under the ceiling still publishes, so the guard is not
+// simply refusing everything large.
+func TestArtifactUnderTheCeilingStillPublishes(t *testing.T) {
+	scheme := testScheme(t)
+	cr := demoCR()
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cr).
+		WithStatusSubresource(&semanticv1alpha1.SemanticModel{}).Build()
+	d, _ := emitter.Get("starrocks")
+	r := &SemanticModelReconciler{Client: cl, DB: &fakeStarRocks{tables: healthyTables()}, Dialect: d}
+
+	ok := &planner.CompiledModel{
+		Name: "retail", Version: "v1",
+		Description: strings.Repeat("x", maxArtifactBytes/2),
+	}
+	if _, err := r.publish(context.Background(), cr, ok); err != nil {
+		t.Fatalf("an artifact under the ceiling should publish: %v", err)
+	}
+}

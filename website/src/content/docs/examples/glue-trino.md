@@ -31,6 +31,7 @@ handles it.
 
 ```bash
 helm upgrade --install semantic-operator charts/semantic-operator \
+  --set server.auth.allowInsecureHeaderAuth=true \
   --namespace semantic-system --create-namespace \
   --set image.repository=<your-registry>/semantic-operator \
   --set image.tag=0.1.0 \

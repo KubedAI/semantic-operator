@@ -166,3 +166,38 @@ func TestValidateViewUnknownMetric(t *testing.T) {
 	s.Views[0].Metrics = []string{"ghost_metric"}
 	wantErr(t, s, `metric "ghost_metric" does not exist`)
 }
+
+// A row filter interpolating a claim must pass publication. The predicate
+// grammar accepts only SQL literals, so before the shared substitution helper
+// existed the whole feature was rejected here and could never be used.
+func TestValidateAcceptsClaimPlaceholderInRowFilter(t *testing.T) {
+	spec := validSpec()
+	spec.Governance = &v1alpha1.GovernanceSpec{
+		DefaultRole: "analyst",
+		Roles: []v1alpha1.RolePolicy{{
+			Name: "analyst", AllowMetrics: []string{"*"},
+			RowFilters: []v1alpha1.RowFilter{
+				{Dataset: "store_sales", Predicate: "s_state = {{claim.tenant_id}}"},
+			},
+		}},
+	}
+	if err := ValidateSpec(spec); err != nil {
+		t.Fatalf("claim-based row filter rejected at publication: %v", err)
+	}
+}
+
+// A typo in the template must not be silently passed through into a WHERE
+// clause on the engine.
+func TestValidateRejectsMalformedClaimTemplate(t *testing.T) {
+	spec := validSpec()
+	spec.Governance = &v1alpha1.GovernanceSpec{
+		DefaultRole: "analyst",
+		Roles: []v1alpha1.RolePolicy{{
+			Name: "analyst", AllowMetrics: []string{"*"},
+			RowFilters: []v1alpha1.RowFilter{
+				{Dataset: "store_sales", Predicate: "s_state = {{claim tenant_id}}"},
+			},
+		}},
+	}
+	wantErr(t, spec, "malformed template syntax")
+}

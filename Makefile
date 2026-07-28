@@ -107,6 +107,7 @@ helm-lint:
 deploy: ## Install/upgrade the chart (override values on the command line)
 	helm upgrade --install semantic-operator charts/semantic-operator \
 	  --namespace semantic-system --create-namespace \
+	  --set server.auth.allowInsecureHeaderAuth=true \
 	  --set image.repository=$(IMAGE_BASE) --set image.tag=$(TAG)
 
 ## Demo and benchmark (see examples/retail/README.md for required env)

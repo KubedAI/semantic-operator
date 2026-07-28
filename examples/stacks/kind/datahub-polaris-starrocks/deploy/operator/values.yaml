@@ -40,6 +40,12 @@ server:
   replicas: 1
   logLevel: info
   listenPort: 8090
+  auth:
+    # A single-node kind cluster reachable only over port-forward, so the
+    # trusted-header shortcut is acceptable here. Never copy this to a shared
+    # cluster: it lets any client that reaches the port assert any role.
+    mode: header
+    allowInsecureHeaderAuth: true
   resources:
     requests: {cpu: 100m, memory: 128Mi}
     limits: {memory: 256Mi}

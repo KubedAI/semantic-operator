@@ -28,6 +28,7 @@ optional and only adds caching, so drop that line to run without it.
 
 ```bash
 helm install semantic-operator charts/semantic-operator \
+  --set server.auth.allowInsecureHeaderAuth=true \
   --namespace semantic-system --create-namespace \
   --set image.repository=<acct>.dkr.ecr.us-west-2.amazonaws.com/semantic-operator \
   --set image.tag=0.1.0 \

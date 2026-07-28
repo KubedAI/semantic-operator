@@ -22,7 +22,7 @@ func TestJoinTypeOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	planDefault, err := Build(cmDefault, d, req, governance.Identity{Role: "admin"})
+	planDefault, err := Build(cmDefault, d, req, governance.Single("admin"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestJoinTypeOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	planLeft, err := Build(cmLeft, d, req, governance.Identity{Role: "admin"})
+	planLeft, err := Build(cmLeft, d, req, governance.Single("admin"))
 	if err != nil {
 		t.Fatal(err)
 	}

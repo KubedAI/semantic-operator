@@ -5,7 +5,11 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels: {{- include "semantic-operator.labels" . | nindent 4 }}
 spec:
+  {{- /* Omitted when the autoscaler owns the count, so a helm upgrade does
+         not reset the replicas the HPA had chosen. */ -}}
+  {{- if not (.Values.server.autoscaling | default dict).enabled }}
   replicas: {{ .Values.server.replicas }}
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "semantic-operator.name" . }}
@@ -16,6 +20,10 @@ spec:
         app.kubernetes.io/name: {{ include "semantic-operator.name" . }}
         app.kubernetes.io/component: server
       annotations:
+        {{- /* Changes whenever server or engine configuration changes, so a
+               rollout is attributable to a config revision rather than to
+               whatever else happened that day. */}}
+        semantic.ossie.io/config-checksum: {{ printf "%s|%s" (toYaml .Values.server) (toYaml .Values.engine) | sha256sum | trunc 16 }}
         prometheus.io/scrape: "true"
         prometheus.io/port: {{ .Values.server.listenPort | quote }}
         prometheus.io/path: /metrics
@@ -37,10 +45,54 @@ spec:
               value: ":{{ .Values.server.listenPort }}"
             - name: LOG_LEVEL
               value: {{ .Values.server.logLevel | quote }}
+            {{- /* Nil-safe for --reuse-values from a release predating limits. */ -}}
+            {{- $q := .Values.server.query | default dict }}
+            {{- if $q.exposeMetricExpressions }}
+            - name: EXPOSE_METRIC_EXPRESSIONS
+              value: "true"
+            {{- end }}
+            {{- /* Only overrides are emitted. An absent variable means the
+                   binary's own default, never unbounded. */ -}}
+            {{- $http := .Values.server.http | default dict }}
+            {{- range $env, $key := dict
+                  "READ_TIMEOUT_SECONDS" "readTimeoutSeconds"
+                  "IDLE_TIMEOUT_SECONDS" "idleTimeoutSeconds"
+                  "REST_TIMEOUT_SECONDS" "restTimeoutSeconds"
+                  "MAX_HEADER_BYTES" "maxHeaderBytes" }}
+            {{- with (index $http $key) }}
+            - name: {{ $env }}
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- range $env, $key := dict
+                  "QUERY_DEFAULT_ROW_LIMIT" "defaultRowLimit"
+                  "QUERY_MAX_ROW_LIMIT" "maxRowLimit"
+                  "QUERY_MAX_METRICS" "maxMetrics"
+                  "QUERY_MAX_DIMENSIONS" "maxDimensions"
+                  "QUERY_MAX_FILTERS" "maxFilters"
+                  "QUERY_MAX_FILTER_VALUES" "maxFilterValues"
+                  "QUERY_MAX_RESULT_BYTES" "maxResultBytes"
+                  "QUERY_MAX_CACHE_ENTRY_BYTES" "maxCacheEntryBytes"
+                  "QUERY_MAX_REQUEST_BYTES" "maxRequestBytes"
+                  "QUERY_MAX_CONCURRENT" "maxConcurrent"
+                  "QUERY_QUEUE_WAIT_SECONDS" "queueWaitSeconds" }}
+            {{- with (index $q $key) }}
+            - name: {{ $env }}
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
             {{- /* Nil-safe for --reuse-values from a release predating auth. */ -}}
             {{- $auth := .Values.server.auth | default dict }}
+            {{- $mode := $auth.mode | default "header" }}
+            {{- /* Header mode trusts whatever the caller sends, so any pod that
+                   can reach the port can claim any role. That is a legitimate
+                   setup behind an authenticating proxy, but it must be a
+                   decision rather than a default nobody noticed. */ -}}
+            {{- if and (eq $mode "header") (not $auth.allowInsecureHeaderAuth) }}
+            {{- fail "server.auth.mode=header trusts the X-Semantic-Role header verbatim, so any client that reaches the service can assert any role. Set server.auth.mode=jwt with a jwksURL for production, or set server.auth.allowInsecureHeaderAuth=true to confirm an authenticating proxy strips and sets that header." }}
+            {{- end }}
             - name: AUTH_MODE
-              value: {{ $auth.mode | default "header" | quote }}
+              value: {{ $mode | quote }}
             {{- if eq ($auth.mode | default "header") "jwt" }}
             - name: OIDC_JWKS_URL
               value: {{ required "server.auth.jwksURL is required when auth.mode is jwt" $auth.jwksURL | quote }}
@@ -54,6 +106,10 @@ spec:
             {{- end }}
             {{- with $auth.roleClaim }}
             - name: OIDC_ROLE_CLAIM
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $auth.groupsClaim }}
+            - name: OIDC_GROUPS_CLAIM
               value: {{ . | quote }}
             {{- end }}
             {{- with $auth.claimsToCopy }}
@@ -94,11 +150,52 @@ spec:
             httpGet: {path: /readyz, port: http}
             initialDelaySeconds: 5
             periodSeconds: 10
+          {{- $startup := .Values.server.startupProbe | default dict }}
+          {{- if $startup.enabled }}
+          {{- /* For a cold start slower than the liveness probe tolerates,
+                 usually a distant JWKS or engine. While this runs, liveness
+                 is suspended, so a slow start cannot be mistaken for a hang. */}}
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: {{ $startup.periodSeconds | default 5 }}
+            failureThreshold: {{ $startup.failureThreshold | default 30 }}
+          {{- end }}
+          {{- $shutdown := .Values.server.gracefulShutdown | default dict }}
+          {{- if and (ne $shutdown.enabled false) (semverCompare ">=1.29-0" .Capabilities.KubeVersion.Version) }}
+          {{- /* Endpoint removal and pod termination race: without a pause the
+                 server can stop while a proxy still lists it, and in-flight
+                 requests fail. The pause lets the removal propagate first.
+
+                 This is the native sleep action, not an exec hook, because the
+                 image is distroless and has no shell to run one. It needs
+                 Kubernetes 1.29 or newer, hence the version guard. */}}
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: {{ $shutdown.preStopSleepSeconds | default 5 }}
+          {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: {drop: [ALL]}
             readOnlyRootFilesystem: true
           resources: {{- toYaml .Values.server.resources | nindent 12 }}
+      {{- /* Must exceed the preStop pause plus the server's own 10s shutdown
+             deadline, or the kubelet kills it mid-drain. */}}
+      terminationGracePeriodSeconds: {{ (.Values.server.gracefulShutdown | default dict).terminationGracePeriodSeconds | default 30 }}
+      {{- $spread := .Values.server.topologySpread | default dict }}
+      {{- if ne $spread.enabled false }}
+      {{- /* ScheduleAnyway, not DoNotSchedule. A hard constraint cannot be
+             satisfied on a single-node or kind cluster and the pods would sit
+             Pending, so the default prefers spreading and still schedules. */}}
+      topologySpreadConstraints:
+        - maxSkew: {{ $spread.maxSkew | default 1 }}
+          topologyKey: {{ $spread.topologyKey | default "kubernetes.io/hostname" }}
+          whenUnsatisfiable: {{ $spread.whenUnsatisfiable | default "ScheduleAnyway" }}
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "semantic-operator.name" . }}
+              app.kubernetes.io/component: server
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector: {{- toYaml . | nindent 8 }}
       {{- end }}

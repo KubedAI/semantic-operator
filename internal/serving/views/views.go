@@ -1,4 +1,4 @@
-// Package views materializes governed metric views in StarRocks. Each view
+// Package views materializes governed metric views in the query engine. Each view
 // body is planner output, so BI users querying the view get exactly the
 // certified metric definition, governance included.
 package views
@@ -16,7 +16,7 @@ import (
 )
 
 // Executor is the DDL surface the publisher needs (satisfied by
-// starrocks.Client, mocked in tests).
+// the engine client, mocked in tests).
 type Executor interface {
 	Exec(ctx context.Context, sql string) error
 }
@@ -47,7 +47,7 @@ func BuildViewSQL(cm *planner.CompiledModel, d emitter.Dialect, v v1alpha1.ViewS
 		}
 		req.Filters = append(req.Filters, pf)
 	}
-	plan, err := planner.Build(cm, d, req, governance.Identity{Role: role})
+	plan, err := planner.Build(cm, d, req, governance.Single(role))
 	if err != nil {
 		return "", fmt.Errorf("view %q: %w", v.Name, err)
 	}

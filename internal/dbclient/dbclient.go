@@ -54,6 +54,9 @@ type Config struct {
 	Password string
 	// QueryTimeout bounds a single statement. Default 60s.
 	QueryTimeout time.Duration
+	// MaxResultBytes bounds what one result may allocate while it is being
+	// read. Zero means DefaultMaxResultBytes, never unbounded.
+	MaxResultBytes int
 }
 
 // Factory builds a client for one engine.

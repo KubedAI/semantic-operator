@@ -22,12 +22,23 @@ metadata:
   {{- end }}
 {{- end }}
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: {{ include "semantic-operator.name" . }}-manager
-  labels: {{- include "semantic-operator.labels" . | nindent 4 }}
-rules:
+{{- /*
+  The manager's permissions follow its cache.
+
+  By default it reconciles only the release namespace and gets a Role and
+  RoleBinding there. That matches the server, which loads compiled artifacts
+  from its own namespace, and it keeps a compromised manager inside the
+  namespace it was installed in.
+
+  manager.watchNamespaces extends that to a fixed list, one Role and
+  RoleBinding each. manager.watchAllNamespaces switches to a ClusterRole for
+  genuine cluster-wide operation.
+
+  The cache and the RBAC come from the same value, and they have to. A
+  namespace in the RBAC but not the cache grants nothing, and the reverse makes
+  the manager crash-loop on forbidden watches.
+*/ -}}
+{{- $rules := `
   - apiGroups: [semantic.ossie.io]
     resources: [semanticmodels]
     verbs: [get, list, watch, update, patch]
@@ -39,7 +50,42 @@ rules:
     verbs: [get, list, watch, create, update, patch, delete]
   - apiGroups: [""]
     resources: [events]
-    verbs: [create, patch]
+    verbs: [create, patch]` -}}
+{{- include "semantic-operator.validateScope" . -}}
+{{- $watched := include "semantic-operator.watchedNamespaces" . | fromYamlArray }}
+{{- if not .Values.manager.watchAllNamespaces }}
+{{- range $ns := $watched }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "semantic-operator.name" $ }}-manager
+  namespace: {{ $ns }}
+  labels: {{- include "semantic-operator.labels" $ | nindent 4 }}
+rules: {{ $rules }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "semantic-operator.name" $ }}-manager
+  namespace: {{ $ns }}
+  labels: {{- include "semantic-operator.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "semantic-operator.name" $ }}-manager
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "semantic-operator.managerSA" $ }}
+    namespace: {{ $.Release.Namespace }}
+---
+{{- end }}
+{{- else }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "semantic-operator.name" . }}-manager
+  labels: {{- include "semantic-operator.labels" . | nindent 4 }}
+rules: {{ $rules }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -54,6 +100,7 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "semantic-operator.managerSA" . }}
     namespace: {{ .Release.Namespace }}
+{{- end }}
 ---
 # Leader election needs Lease access in the release namespace only.
 apiVersion: rbac.authorization.k8s.io/v1

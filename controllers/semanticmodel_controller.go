@@ -8,6 +8,7 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ import (
 	semanticv1alpha1 "github.com/KubedAI/semantic-operator/api/v1alpha1"
 	"github.com/KubedAI/semantic-operator/internal/dbclient"
 	"github.com/KubedAI/semantic-operator/internal/emitter"
+	"github.com/KubedAI/semantic-operator/internal/governance"
 	"github.com/KubedAI/semantic-operator/internal/ossie"
 	"github.com/KubedAI/semantic-operator/internal/planner"
 	"github.com/KubedAI/semantic-operator/internal/planner/expr"
@@ -123,6 +125,14 @@ func (r *SemanticModelReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// 4. Publish the compiled artifact.
 	cmName, err := r.publish(ctx, &sm, compiled)
 	if err != nil {
+		// An oversized artifact is a property of the spec, so retrying with
+		// backoff would loop forever. Report it and wait for an edit, which
+		// arrives as its own reconcile.
+		if errors.Is(err, ErrArtifactTooLarge) {
+			r.setCondition(&sm, semanticv1alpha1.ConditionPublished, metav1.ConditionFalse, "ArtifactTooLarge", truncate(err.Error()))
+			log.Error(err, "artifact too large to publish")
+			return ctrl.Result{}, r.statusUpdate(ctx, &sm)
+		}
 		r.setCondition(&sm, semanticv1alpha1.ConditionPublished, metav1.ConditionFalse, "PublishFailed", truncate(err.Error()))
 		_ = r.Status().Update(ctx, &sm)
 		return ctrl.Result{}, err
@@ -228,7 +238,14 @@ func (r *SemanticModelReconciler) bind(ctx context.Context, compiled *planner.Co
 	if compiled.Governance != nil {
 		for _, role := range compiled.Governance.Roles {
 			for _, rf := range role.RowFilters {
-				cols, err := expr.ParsePredicate(rf.Predicate)
+				// Same substitution the validator uses, so a claim-based
+				// filter is drift-checked on its physical columns instead of
+				// being skipped as unparseable.
+				checkable, err := governance.ValidatablePredicate(rf.Predicate)
+				if err != nil {
+					continue // template errors are the validator's job
+				}
+				cols, err := expr.ParsePredicate(checkable)
 				if err != nil {
 					continue // grammar errors are the validator's job
 				}
@@ -247,12 +264,29 @@ func (r *SemanticModelReconciler) bind(ctx context.Context, compiled *planner.Co
 	return drift, bindings, nil
 }
 
+// maxArtifactBytes is the largest compiled artifact that may be published.
+//
+// The API server rejects a ConfigMap whose data exceeds 1 MiB, and the object
+// also carries labels, annotations, and an owner reference. Leaving headroom
+// means the operator reports a clear, actionable error instead of the write
+// failing later with an etcd-shaped message that says nothing about which
+// model is too big.
+const maxArtifactBytes = 900 << 10 // 900 KiB of a 1 MiB ceiling
+
+// ErrArtifactTooLarge marks a compiled artifact that cannot be published.
+// Retrying cannot help, so the reconciler treats it as terminal.
+var ErrArtifactTooLarge = errors.New("compiled artifact too large to publish")
+
 // publish writes the compiled artifact to an owned, labeled ConfigMap. The
 // content-addressed version makes this idempotent.
 func (r *SemanticModelReconciler) publish(ctx context.Context, sm *semanticv1alpha1.SemanticModel, compiled *planner.CompiledModel) (string, error) {
 	blob, err := json.Marshal(compiled)
 	if err != nil {
 		return "", err
+	}
+	if len(blob) > maxArtifactBytes {
+		return "", fmt.Errorf("%w: %d bytes exceeds the %d byte limit for a ConfigMap artifact; reduce the number of datasets, fields, or metrics in this model, or split it across several SemanticModels",
+			ErrArtifactTooLarge, len(blob), maxArtifactBytes)
 	}
 	name := "sm-" + sm.Name + "-compiled"
 	var cm corev1.ConfigMap

@@ -1,0 +1,40 @@
+{{- $hpa := .Values.server.autoscaling | default dict }}
+{{- if $hpa.enabled }}
+{{- /*
+  Off by default because it needs metrics-server, and a chart that silently
+  depends on a cluster addon fails in a confusing way when the addon is absent.
+
+  The server is stateless, so horizontal scaling is the right lever. When this
+  is on the Deployment stops setting replicas, otherwise every helm upgrade
+  would reset the count the autoscaler had chosen.
+*/ -}}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "semantic-operator.name" . }}-server
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "semantic-operator.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "semantic-operator.name" . }}-server
+  minReplicas: {{ $hpa.minReplicas | default 2 }}
+  maxReplicas: {{ $hpa.maxReplicas | default 10 }}
+  metrics:
+    {{- with $hpa.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: {{ . }}}
+    {{- end }}
+    {{- with $hpa.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target: {type: Utilization, averageUtilization: {{ . }}}
+    {{- end }}
+  {{- with $hpa.behavior }}
+  behavior: {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

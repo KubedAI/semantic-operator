@@ -29,7 +29,7 @@ var semanticModelTemplate = template.Must(
 type TemplateOptions struct {
 	CRName    string // metadata.name
 	Namespace string // metadata.namespace
-	Catalog   string // spec.connection.catalog (StarRocks external catalog)
+	Catalog   string // spec.connection.catalog (the engine catalog holding the tables)
 	Database  string // spec.connection.database
 	Model     string // spec.ossie.name
 }

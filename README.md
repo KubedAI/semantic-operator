@@ -60,6 +60,7 @@ Requires a Kubernetes cluster with a query engine (StarRocks or Trino) it can re
 
 ```bash
 helm upgrade --install semantic-operator charts/semantic-operator \
+  --set server.auth.allowInsecureHeaderAuth=true \
   --namespace semantic-system --create-namespace \
   --set image.repository=<acct>.dkr.ecr.<region>.amazonaws.com/semantic-operator \
   --set image.tag=<tag> \

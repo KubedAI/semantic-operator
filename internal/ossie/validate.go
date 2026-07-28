@@ -1,7 +1,7 @@
 // Package ossie validates SemanticModel specs against the Ossie structure and
 // the planner's supported subset. Validation is pure: no I/O, so the same
 // spec always validates the same way (physical drift is checked separately
-// by the controller against live StarRocks).
+// by the controller against the live engine).
 package ossie
 
 import (
@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/KubedAI/semantic-operator/api/v1alpha1"
+	"github.com/KubedAI/semantic-operator/internal/governance"
 	"github.com/KubedAI/semantic-operator/internal/planner/expr"
 )
 
@@ -156,7 +157,9 @@ func ValidateSpec(spec *v1alpha1.SemanticModelSpec) error {
 				}
 				if strings.TrimSpace(rf.Predicate) == "" {
 					add("governance role %q: rowFilter on %q has empty predicate", r.Name, rf.Dataset)
-				} else if _, perr := expr.ParsePredicate(rf.Predicate); perr != nil {
+				} else if checkable, perr := governance.ValidatablePredicate(rf.Predicate); perr != nil {
+					add("governance role %q: rowFilter on %q: %v", r.Name, rf.Dataset, perr)
+				} else if _, perr := expr.ParsePredicate(checkable); perr != nil {
 					add("governance role %q: rowFilter on %q: %v", r.Name, rf.Dataset, perr)
 				}
 			}

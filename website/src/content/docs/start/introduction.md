@@ -108,4 +108,7 @@ runs early enough to actually prevent a leak rather than filter one afterwards. 
 portability, because the model is a plain Apache Ossie document that round trips byte for
 byte, so the standard owns your semantics rather than this implementation.
 
+If you work with knowledge graphs and are wondering how this relates to an ontology, that
+is a real distinction and [ontology has its own page](/start/ontology).
+
 Next, either [see it running](/start/quickstart) or [read how it works](/architecture).

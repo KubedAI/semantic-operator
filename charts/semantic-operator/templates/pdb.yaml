@@ -1,0 +1,23 @@
+{{- $pdb := .Values.server.podDisruptionBudget | default dict }}
+{{- if ne $pdb.enabled false }}
+{{- /*
+  maxUnavailable rather than minAvailable, deliberately.
+
+  minAvailable on a single-replica deployment blocks node drains forever: the
+  budget can never be satisfied, so the eviction API refuses and the drain
+  hangs. maxUnavailable: 1 protects a multi-replica server from losing every
+  pod at once while still letting a single-replica install drain normally.
+*/ -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "semantic-operator.name" . }}-server
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "semantic-operator.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: {{ $pdb.maxUnavailable | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "semantic-operator.name" . }}
+      app.kubernetes.io/component: server
+{{- end }}

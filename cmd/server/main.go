@@ -53,11 +53,14 @@ func run() error {
 		return err
 	}
 	cfg, err := dbclient.EnvConfig()
+	// The client stops reading past this, so it must match the service's own
+	// ceiling or one of the two would never be reached.
+	cfg.MaxResultBytes = envInt("QUERY_MAX_RESULT_BYTES", 0)
 	if err != nil {
 		log.Error("reading engine connection config", "err", err)
 		return err
 	}
-	srClient, err := dbclient.Open(engine, cfg)
+	engineClient, err := dbclient.Open(engine, cfg)
 	if err != nil {
 		log.Error("opening query engine client", "engine", engine, "err", err)
 		return err
@@ -101,10 +104,27 @@ func run() error {
 		Store:   store,
 		Dialect: dialect,
 		Cache:   valkey,
-		DB:      srClient,
+		DB:      engineClient,
 		Metrics: metrics,
 		Log:     log,
 		Tracer:  tracer,
+		// Off unless asked for. A metric listing is meant to ground an agent on
+		// certified names, and the raw SQL is the definition itself.
+		ExposeExpressions: envOr("EXPOSE_METRIC_EXPRESSIONS", "false") == "true",
+		// Anything left at zero falls back to the built-in default, so a
+		// missing variable can never mean "unbounded".
+		Limits: serving.Limits{
+			DefaultRowLimit:      envInt("QUERY_DEFAULT_ROW_LIMIT", 0),
+			MaxRowLimit:          envInt("QUERY_MAX_ROW_LIMIT", 0),
+			MaxMetrics:           envInt("QUERY_MAX_METRICS", 0),
+			MaxDimensions:        envInt("QUERY_MAX_DIMENSIONS", 0),
+			MaxFilters:           envInt("QUERY_MAX_FILTERS", 0),
+			MaxFilterValues:      envInt("QUERY_MAX_FILTER_VALUES", 0),
+			MaxResultBytes:       envInt("QUERY_MAX_RESULT_BYTES", 0),
+			MaxCacheEntryBytes:   envInt("QUERY_MAX_CACHE_ENTRY_BYTES", 0),
+			MaxRequestBytes:      envInt("QUERY_MAX_REQUEST_BYTES", 0),
+			MaxConcurrentQueries: envInt("QUERY_MAX_CONCURRENT", 0),
+		},
 	}
 
 	// Identity resolution. Header mode trusts X-Semantic-Role and therefore
@@ -116,6 +136,7 @@ func run() error {
 		Issuer:       os.Getenv("OIDC_ISSUER"),
 		Audience:     os.Getenv("OIDC_AUDIENCE"),
 		RoleClaim:    os.Getenv("OIDC_ROLE_CLAIM"),
+		GroupsClaim:  os.Getenv("OIDC_GROUPS_CLAIM"),
 		ClaimsToCopy: splitList(os.Getenv("OIDC_CLAIMS_TO_COPY")),
 	})
 	if err != nil {
@@ -128,14 +149,43 @@ func run() error {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", mcpadapter.Handler(svc, version, authn))
-	mux.Handle("/v1/", rest.Handler(svc, authn))
+	// MCP uses a streamable HTTP transport, so it must not sit behind a
+	// response deadline. REST always writes one bounded JSON document, so it
+	// gets a per-route deadline instead of the global WriteTimeout that would
+	// cut MCP streams short.
+	restTimeout := time.Duration(envInt("REST_TIMEOUT_SECONDS", 60)) * time.Second
+
+	// One bound shared by both surfaces, held for the whole request rather
+	// than only while the engine runs. A result stays allocated until the
+	// response has been written, so releasing earlier would let a slow client
+	// keep its result while the next request takes the freed slot. This also
+	// covers cache hits, which allocate a full result without touching the
+	// engine.
+	limits := svc.Limits.WithDefaults()
+	limiter := serving.NewLimiter(limits.MaxConcurrentQueries,
+		time.Duration(envInt("QUERY_QUEUE_WAIT_SECONDS", 5))*time.Second)
+	log.Info("query concurrency bounded", "max_in_flight", limits.MaxConcurrentQueries,
+		"max_result_bytes", limits.MaxResultBytes)
+
+	mux.Handle("/mcp", limiter.Middleware(mcpadapter.Handler(svc, version, authn)))
+	mux.Handle("/v1/", limiter.Middleware(http.TimeoutHandler(rest.Handler(svc, authn), restTimeout,
+		`{"error":"request timed out"}`)))
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	mux.HandleFunc("/readyz", readyzHandler(store, srClient, engine))
+	mux.HandleFunc("/readyz", readyzHandler(store, engineClient, engine))
 
 	addr := envOr("LISTEN_ADDR", ":8090")
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+		// No WriteTimeout on purpose. It applies to every route, and MCP
+		// streams responses, so a global write deadline would truncate them.
+		// The REST routes carry their own deadline above.
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       time.Duration(envInt("READ_TIMEOUT_SECONDS", 30)) * time.Second,
+		IdleTimeout:       time.Duration(envInt("IDLE_TIMEOUT_SECONDS", 120)) * time.Second,
+		MaxHeaderBytes:    envInt("MAX_HEADER_BYTES", 1<<20),
+	}
 	go func() {
 		<-ctx.Done()
 		shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

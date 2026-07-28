@@ -53,8 +53,8 @@ func NewMetrics() *Metrics {
 			Help: "Result cache hits.",
 		}),
 		QueryDuration: promauto.NewHistogram(prometheus.HistogramOpts{
-			Name:    "semantic_starrocks_query_duration_seconds",
-			Help:    "StarRocks execution latency for planned queries.",
+			Name:    "semantic_engine_query_duration_seconds",
+			Help:    "Query engine execution latency for planned queries.",
 			Buckets: prometheus.DefBuckets,
 		}),
 		StoreSynced: promauto.NewGauge(prometheus.GaugeOpts{

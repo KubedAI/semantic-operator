@@ -78,3 +78,30 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 {{- end -}}
 {{- end -}}
+
+{{/*
+  The namespaces the manager reconciles, as a YAML array.
+
+  Empty watchNamespaces means the release namespace, not "everything". The
+  cluster-wide case is a separate, explicit flag, so an unset value can never
+  quietly widen the manager's reach.
+*/}}
+{{- define "semantic-operator.watchedNamespaces" -}}
+{{- if .Values.manager.watchAllNamespaces -}}
+[]
+{{- else if .Values.manager.watchNamespaces -}}
+{{ toYaml .Values.manager.watchNamespaces }}
+{{- else -}}
+{{ toYaml (list .Release.Namespace) }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+  Refuse the two scoping values at once. They contradict each other, and
+  guessing which one wins is how a cluster ends up with RBAC nobody intended.
+*/}}
+{{- define "semantic-operator.validateScope" -}}
+{{- if and .Values.manager.watchAllNamespaces .Values.manager.watchNamespaces -}}
+{{- fail "manager.watchAllNamespaces and manager.watchNamespaces are mutually exclusive. Use watchNamespaces for a fixed list, or watchAllNamespaces for cluster-wide operation." -}}
+{{- end -}}
+{{- end -}}

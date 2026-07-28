@@ -5,12 +5,14 @@ package main
 import (
 	"flag"
 	"os"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -65,13 +67,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	// WATCH_NAMESPACES narrows the cache, and therefore the RBAC the manager
+	// needs, to a fixed list. Unset means cluster-wide, which is the default
+	// and needs a ClusterRole. Narrowing it is how an operator limits the
+	// blast radius of a compromised manager to namespaces it was given.
+	options := ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "semantic-operator.semantic.ossie.io",
-	})
+	}
+	if watched := splitList(os.Getenv("WATCH_NAMESPACES")); len(watched) > 0 {
+		byNamespace := make(map[string]cache.Config, len(watched))
+		for _, ns := range watched {
+			byNamespace[ns] = cache.Config{}
+		}
+		options.Cache = cache.Options{DefaultNamespaces: byNamespace}
+		log.Info("watching a fixed namespace list", "namespaces", watched)
+	} else {
+		log.Info("watching all namespaces; the manager holds a ClusterRole")
+	}
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), options)
 	if err != nil {
 		log.Error(err, "starting manager")
 		os.Exit(1)
@@ -112,4 +130,16 @@ func envDuration(key string, def time.Duration) time.Duration {
 		}
 	}
 	return def
+}
+
+// splitList parses a comma-separated env value, ignoring blanks so a trailing
+// comma or an accidental space cannot produce an empty namespace name.
+func splitList(v string) []string {
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

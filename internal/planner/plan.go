@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/KubedAI/semantic-operator/api/v1alpha1"
 	"github.com/KubedAI/semantic-operator/internal/emitter"
 	"github.com/KubedAI/semantic-operator/internal/governance"
 	"github.com/KubedAI/semantic-operator/internal/planner/expr"
@@ -44,16 +45,28 @@ type Plan struct {
 
 var validGrains = map[string]bool{"day": true, "week": true, "month": true, "quarter": true, "year": true}
 
-// RequestHash canonically hashes a request plus the effective role. It is
-// the cache-key component: same request + same role + same model version
-// means the same plan.
-func RequestHash(req Request, role string) string {
+// RequestHashLen is the hex width of a request hash, 128 bits.
+//
+// The hash is the plan cache key, so two identities colliding here means one
+// caller is served SQL compiled for another. 128 bits keeps that out of reach,
+// including for someone deliberately searching for a collision, and costs 16
+// more characters in a log line.
+const RequestHashLen = 32
+
+// RequestHash identifies a compiled plan. The same request, identity, and
+// model version always produce the same hash, which is what makes a plan
+// cacheable.
+//
+// identityKey must come from governance.IdentityKey. It covers the role set
+// and a digest of every claim, because a row filter may interpolate a claim
+// into the SQL, and two callers whose SQL differs must never share a key.
+func RequestHash(req Request, identityKey string) string {
 	b, _ := json.Marshal(struct {
 		Request
-		Role string `json:"role"`
-	}{req, role})
+		Identity string `json:"identity"`
+	}{req, identityKey})
 	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:])[:16]
+	return hex.EncodeToString(h[:])[:RequestHashLen]
 }
 
 // dimSpec is a resolved requested dimension.
@@ -139,13 +152,25 @@ func Build(cm *CompiledModel, d emitter.Dialect, req Request, id governance.Iden
 	if err != nil {
 		return nil, err
 	}
-	for _, rf := range decision.RowFilters {
-		if cm.Datasets[rf.Dataset] == nil {
-			return nil, fmt.Errorf("row filter references unknown dataset %q", rf.Dataset)
+	// Expand claim placeholders now, while the dialect is in hand, so a
+	// predicate reaching the builder is already final and safely quoted.
+	groups := make([][]v1alpha1.RowFilter, 0, len(decision.RowFilterGroups))
+	for _, g := range decision.RowFilterGroups {
+		expanded := make([]v1alpha1.RowFilter, 0, len(g))
+		for _, rf := range g {
+			if cm.Datasets[rf.Dataset] == nil {
+				return nil, fmt.Errorf("row filter references unknown dataset %q", rf.Dataset)
+			}
+			pred, err := governance.ExpandClaims(rf.Predicate, id.Claims, d.Literal)
+			if err != nil {
+				return nil, err
+			}
+			expanded = append(expanded, v1alpha1.RowFilter{Dataset: rf.Dataset, Predicate: pred})
 		}
+		groups = append(groups, expanded)
 	}
 
-	b := &builder{cm: cm, d: d, req: req, dims: dims, rowFilters: decision.RowFilters}
+	b := &builder{cm: cm, d: d, req: req, dims: dims, rowFilterGroups: groups}
 
 	// Base requirement set: dimensions, filters, row filters.
 	baseRequired := map[string]bool{}
@@ -155,8 +180,10 @@ func Build(cm *CompiledModel, d emitter.Dialect, req Request, id governance.Iden
 	for _, r := range filterRefs {
 		baseRequired[r.Dataset] = true
 	}
-	for _, rf := range decision.RowFilters {
-		baseRequired[rf.Dataset] = true
+	for _, g := range groups {
+		for _, rf := range g {
+			baseRequired[rf.Dataset] = true
+		}
 	}
 
 	// Partition metrics into inline (single-pass) and split (ratio needing
@@ -187,8 +214,8 @@ func Build(cm *CompiledModel, d emitter.Dialect, req Request, id governance.Iden
 		split = append(split, m)
 	}
 
-	role := decision.Role
-	hash := RequestHash(req, role)
+	role := decision.RoleKey
+	hash := RequestHash(req, governance.IdentityKey(cm.Governance, id))
 	comment := fmt.Sprintf("/* semantic-layer model=%s version=%s request=%s */", cm.Name, cm.Version, hash)
 
 	var columns []string

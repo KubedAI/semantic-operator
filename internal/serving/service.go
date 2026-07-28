@@ -18,7 +18,7 @@ import (
 	"github.com/KubedAI/semantic-operator/internal/planner"
 )
 
-// QueryExecutor is the read-only StarRocks surface the service needs.
+// QueryExecutor is the read-only engine surface the service needs.
 type QueryExecutor interface {
 	Query(ctx context.Context, sql string) ([]string, [][]any, error)
 }
@@ -33,6 +33,14 @@ type Service struct {
 	Metrics *observability.Metrics
 	Log     *slog.Logger
 	Tracer  trace.Tracer
+	// ExposeExpressions includes each metric's raw SQL expression in listings.
+	// Off by default: the expression is the definition itself, and an agent
+	// grounds perfectly well on the name, description, and synonyms. Turn it
+	// on for debugging or for a trusted internal console.
+	ExposeExpressions bool
+	// Limits bound request shape and result size. A zero value means the
+	// defaults, never "unbounded".
+	Limits Limits
 }
 
 // MetricInfo is a listing entry: everything an agent needs to ground a
@@ -40,7 +48,7 @@ type Service struct {
 type MetricInfo struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
-	Expression  string   `json:"expression"`
+	Expression  string   `json:"expression,omitempty"`
 	Synonyms    []string `json:"synonyms,omitempty"`
 }
 
@@ -123,11 +131,16 @@ func (s *Service) Resolve(name string) (*planner.CompiledModel, error) {
 	return nil, fmt.Errorf("model name required: %d models are published (%v)", len(s.Store.Names()), s.Store.Names())
 }
 
-// Models lists published models, including any duplicated names, so an operator
-// can see the collision.
-func (s *Service) Models() []ModelInfo {
-	var out []ModelInfo
+// Models lists the published models this identity may use, including any
+// duplicated names so an operator can see the collision. A model whose
+// governance has no policy for the caller's role is omitted, because every
+// query against it would be refused anyway.
+func (s *Service) Models(id governance.Identity) []ModelInfo {
+	out := []ModelInfo{}
 	for _, m := range s.Store.All() {
+		if _, err := governance.Visible(m.Governance, id); err != nil {
+			continue
+		}
 		out = append(out, ModelInfo{
 			Name: m.Name, Version: m.Version, Description: m.Description,
 			Metrics: len(m.MetricOrder), Datasets: len(m.DatasetOrder),
@@ -137,40 +150,76 @@ func (s *Service) Models() []ModelInfo {
 	return out
 }
 
-// ListMetrics returns certified metrics in model order.
-func (s *Service) ListMetrics(m *planner.CompiledModel) []MetricInfo {
-	var out []MetricInfo
+// ListMetrics returns the certified metrics this identity may query, in model
+// order. A metric the role could not query is omitted rather than listed and
+// refused later, so discovery leaks neither the metric's existence nor its
+// definition.
+func (s *Service) ListMetrics(m *planner.CompiledModel, id governance.Identity) ([]MetricInfo, error) {
+	vis, err := governance.Visible(m.Governance, id)
+	if err != nil {
+		return nil, err
+	}
+	out := []MetricInfo{}
 	for _, name := range m.MetricOrder {
 		mt := m.Metrics[name]
-		out = append(out, MetricInfo{
+		if !vis.Metric(mt.Name) {
+			continue
+		}
+		info := MetricInfo{
 			Name: mt.Name, Description: mt.Description,
-			Expression: mt.Raw, Synonyms: mt.AIContext.Synonyms,
-		})
+			Synonyms: mt.AIContext.Synonyms,
+		}
+		if s.ExposeExpressions {
+			info.Expression = mt.Raw
+		}
+		out = append(out, info)
 	}
-	return out
+	return out, nil
 }
 
-// ListDimensions returns every dataset field in model order.
-func (s *Service) ListDimensions(m *planner.CompiledModel) []DimensionInfo {
-	var out []DimensionInfo
+// ListDimensions returns the dataset fields this identity may read, in model
+// order. Fields denied to the role are omitted, so a column name a role may
+// never see is never disclosed by listing it.
+func (s *Service) ListDimensions(m *planner.CompiledModel, id governance.Identity) ([]DimensionInfo, error) {
+	vis, err := governance.Visible(m.Governance, id)
+	if err != nil {
+		return nil, err
+	}
+	out := []DimensionInfo{}
 	for _, dsName := range m.DatasetOrder {
 		ds := m.Datasets[dsName]
 		for _, fName := range ds.FieldOrder {
 			f := ds.Fields[fName]
+			ref := dsName + "." + fName
+			if !vis.Field(ref) {
+				continue
+			}
 			out = append(out, DimensionInfo{
-				Name: dsName + "." + fName, Description: f.Description,
+				Name: ref, Description: f.Description,
 				Type: f.Type, IsTime: f.IsTime, Synonyms: f.AIContext.Synonyms,
 			})
 		}
 	}
-	return out
+	return out, nil
+}
+
+// MaxRequestBytes is the largest request body an adapter should accept, for
+// adapters that read from the network before the service sees the request.
+func (s *Service) MaxRequestBytes() int64 {
+	return int64(s.Limits.withDefaults().MaxRequestBytes)
 }
 
 // Plan compiles a request without executing it (dry run and first half of
 // Query). The plan cache key includes model version and effective role.
 func (s *Service) Plan(ctx context.Context, m *planner.CompiledModel, req planner.Request, id governance.Identity) (*planner.Plan, bool, error) {
-	role := effectiveRole(m, id)
-	key := cache.PlanKey(s.Dialect.Name(), m.Name, m.Version, planner.RequestHash(req, role))
+	req, err := s.Limits.apply(req)
+	if err != nil {
+		return nil, false, err
+	}
+	// Keyed on the whole identity, roles and claims both. Roles alone would
+	// let two tenants sharing a role collide on one compiled plan.
+	key := cache.PlanKey(s.Dialect.Name(), m.Name, m.Version,
+		planner.RequestHash(req, governance.IdentityKey(m.Governance, id)))
 	if blob, ok := s.Cache.GetPlan(ctx, key); ok {
 		var p planner.Plan
 		if err := json.Unmarshal(blob, &p); err == nil {
@@ -231,15 +280,29 @@ func (s *Service) Query(ctx context.Context, adapter string, m *planner.Compiled
 	s.Metrics.QueryDuration.Observe(time.Since(qStart).Seconds())
 	if err != nil {
 		s.Metrics.Requests.WithLabelValues(adapter, m.Name, "exec_error").Inc()
-		s.Log.Error("starrocks execution failed", "model", m.Name, "version", m.Version,
+		s.Log.Error("engine execution failed", "engine", s.Dialect.Name(),
+			"model", m.Name, "version", m.Version,
 			"request", plan.RequestHash, "err", err)
 		return nil, fmt.Errorf("executing planned query: %w", err)
 	}
 	if rows == nil {
 		rows = [][]any{}
 	}
+	// The engine client already abandons an oversized result while scanning,
+	// which is the only place the allocation can actually be prevented. This
+	// second check is defence in depth for a client that does not enforce the
+	// ceiling, and it is what decides whether the result may be cached.
+	lim := s.Limits.withDefaults()
+	blob, marshalErr := json.Marshal(map[string]any{"columns": cols, "rows": rows})
+	if marshalErr == nil && len(blob) > lim.MaxResultBytes {
+		s.Metrics.Requests.WithLabelValues(adapter, m.Name, "result_too_large").Inc()
+		return nil, fmt.Errorf("%w: result is %d bytes, the maximum is %d; narrow the request or lower the limit",
+			ErrRequestTooLarge, len(blob), lim.MaxResultBytes)
+	}
 	res.Columns, res.Rows, res.RowCount = cols, rows, len(rows)
-	if blob, err := json.Marshal(map[string]any{"columns": cols, "rows": rows}); err == nil {
+	// Caching is an optimization, so an oversized result is served and simply
+	// not cached.
+	if marshalErr == nil && len(blob) <= lim.MaxCacheEntryBytes {
 		s.Cache.SetResult(ctx, rkey, blob)
 	}
 	res.ElapsedMs = time.Since(start).Milliseconds()
@@ -248,13 +311,6 @@ func (s *Service) Query(ctx context.Context, adapter string, m *planner.Compiled
 		"version", m.Version, "request", plan.RequestHash, "role", plan.Role,
 		"rows", res.RowCount, "cached_plan", cachedPlan, "elapsed_ms", res.ElapsedMs)
 	return res, nil
-}
-
-func effectiveRole(m *planner.CompiledModel, id governance.Identity) string {
-	if id.Role != "" || m.Governance == nil {
-		return id.Role
-	}
-	return m.Governance.DefaultRole
 }
 
 // identityKey carries the caller identity through context from HTTP

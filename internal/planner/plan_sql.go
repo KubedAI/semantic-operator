@@ -12,11 +12,11 @@ import (
 // builder holds per-request state for SQL construction. All methods are
 // deterministic: iteration is over spec-ordered slices only.
 type builder struct {
-	cm         *CompiledModel
-	d          emitter.Dialect
-	req        Request
-	dims       []dimSpec
-	rowFilters []v1alpha1.RowFilter
+	cm              *CompiledModel
+	d               emitter.Dialect
+	req             Request
+	dims            []dimSpec
+	rowFilterGroups [][]v1alpha1.RowFilter
 }
 
 // joinTree picks the root dataset and the pruned, ordered list of joins that
@@ -219,11 +219,24 @@ func (b *builder) whereClauses(filters []Filter, inTree map[string]bool) ([]stri
 		}
 		out = append(out, "("+s+")")
 	}
-	for _, rf := range b.rowFilters {
-		if !inTree[rf.Dataset] {
-			return nil, fmt.Errorf("internal: row filter dataset %q not in join tree", rf.Dataset)
+	// Filters within a role are conjoined; the roles themselves are disjoined,
+	// so a caller holding several roles sees the union of the rows each role
+	// permits rather than only their intersection.
+	var roleTerms []string
+	for _, g := range b.rowFilterGroups {
+		var conj []string
+		for _, rf := range g {
+			if !inTree[rf.Dataset] {
+				return nil, fmt.Errorf("internal: row filter dataset %q not in join tree", rf.Dataset)
+			}
+			conj = append(conj, "("+expr.QualifyBareColumns(rf.Predicate, b.alias(rf.Dataset), b.d.QuoteIdent)+")")
 		}
-		out = append(out, "("+expr.QualifyBareColumns(rf.Predicate, b.alias(rf.Dataset), b.d.QuoteIdent)+")")
+		if len(conj) > 0 {
+			roleTerms = append(roleTerms, "("+strings.Join(conj, " AND ")+")")
+		}
+	}
+	if len(roleTerms) > 0 {
+		out = append(out, "("+strings.Join(roleTerms, " OR ")+")")
 	}
 	return out, nil
 }
@@ -309,8 +322,10 @@ func (b *builder) sideQuery(t expr.AggTerm, filters []Filter) (string, error) {
 		}
 		required[ref.Dataset] = true
 	}
-	for _, rf := range b.rowFilters {
-		required[rf.Dataset] = true
+	for _, g := range b.rowFilterGroups {
+		for _, rf := range g {
+			required[rf.Dataset] = true
+		}
 	}
 	for _, r := range t.Refs {
 		required[r.Dataset] = true

@@ -92,6 +92,7 @@ Build and push images to a registry your cluster can pull from, then install the
 make docker-build docker-push REGISTRY=<your-registry> TAG=dev
 
 helm upgrade --install semantic-operator charts/semantic-operator \
+  --set server.auth.allowInsecureHeaderAuth=true \
   --namespace semantic-system --create-namespace \
   --set image.repository=<your-registry>/semantic-operator \
   --set image.tag=dev \

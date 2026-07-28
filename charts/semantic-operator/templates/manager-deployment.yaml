@@ -31,6 +31,13 @@ spec:
             - --leader-elect={{ .Values.manager.leaderElect }}
           env:
             {{- include "semantic-operator.engineEnv" (dict "root" . "component" "manager") | nindent 12 }}
+            {{- include "semantic-operator.validateScope" . -}}
+            {{- /* Absent only in cluster-wide mode, where the manager caches
+                   every namespace and holds a ClusterRole to match. */ -}}
+            {{- with (include "semantic-operator.watchedNamespaces" . | fromYamlArray) }}
+            - name: WATCH_NAMESPACES
+              value: {{ join "," . | quote }}
+            {{- end }}
             - name: VIEW_DATABASE
               value: {{ .Values.manager.viewDatabase | quote }}
             - name: RESYNC_PERIOD

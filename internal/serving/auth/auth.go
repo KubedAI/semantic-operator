@@ -61,6 +61,10 @@ type Options struct {
 	// RoleClaim names the claim holding the role. Dots address nested
 	// objects, e.g. "resource_access.semantic.role". Default "role".
 	RoleClaim string
+	// GroupsClaim names a claim holding a list of roles, which is how most
+	// issuers model membership. Its entries are added to the role set
+	// alongside RoleClaim, and either one alone is enough to authenticate.
+	GroupsClaim string
 	// ClaimsToCopy are claim names carried into Identity.Claims, so row
 	// filters can reference caller attributes (tenant, region) later.
 	ClaimsToCopy []string
@@ -71,11 +75,12 @@ type Options struct {
 
 // Authenticator resolves an identity from a request.
 type Authenticator struct {
-	mode      Mode
-	keyfunc   jwt.Keyfunc
-	roleClaim []string
-	copy      []string
-	parser    *jwt.Parser
+	mode        Mode
+	keyfunc     jwt.Keyfunc
+	roleClaim   []string
+	groupsClaim []string
+	copy        []string
+	parser      *jwt.Parser
 }
 
 // New builds an Authenticator. In JWT mode it fetches the JWKS immediately,
@@ -123,13 +128,17 @@ func New(ctx context.Context, opts Options) (*Authenticator, error) {
 		parserOpts = append(parserOpts, jwt.WithAudience(opts.Audience))
 	}
 
-	return &Authenticator{
+	a := &Authenticator{
 		mode:      ModeJWT,
 		keyfunc:   k.Keyfunc,
 		roleClaim: strings.Split(claim, "."),
 		copy:      opts.ClaimsToCopy,
 		parser:    jwt.NewParser(parserOpts...),
-	}, nil
+	}
+	if opts.GroupsClaim != "" {
+		a.groupsClaim = strings.Split(opts.GroupsClaim, ".")
+	}
+	return a, nil
 }
 
 // Mode reports the configured mode, for logging and readiness reporting.
@@ -140,7 +149,7 @@ func (a *Authenticator) Mode() Mode { return a.mode }
 // claim, ignoring any client-supplied role header.
 func (a *Authenticator) Identity(r *http.Request) (governance.Identity, error) {
 	if a.mode == ModeHeader {
-		return governance.Identity{Role: r.Header.Get(RoleHeader)}, nil
+		return headerIdentity(r), nil
 	}
 
 	raw, err := bearerToken(r)
@@ -151,12 +160,21 @@ func (a *Authenticator) Identity(r *http.Request) (governance.Identity, error) {
 	if _, err := a.parser.ParseWithClaims(raw, claims, a.keyfunc); err != nil {
 		return governance.Identity{}, fmt.Errorf("%w: %v", ErrUnauthenticated, err)
 	}
-	role, ok := stringClaim(claims, a.roleClaim)
-	if !ok || role == "" {
-		return governance.Identity{}, fmt.Errorf("%w: token has no %q claim",
+
+	// A role set can come from a single role claim, a groups list, or both.
+	var roles []string
+	if role, ok := stringClaim(claims, a.roleClaim); ok && role != "" {
+		roles = append(roles, role)
+	}
+	if len(a.groupsClaim) > 0 {
+		roles = append(roles, listClaim(claims, a.groupsClaim)...)
+	}
+	if len(roles) == 0 {
+		return governance.Identity{}, fmt.Errorf("%w: token carries neither a %q claim nor any group",
 			ErrUnauthenticated, strings.Join(a.roleClaim, "."))
 	}
-	id := governance.Identity{Role: role}
+
+	id := governance.Identity{Roles: dedupe(roles)}
 	for _, name := range a.copy {
 		if v, ok := stringClaim(claims, strings.Split(name, ".")); ok {
 			if id.Claims == nil {
@@ -166,6 +184,60 @@ func (a *Authenticator) Identity(r *http.Request) (governance.Identity, error) {
 		}
 	}
 	return id, nil
+}
+
+// headerIdentity reads the trusted role header. Several roles may be given as
+// a comma-separated list, matching the multi-role model of JWT mode.
+func headerIdentity(r *http.Request) governance.Identity {
+	raw := r.Header.Get(RoleHeader)
+	if raw == "" {
+		return governance.Identity{}
+	}
+	var roles []string
+	for _, part := range strings.Split(raw, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			roles = append(roles, p)
+		}
+	}
+	return governance.Identity{Roles: dedupe(roles)}
+}
+
+// listClaim reads a claim holding an array of strings, which is how issuers
+// normally encode group membership. A single string is accepted too, because
+// some issuers collapse a one-element list.
+func listClaim(claims jwt.MapClaims, path []string) []string {
+	v, ok := claimAt(claims, path)
+	if !ok {
+		return nil
+	}
+	switch t := v.(type) {
+	case string:
+		if t == "" {
+			return nil
+		}
+		return []string{t}
+	case []any:
+		var out []string
+		for _, e := range t {
+			if s, ok := e.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+func dedupe(in []string) []string {
+	seen := map[string]bool{}
+	out := in[:0:0]
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // probeJWKS verifies the endpoint answers with a usable key set.
@@ -208,18 +280,27 @@ func bearerToken(r *http.Request) (string, error) {
 	return strings.TrimSpace(h[len(prefix):]), nil
 }
 
-// stringClaim walks a dotted claim path and renders the leaf as a string.
-func stringClaim(claims map[string]any, path []string) (string, bool) {
+// claimAt walks a dotted claim path and returns the raw leaf value.
+func claimAt(claims map[string]any, path []string) (any, bool) {
 	var cur any = claims
 	for _, p := range path {
 		m, ok := cur.(map[string]any)
 		if !ok {
-			return "", false
+			return nil, false
 		}
 		cur, ok = m[p]
 		if !ok {
-			return "", false
+			return nil, false
 		}
+	}
+	return cur, true
+}
+
+// stringClaim walks a dotted claim path and renders the leaf as a string.
+func stringClaim(claims map[string]any, path []string) (string, bool) {
+	cur, ok := claimAt(claims, path)
+	if !ok {
+		return "", false
 	}
 	switch v := cur.(type) {
 	case string:
