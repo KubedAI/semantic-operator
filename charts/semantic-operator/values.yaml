@@ -177,14 +177,15 @@ server:
     # "resource_access.semantic.role".
     #
     # groupsClaim names a claim holding a list of roles, which is how most
-    # issuers model membership. Roles from both claims are combined, and
-    # permissions across them are additive.
+    # issuers model membership. Roles from both claims form the caller's role
+    # set, but their permissions are not pooled. Some single role must permit
+    # every metric and field in a request on its own.
     jwksURL: ""
     groupsClaim: ""
     issuer: ""
     audience: ""
     roleClaim: role
-    # Claims copied into the identity for future attribute-based policies.
+    # Claims copied into the identity for {{claim.name}} row-filter placeholders.
     claimsToCopy: []
   listenPort: 8090
   planCacheTTL: 24h

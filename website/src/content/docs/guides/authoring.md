@@ -141,13 +141,28 @@ governance:
       allowMetrics: ["*"]
       denyFields: ["customer.c_email_address"]     # PII, returns 403 if requested
       rowFilters: [{ dataset: store, predicate: "s_state = 'TX'" }]
+    - name: regional_analyst
+      allowMetrics: ["*"]
+      # {{claim.region}} is filled from the caller's token, so one role covers
+      # every region. A caller whose token lacks the claim is refused.
+      rowFilters: [{ dataset: store, predicate: "s_state = {{claim.region}}" }]
     - name: admin
       allowMetrics: ["*"]
 ```
 
+Two things about roles are worth knowing before you write these.
+
+A role with an empty `allowMetrics` grants nothing and is ignored entirely, so it cannot be
+used to hold row filters or field denials on its own.
+
+Roles are never combined. A caller holding several roles must have one role that permits
+their whole request, every metric and every field together. Write each role so it is
+usable on its own rather than expecting two of them to add up.
+
 ## Step 6. Governed BI views (optional)
 
-Materialize certified metrics as StarRocks views that any MySQL-protocol BI tool can read.
+Materialize certified metrics as engine-native views that BI tools can read through StarRocks
+or Trino.
 
 ```yaml
 views:

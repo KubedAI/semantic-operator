@@ -106,6 +106,10 @@ func TestEncodedSizeMatchesRealJSON(t *testing.T) {
 		"\x00\x01\x02 control characters",
 		"html <script> & entities",
 		"unicode ünïcödé 日本語",
+		"JavaScript separators \u2028 and \u2029",
+		string([]byte{0xff}),
+		string([]byte{0xc0, 0xaf}),
+		"valid replacement rune \ufffd",
 		"",
 	}
 	for _, s := range cases {

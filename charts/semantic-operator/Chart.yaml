@@ -3,7 +3,8 @@ name: semantic-operator
 description: >
   Apache Ossie semantic layer for Kubernetes: SemanticModel CRD and operator, a
   deterministic semantic planner with compile-time governance, and MCP/REST
-  serving adapters, backed by an existing StarRocks cluster and Valkey cache.
+  serving adapters for existing StarRocks or Trino query engines. Valkey caching
+  is optional.
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

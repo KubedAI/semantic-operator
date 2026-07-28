@@ -27,10 +27,6 @@ independent. They coordinate only through the Kubernetes API, never by calling e
 
 <CombinedDiagram />
 
-<p >Authoring happens once, by a person. Reconciliation and serving are continuous and
-  independent. They coordinate only through the Kubernetes API, never by calling each other.</p>
-
-  
 
   <h3>Three database users, three scopes</h3>
   <div class="overflow-x-auto"><table>
@@ -60,12 +56,12 @@ Worth stating plainly before you scope a deployment.
   <div class="overflow-x-auto"><table>
     <thead><tr><th>Limit</th><th>Detail</th></tr></thead>
     <tbody>
-      <tr><td>Engine auth</td><td>Static username and password from a Kubernetes Secret is the only supported mechanism. IAM-based auth. A Pod Identity or IRSA role minting short-lived Redshift credentials, Snowflake key-pair, BigQuery service accounts. Needs a credential-provider seam in the connection config that does not exist yet.</td></tr>
+      <tr><td>Engine auth</td><td>Static username and password from a Kubernetes Secret is the only supported mechanism. IAM-based authentication, short-lived credentials, Snowflake key pairs, and BigQuery service accounts need a credential-provider seam that does not exist yet.</td></tr>
       <tr><td>Redshift, ClickHouse, Postgres</td><td>No client implementations yet. Each is a dialect plus a connection client behind the existing interfaces. Redshift speaks the Postgres wire protocol.</td></tr>
       <tr><td>One engine per install</td><td>Serving two engines means two installs. Per-model engine binding is a wiring change. The compiler already accepts the dialect per call.</td></tr>
-      <tr><td>Single-namespace serving</td><td>The server watches one namespace, so multi-team means multiple installs. There is no tenancy model yet.</td></tr>
-      <tr><td>Artifact size</td><td>The compiled model is an uncompressed ConfigMap. Roughly 2.4 KB per dataset, against a ~1 MiB ceiling. A few hundred datasets will fail publication with an opaque error. Needs a size guard and compression.</td></tr>
-      <tr><td>Attribute-based policy</td><td>Row filters are static per role. Claims are carried into the identity but not yet readable by a filter, so "each user sees their own region" is not expressible.</td></tr>
+      <tr><td>Single-namespace serving</td><td>The server watches one namespace, so multi-team means multiple installs. The manager now defaults to that same namespace so the two agree, and warns at install time if you widen it past what this server can serve. There is no tenancy model yet.</td></tr>
+      <tr><td>Artifact size</td><td>The compiled model is an uncompressed ConfigMap. Roughly 2.4 KB per dataset, against a ~1 MiB ceiling. The operator now refuses to publish past 900 KiB with an error naming the model and what to do, rather than letting the API server reject the write. Compression, or an artifact stored outside etcd, is still missing.</td></tr>
+      <tr><td>Attribute-based policy</td><td>A row filter can interpolate a caller's claim with <code>&#123;&#123;claim.name&#125;&#125;</code>, so "each user sees their own region" works. What is missing is anything richer, such as a policy that depends on a lookup rather than on a claim the token already carries.</td></tr>
       <tr><td>NetworkPolicy enforcement</td><td>The policies ship, but they are inert unless your CNI enforces them. The EKS VPC CNI needs <code>--enable-network-policy=true</code>. Verify rather than assume.</td></tr>
     </tbody>
   </table></div>

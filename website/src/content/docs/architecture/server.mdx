@@ -15,21 +15,34 @@ optional cache, replicas are interchangeable and it scales sideways.
 
 ### Identity
 
-The caller is resolved to a role before anything else happens. Two modes exist and the
-difference is a security boundary.
+The caller is resolved to a set of roles before anything else happens. Two modes exist and
+the difference is a security boundary.
 
-In `header` mode the role is read from the `X-Semantic-Role` header. This is only safe
-behind a proxy that authenticates the caller and overwrites that header, because otherwise
-any client that reaches the port can claim any role. The server logs a warning at startup
-in this mode.
+In `header` mode the roles are read from the `X-Semantic-Role` header, comma separated for
+more than one. This is only safe behind a proxy that authenticates the caller and
+overwrites that header, because otherwise any client that reaches the port can claim any
+role. The chart refuses to install in this mode unless you also set
+`server.auth.allowInsecureHeaderAuth`, and the server logs a warning at startup.
 
 In `jwt` mode a bearer token is required and validated against the issuer's JWKS. Signature,
 expiry, issuer, and audience are all checked, and only asymmetric algorithms are accepted
-because the key set is public. The role comes from a claim that may be nested. Any inbound
-`X-Semantic-Role` is ignored outright, so a caller cannot assert its own identity.
+because the key set is public. Roles come from a role claim, a groups claim, or both, and
+either may be nested. Any inbound `X-Semantic-Role` is ignored outright, so a caller cannot
+assert its own identity.
 
 An unverified caller gets 401. A verified caller that policy rejects gets 403. The
 distinction matters when you are debugging.
+
+### Discovery is governed too
+
+Listing models, metrics, and dimensions goes through the same authentication as querying,
+and through the same policy. A metric a caller could not query is left out of the listing
+rather than shown and refused later, and so is a column their roles may not read. A listing
+otherwise tells an unauthorised caller the shape of the warehouse.
+
+Raw metric expressions are not returned unless you set `EXPOSE_METRIC_EXPRESSIONS`. The
+expression is the definition itself, and an agent grounds perfectly well on the name, the
+description, and the synonyms.
 
 ### Resolve and authorize
 
@@ -39,6 +52,13 @@ Metric and dimension names are looked up in the compiled model. Then governance 
 The check covers requested metrics against the role's allowlist, requested dimensions and
 filters against denied fields, and every field inside every requested metric expression.
 That last part is what stops a caller reading a forbidden column through an aggregate.
+
+Roles do not pool their permissions. Some single role must permit the whole request on its
+own, every metric and every field together. Combining them looks natural, because
+Kubernetes RBAC is additive, but a policy carries restrictions as well as grants. Under
+pooling, a role that grants nothing would cancel another role's denied fields and row
+filters just by being present. A caller holding both would then see more than either role
+allows.
 
 ### Plan
 
@@ -50,9 +70,26 @@ join, summing it directly would multiply it by the number of fact rows. The plan
 those into separate aggregations and deduplicates on the dimension's primary key. This is
 the single most common way hand written and generated SQL produce a wrong number.
 
-Row filters from the role's policy are conjoined into the WHERE clause. Everything is
-rendered through the engine's dialect, so identifier quoting and literal syntax match the
-target.
+Row filters are conjoined within a role and disjoined across the roles that authorized the
+request, so a caller sees the union of the rows those roles allow. A role that authorized
+the request and carries no filters can see every row, which collapses the whole disjunction
+rather than emitting SQL that looks restrictive and is not.
+
+A predicate may interpolate a caller attribute, which is how "each user sees their own
+region" is expressed.
+
+```yaml
+rowFilters:
+  - dataset: store
+    predicate: "region = {{claim.region}}"
+```
+
+The value is rendered through the dialect's literal function, so it is always an escaped
+SQL literal. A caller whose token does not carry the claim is refused rather than served a
+filter that silently matches the wrong rows.
+
+Everything is rendered through the engine's dialect, so identifier quoting and literal
+syntax match the target.
 
 ### Execute and report
 
@@ -60,8 +97,33 @@ One statement runs. The response carries the rows, the exact SQL, the model vers
 request hash. Every statement begins with a comment holding those same three values, so a
 query in the engine's log traces back to the request that caused it.
 
-The same request, from the same role, against the same model version, produces byte
-identical SQL every time.
+The same request, from the same identity, against the same model version, produces byte
+identical SQL every time. Identity here means the roles and the claims together, because a
+row filter can interpolate a claim. Two callers sharing a role but carrying different
+tenants compile to different SQL, and never share a cached plan.
+
+### What bounds a request
+
+The server is a fixed size pod, so every part of a request is bounded. All of these are
+Helm values under `server.query`, and the numbers below are the defaults.
+
+| Bound | Default | What happens past it |
+|---|---|---|
+| Row limit | 1000, max 10000 | Refused, not truncated |
+| Result size | 32 MiB | Abandoned while reading, before it is fully allocated |
+| Request body | 1 MiB | Refused |
+| Metrics, dimensions, filters | 25, 25, 50 | Refused |
+| Values in one `IN` list | 1000 | Refused |
+| Requests in flight | 4 | Queued briefly, then 503 with `Retry-After` |
+
+A request over a bound is refused rather than trimmed. A silently truncated result cannot
+be told apart from a complete one, which is the failure this whole system exists to
+prevent, and there is no pagination yet to signal it.
+
+The last two rows are one budget. Each in-flight request can hold a whole result until its
+response has been written, so `maxConcurrent` multiplied by `maxResultBytes` has to stay
+comfortably under the pod's memory limit. Raising either one means raising the memory limit
+too.
 
 ## Three surfaces, one compiler
 

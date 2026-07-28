@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"unicode/utf8"
 )
 
 // ErrResultTooLarge marks a result abandoned partway through because it
@@ -111,21 +112,27 @@ func encodedSize(v any) int {
 // six bytes each and easy to forget.
 func jsonStringLen(s string) int {
 	n := 2 // surrounding quotes
-	for i := 0; i < len(s); i++ {
-		switch c := s[i]; {
-		case c == '"', c == '\\':
+	for len(s) > 0 {
+		r, size := utf8.DecodeRuneInString(s)
+		switch {
+		case r == utf8.RuneError && size == 1:
+			// encoding/json replaces each invalid UTF-8 byte with \ufffd.
+			n += 6
+		case r == '"', r == '\\':
 			n += 2
-		case c == '\n', c == '\r', c == '\t':
+		case r == '\n', r == '\r', r == '\t':
 			n += 2 // short escapes
-		case c == '<', c == '>', c == '&':
+		case r == '<', r == '>', r == '&':
 			n += 6 // \u003c and friends, escaped for HTML safety
-		case c < 0x20:
+		case r < 0x20:
 			n += 6 // \u00xx
+		case r == '\u2028', r == '\u2029':
+			// These remain escaped so JSON is safe inside JavaScript strings.
+			n += 6
 		default:
-			// Multi-byte runes pass through unescaped, and indexing by byte
-			// counts each of their bytes exactly once.
-			n++
+			n += size
 		}
+		s = s[size:]
 	}
 	return n
 }

@@ -61,6 +61,11 @@ traffic.
 
 This ConfigMap is the only handoff to the server.
 
+A ConfigMap cannot exceed roughly 1 MiB, so publication is refused above 900 KiB, leaving
+room for labels and the owner reference. The condition names the byte count and suggests
+splitting the model, which is more use than the API server's own rejection. Retrying cannot
+help, so the operator reports it and waits for an edit instead of backing off forever.
+
 ### 5. Create governed views
 
 Each entry in `spec.views` is compiled through the same planner, under its declared role,
@@ -99,6 +104,20 @@ place to look when something does not line up.
 
 It needs **no table data access** and **no cloud or catalog credentials**. Glue, DataHub,
 and Polaris are the authoring tool's business, not the operator's.
+
+By default all of that is a `Role` in the release namespace, not a `ClusterRole`. The
+manager reconciles only the namespace it was installed in, which is the same namespace the
+server loads artifacts from, so the two agree out of the box.
+
+Set `manager.watchNamespaces` to reconcile a fixed list, which issues one `Role` and
+`RoleBinding` in each. Set `manager.watchAllNamespaces` for genuine cluster-wide operation,
+which is the only mode that grants a `ClusterRole`. The two values are mutually exclusive
+and setting both fails rendering.
+
+Widening the manager past the server's namespace is allowed and sometimes what you want,
+for view management or a manager-only install. Those models will validate, compile, publish
+an artifact, and get their views created, and this release's server will not answer queries
+for them. The chart prints a warning at install time saying exactly that.
 
 ## Scaling and deployment
 

@@ -105,8 +105,9 @@ they cannot disagree.
 
 Determinism, which makes results cacheable, auditable, and worth tuning. Governance that
 runs early enough to actually prevent a leak rather than filter one afterwards. And
-portability, because the model is a plain Apache Ossie document that round trips byte for
-byte, so the standard owns your semantics rather than this implementation.
+portability, because the analytics model uses Apache Ossie rather than a private runtime
+format. `ossiectl` can extract and wrap the supported typed model without changing its
+semantics, although it does not preserve YAML formatting or comments.
 
 If you work with knowledge graphs and are wondering how this relates to an ontology, that
 is a real distinction and [ontology has its own page](/start/ontology).

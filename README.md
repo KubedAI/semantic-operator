@@ -87,10 +87,10 @@ website/          documentation site (Astro + Starlight)
 Everything lives on the [docs site](https://kubedai.github.io/semantic-operator). The most
 useful entry points:
 
-- [What this is](https://kubedai.github.io/semantic-operator/start/overview) and [how it works](https://kubedai.github.io/semantic-operator/start/architecture)
+- [What this is](https://kubedai.github.io/semantic-operator/start/introduction) and [how it works](https://kubedai.github.io/semantic-operator/architecture)
 - [Authoring a model](https://kubedai.github.io/semantic-operator/guides/authoring)
-- [Components and access](https://kubedai.github.io/semantic-operator/reference/components) — what each component needs, and what it deliberately does not
-- [Adding a query engine](https://kubedai.github.io/semantic-operator/guides/extending-engines)
+- [Components and access](https://kubedai.github.io/semantic-operator/architecture/access) — what each component needs, and what it deliberately does not
+- [Adding a query engine](https://kubedai.github.io/semantic-operator/guides/adding-an-engine)
 - [Examples](https://kubedai.github.io/semantic-operator/examples)
 
 To run the docs locally:
@@ -101,11 +101,11 @@ make docs        # install deps and serve at http://localhost:4321
 
 ## Contributing
 
-Start with the [developer guide](https://kubedai.github.io/semantic-operator/reference/developer)
-for the code layout and the offline test loop (`make test` needs no cluster), and the
-[roadmap](https://kubedai.github.io/semantic-operator/project/roadmap) for prioritized work.
-New engine dialects, catalog sources, and a local `kind` quickstart are the best first
-contributions.
+Start with the [developer guide](https://kubedai.github.io/semantic-operator/guides/developing)
+for the code layout and the offline test loop (`make test` needs no cluster).
+[Adding a query engine](https://kubedai.github.io/semantic-operator/guides/adding-an-engine)
+and [adding a catalog source](https://kubedai.github.io/semantic-operator/guides/adding-a-catalog)
+describe the main extension points.
 
 ## License
 

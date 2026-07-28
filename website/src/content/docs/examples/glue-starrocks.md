@@ -187,8 +187,9 @@ curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
   | jq '{requestHash, cachedResult}'
 ```
 
-**Verify.** The same `requestHash` as before, and `cachedResult` now `true`. Identical
-requests compile to identical SQL, which is what makes caching safe.
+**Verify.** The same `requestHash` as before. `cachedResult` is `true` only when the
+install configured `valkey.addr`; without Valkey, it remains `false` and the identical
+hash still proves deterministic planning.
 
 To see the SQL without running it, use the dry run endpoint.
 

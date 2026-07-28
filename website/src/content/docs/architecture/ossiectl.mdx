@@ -71,9 +71,10 @@ feedback loop in the project and the one to wire into CI.
 
 ### Convert between formats
 
-`unwrap` extracts the portable Apache Ossie document from a Kubernetes resource. `wrap`
-does the reverse. The round trip is byte for byte, which is what keeps your semantics
-owned by the standard rather than by this implementation.
+`unwrap` extracts the supported Apache Ossie document from a Kubernetes resource. `wrap`
+does the reverse. The round trip preserves the typed model semantics, but YAML formatting,
+comments, quoting, and field ordering are not preserved because both commands parse and
+marshal the document.
 
 ## Access it needs
 

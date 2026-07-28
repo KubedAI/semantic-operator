@@ -12,9 +12,9 @@ metadata:
   namespace: "semantic-system"
 spec:
   connection:
-    catalog: "glue"        # StarRocks external catalog fronting the lake
+    catalog: "glue"        # query-engine catalog fronting the lake
     database: "tpcds_3tb"
-    viewDatabase: semantic_views   # where governed BI views are created
+    viewDatabase: semantic_views   # use catalog.semantic_views on Trino
   ossie:
     name: "tpcds_3tb_model"
     description: ""                 # TODO: one line describing this model
@@ -129,7 +129,7 @@ spec:
   #       allowMetrics: ["*"]
   #       denyFields: []                 # e.g. ["customer.c_email_address"]
 
-  # views: governed BI views materialized in StarRocks. Uncomment and edit.
+  # views: governed BI views materialized in the query engine. Uncomment and edit.
   # views:
   #   - name: sales_by_category
   #     metrics: [total_sales]

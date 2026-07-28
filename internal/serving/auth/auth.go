@@ -66,7 +66,7 @@ type Options struct {
 	// alongside RoleClaim, and either one alone is enough to authenticate.
 	GroupsClaim string
 	// ClaimsToCopy are claim names carried into Identity.Claims, so row
-	// filters can reference caller attributes (tenant, region) later.
+	// filters can reference caller attributes (tenant, region).
 	ClaimsToCopy []string
 	// RefreshInterval bounds how long a rotated signing key takes to be
 	// picked up. Default 1h.

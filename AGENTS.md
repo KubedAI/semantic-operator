@@ -6,8 +6,9 @@ Guidance for AI coding agents (Claude Code, KIRO, Copilot, Cursor, etc.) working
 
 `semantic-operator` is a **Kubernetes operator + stateless semantic server** written in Go.
 It runs an **Apache Ossie (incubating)** semantic layer — the standard formerly called
-**Open Semantic Interchange (OSI)** — on Amazon EKS, on top of an existing **StarRocks**
-cluster that queries **Apache Iceberg** tables through an AWS **Glue** external catalog.
+**Open Semantic Interchange (OSI)** — on Kubernetes, on top of an existing **StarRocks**
+or **Trino** query engine. The engine may reach Apache Iceberg through Glue, Polaris,
+Hive Metastore, or another catalog it supports.
 
 Core idea: users author a `SemanticModel` custom resource (Apache Ossie YAML). The operator
 validates it, drift-checks its physical bindings against the live StarRocks/Iceberg schema,
@@ -48,7 +49,7 @@ internal/catalog/      Source (physical) + Enricher (business meaning) interface
 internal/cache/        Valkey plan + result caches (nil *Cache = valid no-op)
 internal/serving/auth/ identity resolution: header mode vs JWKS-validated JWT
 internal/serving/      Store (informer-fed model registry) + Service (one query path);
-                       adapters: mcp/ (streamable HTTP), rest/, views/ (governed StarRocks views)
+                       adapters: mcp/ (streamable HTTP), rest/, views/ (governed engine-native views)
 internal/starrocks/    MySQL-protocol client + schema introspection (DESC / SHOW CREATE TABLE)
 internal/trino/        Trino HTTP-protocol client + information_schema introspection
 internal/nlbench/      NL comparison / benchmark support (Bedrock Converse, temperature 0)
@@ -157,15 +158,16 @@ mocked/faked); prefer running all of it.
   paths as `ossie.<field>`.
 - Match surrounding Go style; this is idiomatic controller-runtime + stdlib code. Comments
   state constraints and reasons, not narration.
-- The planner emits **StarRocks SQL only**. Don't add other-engine SQL outside the
-  `emitter.Dialect` interface. New engines/catalogs go behind `emitter.Dialect` /
-  `catalog.Source` — see docs/ARCHITECTURE.md#extension-points for scope guardrails.
+- The planner emits SQL only through `emitter.Dialect`; StarRocks and Trino ship today.
+  Don't add engine-specific SQL outside that interface. New engines and catalog sources
+  go behind `emitter.Dialect`, `dbclient.Client`, or `catalog.Source`; see the docs site's
+  adding-an-engine and adding-a-catalog guides.
 - Nothing is hardcoded to an account/endpoint: registry, StarRocks host, Valkey addr,
   AWS region, and catalog names are all Helm values / env vars.
 - The docs site is the build spec. `website/src/content/docs/architecture.mdx` and its
   child pages describe intended behaviour; if code and those pages disagree, fix one of
-  them in the same change. Only README.md and AGENTS.md remain as repo-root markdown, and
-  each example directory keeps a stub pointing at its page.
+  them in the same change. README.md and AGENTS.md remain at the repository root, and
+  each example directory keeps a short README pointing at its docs-site page.
 - Docs prose style: short declarative sentences, no em dashes, no semicolons joining
   clauses, no colon splices. Link with the page's name, never a file path.
 - Commit under the user's own git identity only; do not add AI attribution trailers.
@@ -173,8 +175,9 @@ mocked/faked); prefer running all of it.
 ## Gotchas
 
 - `spec.joins` (join-type overrides), `governance`, and `views` are operator extensions kept
-  **outside** `spec.ossie` so the Ossie document round-trips byte-for-byte through
-  `ossiectl unwrap`/`wrap`. Don't move operator concepts into the `ossie` block.
+  **outside** `spec.ossie` so `ossiectl unwrap`/`wrap` preserves the supported typed Ossie
+  semantics. YAML formatting, comments, quoting, and field ordering are not preserved.
+  Don't move operator concepts into the `ossie` block.
 - The join graph is directed many→one (`from` = fact side). `builder.joinTree` roots at a
   required dataset first, then falls back to spec order — a query touching only dimension
   tables must not detour through the fact table.

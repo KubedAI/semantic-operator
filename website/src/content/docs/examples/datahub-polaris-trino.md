@@ -8,7 +8,9 @@ Iceberg REST catalog and adds DataHub as the source of business meaning. It is t
 of the walkthroughs to a fully open lakehouse.
 
 Work through [Prerequisites](/examples/prerequisites) first. This walkthrough deploys
-Polaris and DataHub itself, so you need room for them.
+Polaris. It currently expects an existing DataHub installation in the `datahub`
+namespace, with GMS available as `datahub-datahub-gms` and the system credential in
+`datahub-auth-secrets`. Installing and pinning DataHub on EKS is not automated here yet.
 
 The full flow on a real EKS cluster: deploy the prerequisites, generate a
 semantic model from the Polaris catalog, certify it, deploy it with kubectl,
@@ -21,13 +23,16 @@ Stage 1   deploy Polaris     Postgres + Polaris + catalog 'demo' on S3
 Stage 2   wire Trino         'polaris' catalog over Iceberg REST + OAuth
 Stage 3   load data          CTAS the retail tables into Polaris
 Stage 4   install operator   semantic-operator with engine.type=trino
-Stage 5   author the model   ossiectl derive -> human certifies -> diff
-Stage 6   deploy the model   kubectl apply, watch it reconcile
-Stage 7   query              REST + MCP, governance, views, Trino UI
+Stage 5   DataHub metadata   ingest tables, add demo stewardship metadata
+Stage 6   author the model   derive + DataHub enrich -> human certifies
+Stage 7   deploy the model   kubectl apply, watch it reconcile
+Stage 8   query              REST + MCP, governance, views, Trino UI
 ```
 
-DataHub is not part of this flow yet. When it lands it adds discovery and
-enrichment on top of the same stages.
+The Polaris and Trino stages are runnable today. The DataHub scripts target an
+existing DataHub deployment and are an integration preview, not yet a clean-cluster
+customer-demo installer. Run and verify them before relying on this walkthrough in a
+presentation.
 
 ---
 
@@ -125,7 +130,29 @@ kubectl -n semantic-system port-forward svc/semantic-operator-server 8090:8090 &
 curl -s -o /dev/null -w '%{http_code}\n' localhost:8090/readyz   # 200 (pings Trino)
 ```
 
-## Stage 5. Author the model (derive, then certify)
+## Stage 5. Import metadata from DataHub
+
+DataHub must already be running in the `datahub` namespace. Ingest the Polaris
+datasets through Trino:
+
+```bash
+bash examples/stacks/eks/datahub-polaris-trino/datahub-ingest.sh
+kubectl -n datahub logs job/datahub-ingest-polaris --tail=20
+```
+
+For a reproducible demo, the annotation script creates a small glossary, documents
+selected datasets and fields, and marks the customer email field as PII. Start a
+port-forward first:
+
+```bash
+kubectl -n datahub port-forward svc/datahub-datahub-gms 8091:8080 &
+bash examples/stacks/eks/datahub-polaris-trino/datahub-annotate.sh
+```
+
+These scripts still need stronger GraphQL error and read-back checks. Confirm the
+descriptions, glossary terms, and PII tag in DataHub before continuing.
+
+## Stage 6. Author the model (derive, enrich, then certify)
 
 Generate the physical skeleton straight from the Polaris catalog. No Glue,
 no SDK: the derive command reads Trino's `information_schema`, which sees
@@ -134,7 +161,11 @@ exactly what the engine sees.
 ```bash
 kubectl -n trino port-forward svc/trino 8080:8080 &
 export SQL_DIALECT=trino ENGINE_HOST=127.0.0.1 ENGINE_PORT=8080
+export DATAHUB_TOKEN="Basic __datahub_system:$(kubectl -n datahub get secret \
+  datahub-auth-secrets -o jsonpath='{.data.system_client_secret}' | base64 -d)"
 go run ./cmd/ossiectl derive -source engine -catalog polaris -database osi_demo \
+  -enrich datahub -datahub-url http://localhost:8091 \
+  -datahub-platform trino -datahub-dataset-prefix polaris \
   -model tpcds_retail_model -name tpcds-retail -out /tmp/scaffold.yaml
 ```
 
@@ -166,7 +197,7 @@ go run ./cmd/ossiectl validate -f /tmp/scaffold.yaml
 go run ./cmd/ossiectl validate -f examples/stacks/eks/datahub-polaris-trino/semanticmodel.yaml
 ```
 
-## Stage 6. Deploy the model
+## Stage 7. Deploy the model
 
 ```bash
 kubectl apply -f examples/stacks/eks/datahub-polaris-trino/semanticmodel.yaml
@@ -184,7 +215,7 @@ kubectl -n semantic-system get cm sm-tpcds-retail-compiled -o jsonpath='{.metada
 # the published, versioned compiled artifact
 ```
 
-## Stage 7. Query it
+## Stage 8. Query it
 
 Discovery, then the certified number, then proof of determinism:
 
@@ -196,7 +227,8 @@ curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
   -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["store_productivity"],"dimensions":["store.s_state"]}' \
   | jq '{rows, requestHash, cachedResult}'
-# run it twice: identical requestHash, cachedResult=true, ~0ms
+# run it twice: requestHash must be identical. cachedResult is true only
+# when this install points valkey.addr at a running Valkey service.
 ```
 
 Governance, compiled in, never bolted on:
@@ -236,7 +268,9 @@ exactly this.
 
 ## Reset / re-run
 
-Every script is idempotent. Port-forward hygiene between runs:
+The Polaris, Trino, and data-loading scripts are intended to be idempotent. The DataHub
+integration remains a preview and should be verified after every run. Port-forward
+hygiene between runs:
 
 ```bash
 pkill -f 'kubectl.*port-forward'
