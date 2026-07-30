@@ -26,7 +26,6 @@ flowchart LR
     subgraph aws [AWS]
         SR -->|external catalog| GLUE[Glue Data Catalog]
         GLUE --- ICE[Iceberg tables on S3]
-        CTRL -->|catalog-source sync, IRSA| GLUE
     end
 
     AGENT[LLM agent / Bedrock] -->|MCP tools| MCP

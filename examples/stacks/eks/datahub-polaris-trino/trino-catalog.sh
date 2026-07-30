@@ -4,7 +4,7 @@
 # Kubernetes Secret; it never appears in a ConfigMap.
 set -euo pipefail
 NS_TRINO="${NS_TRINO:-trino}"
-NS_POLARIS="${NS_POLARIS:-chd}"
+NS_POLARIS="${NS_POLARIS:-polaris}"
 CATALOG="${POLARIS_CATALOG:-demo}"
 POLARIS_URI="http://polaris.${NS_POLARIS}.svc.cluster.local:8181/api/catalog"
 

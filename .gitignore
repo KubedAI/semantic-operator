@@ -1,8 +1,13 @@
 bin/
 dist/
+# Scratch output from the walkthroughs, e.g. ossiectl derive -out tmp/...
+tmp/
 # Locally built demo agent. `go build` in that directory drops an 18M binary
 # next to its sources, which is easy to stage by accident.
 examples/stacks/kind/datahub-polaris-starrocks/agent/agent
+# patch artifacts, never part of a change
+*.rej
+*.orig
 *.out
 coverage.txt
 .DS_Store

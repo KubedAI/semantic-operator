@@ -47,11 +47,24 @@ reachable at a host and port, with credentials.
 
 ## Container images
 
-The images are not published yet, so build and push them to a registry your cluster can
-pull from.
+Published on Amazon ECR Public, multi-arch for `linux/amd64` and `linux/arm64`.
+No registry setup and no build.
+
+```
+public.ecr.aws/data-on-eks/semantic-operator/manager:v0.1.1
+public.ecr.aws/data-on-eks/semantic-operator/server:v0.1.1
+```
+
+Pass the base path and the tag to Helm.
 
 ```bash
-make docker-build docker-push REGISTRY=<your-registry> TAG=0.1.0
+--set image.repository=public.ecr.aws/data-on-eks/semantic-operator --set image.tag=v0.1.1
+```
+
+To run a build of your own instead, push to any registry your cluster can pull from.
+
+```bash
+make docker-build docker-push REGISTRY=<your-registry> TAG=<tag>
 ```
 
 For Amazon ECR, authenticate first and create the repositories once.

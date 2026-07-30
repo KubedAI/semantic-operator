@@ -266,3 +266,38 @@ func TestIdentityKeyDigestIsFullWidth(t *testing.T) {
 		t.Fatalf("claim digest is %d hex chars (%d bits), want 64 (256 bits)", len(digest), len(digest)*4)
 	}
 }
+
+// A refusal has to say what to change, not just that it happened. The first
+// version of the per-role check reported only that no role permitted the
+// request, which told an operator nothing.
+func TestRefusalNamesTheOffendingItem(t *testing.T) {
+	// Single role: say plainly what that role forbids.
+	_, err := Authorize(spec(), Identity{Roles: []string{"analyst"}},
+		[]string{"revenue"}, refs(t, "store.manager_ssn"))
+	if err == nil {
+		t.Fatal("expected refusal")
+	}
+	for _, want := range []string{`role "analyst"`, "may not read field", "store.manager_ssn"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error should contain %q, got: %v", want, err)
+		}
+	}
+
+	// A denied metric is named too.
+	_, err = Authorize(spec(), Identity{Roles: []string{"analyst"}}, []string{"payroll_cost"}, nil)
+	if err == nil || !strings.Contains(err.Error(), `may not query metric "payroll_cost"`) {
+		t.Fatalf("error should name the denied metric, got: %v", err)
+	}
+
+	// Several roles: name each one's blocker, and explain that roles do not pool.
+	_, err = Authorize(spec(), Identity{Roles: []string{"analyst", "finance"}},
+		[]string{"revenue"}, refs(t, "store.manager_ssn"))
+	if err == nil {
+		t.Fatal("expected refusal")
+	}
+	for _, want := range []string{"analyst", "finance", "not combined"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error should contain %q, got: %v", want, err)
+		}
+	}
+}

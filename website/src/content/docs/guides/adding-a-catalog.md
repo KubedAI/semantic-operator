@@ -3,9 +3,9 @@ title: Adding a catalog source
 description: Catalogs supply physical structure and business meaning for model generation. Neither is used at runtime, which is why the operator needs no cloud credentials.
 ---
 
-Catalog integrations serve model generation only. Nothing in the runtime path touches them.
-The operator and the server introspect through the query engine, so every catalog an engine
-can mount already works at runtime with no catalog code at all.
+Catalog integrations serve optional offline model generation only. Nothing in the runtime
+path touches them. The normal connected authoring path also introspects through the query
+engine. Every catalog an engine can mount already works with no catalog-specific code.
 
 That separation is worth holding onto. It is why the operator needs no cloud credentials.
 
@@ -27,15 +27,17 @@ Getting this the wrong way round produces models that fail their first drift che
 
 Before writing a new source, check whether you need one.
 
-**Glue** reads AWS Glue directly over the SDK, with no cluster involved.
-
 **infoschema** reads the engine's own `information_schema`. Because the engine already
 mounts the physical catalog, this single implementation covers Polaris and other Iceberg
 REST catalogs, Hive Metastore, Unity, and Glue, with no catalog specific code. It also sees
 exactly what the engine sees, which is the same property drift detection relies on.
 
-A native source is only worth writing when you need to generate a model without a running
-engine.
+**Glue** reads AWS Glue directly over the SDK, with no engine or cluster involved. It is
+the example native source for offline bootstrap.
+
+Prefer `infoschema` when an engine is available. A native source is only worth writing
+when users need to generate a model without a running engine or need metadata the engine
+does not expose.
 
 ## Writing a source
 

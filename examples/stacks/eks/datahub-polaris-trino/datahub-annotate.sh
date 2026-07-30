@@ -23,8 +23,11 @@ SECRET=$(kubectl -n "$NS" get secret datahub-auth-secrets -o jsonpath='{.data.sy
 AUTH="Basic __datahub_system:${SECRET}"
 GQL="http://localhost:${PORT}/api/graphql"
 
+# The DataHub chart prefixes services with the release name, so report the
+# service this cluster actually has rather than one spelling of it.
+GMS_SVC="${DATAHUB_GMS_SVC:-$(kubectl -n "$NS" get svc -o name 2>/dev/null | grep -m1 'datahub-gms' | cut -d/ -f2)}"
 curl -sf -o /dev/null "http://localhost:${PORT}/health" ||
-  { echo "GMS not reachable on localhost:${PORT}. Run: kubectl -n $NS port-forward svc/datahub-datahub-gms ${PORT}:8080" >&2; exit 1; }
+  { echo "GMS not reachable on localhost:${PORT}. Run: kubectl -n $NS port-forward svc/${GMS_SVC:-<datahub-gms-service>} ${PORT}:8080" >&2; exit 1; }
 
 gql() { # $1 = query, $2 = variables json
   curl -s -X POST "$GQL" -H 'Content-Type: application/json' -H "Authorization: $AUTH" \

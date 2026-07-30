@@ -101,18 +101,19 @@ You could write the model by hand. It is faster to generate the mechanical part.
 
 ```bash
 export SQL_DIALECT=starrocks ENGINE_HOST=127.0.0.1 ENGINE_PORT=9030
+mkdir -p tmp
 go run ./cmd/ossiectl derive -source engine \
   -catalog iceberg -database osi_demo \
   -model tpcds_retail_model -name tpcds-retail \
-  -out /tmp/scaffold.yaml
+  -out tmp/scaffold.yaml
 ```
 
 **Verify.** Look at what it produced and what it left for you.
 
 ```bash
-grep -c 'expression:' /tmp/scaffold.yaml   # fields the machine filled in
-grep -c 'TODO' /tmp/scaffold.yaml          # decisions left for a person
-go run ./cmd/ossiectl validate -f /tmp/scaffold.yaml
+grep -c 'expression:' tmp/scaffold.yaml   # fields the machine filled in
+grep -c 'TODO' tmp/scaffold.yaml          # decisions left for a person
+go run ./cmd/ossiectl validate -f tmp/scaffold.yaml
 ```
 
 Expect roughly 70 fields and around 23 placeholders. The scaffold is already valid, because

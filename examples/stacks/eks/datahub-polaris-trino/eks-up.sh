@@ -4,11 +4,14 @@
 #
 # Prereqs (one-time, done outside this script):
 #   - S3 bucket for the warehouse (BUCKET below)
-#   - IAM role for Polaris bound via EKS Pod Identity to chd/polaris-sa
+#   - IAM role for Polaris bound via EKS Pod Identity to <namespace>/polaris-sa
 #     with read/write on the bucket (roles only; no IAM users)
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
-NS=chd
+# Deliberately the same namespace the Data on EKS semantic-on-eks stack uses
+# for Polaris. Whether you deploy Polaris here or the stack already did it, the
+# verification commands in the walkthrough are then identical.
+NS="${POLARIS_NS:-polaris}"
 CATALOG="${POLARIS_CATALOG:-demo}"
 REGION="${AWS_REGION:-us-west-2}"
 
@@ -42,10 +45,11 @@ if ! kubectl -n "$NS" get secret polaris-credentials >/dev/null 2>&1; then
   log "created polaris-credentials"
 fi
 
-kubectl apply -f "$DIR/postgres.yaml"
+render() { sed "s/namespace: polaris/namespace: $NS/g; s/\.polaris\.svc/.$NS.svc/g" "$1"; }
+render "$DIR/postgres.yaml" | kubectl apply -f -
 kubectl -n "$NS" rollout status deploy/postgres --timeout=180s
 
-kubectl apply -f "$DIR/polaris.yaml"
+render "$DIR/polaris.yaml" | kubectl apply -f -
 log "waiting for bootstrap job (creates realm POLARIS + root principal)"
 if ! kubectl -n "$NS" wait --for=condition=complete job/polaris-bootstrap --timeout=240s; then
   if kubectl -n "$NS" logs job/polaris-bootstrap 2>/dev/null | grep -qi 'already'; then

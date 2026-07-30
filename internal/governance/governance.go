@@ -251,9 +251,7 @@ func Authorize(g *v1alpha1.GovernanceSpec, id Identity, metrics []string, fieldR
 
 	granted := v.authorizing(metrics, fieldRefs)
 	if len(granted) == 0 {
-		return Decision{}, fmt.Errorf("%w: no single role among %s permits this request; "+
-			"roles are not combined, so one role must allow every requested metric and field",
-			ErrUnauthorized, quoteList(v.roles))
+		return Decision{}, v.refusal(metrics, fieldRefs)
 	}
 
 	// A role that authorizes the request and carries no row filters really can
@@ -273,6 +271,41 @@ func Authorize(g *v1alpha1.GovernanceSpec, id Identity, metrics []string, fieldR
 		names = append(names, v.roles[i])
 	}
 	return Decision{Roles: names, RoleKey: strings.Join(names, ","), RowFilterGroups: groups}, nil
+}
+
+// blocker returns the first metric or field that stops policy i authorizing the
+// request, so the caller is told what to change rather than only that they were
+// refused.
+func (v Visibility) blocker(i int, metrics []string, fieldRefs []expr.FieldRef) string {
+	for _, m := range metrics {
+		if !v.permitsMetric(i, m) {
+			return fmt.Sprintf("may not query metric %q", m)
+		}
+	}
+	for _, ref := range fieldRefs {
+		if !v.permitsField(i, ref.String()) {
+			return fmt.Sprintf("may not read field %q", ref.String())
+		}
+	}
+	return "does not permit this request"
+}
+
+// refusal explains why nothing authorized the request.
+//
+// With one role the answer is simply what that role forbids. With several it
+// also has to say that roles are not pooled, because a caller looking at their
+// combined permissions would otherwise expect this to work.
+func (v Visibility) refusal(metrics []string, fieldRefs []expr.FieldRef) error {
+	if len(v.policies) == 1 {
+		return fmt.Errorf("%w: role %q %s", ErrUnauthorized, v.roles[0], v.blocker(0, metrics, fieldRefs))
+	}
+	reasons := make([]string, 0, len(v.policies))
+	for i := range v.policies {
+		reasons = append(reasons, fmt.Sprintf("%q %s", v.roles[i], v.blocker(i, metrics, fieldRefs)))
+	}
+	return fmt.Errorf("%w: no single role permits this request. %s. "+
+		"Roles are not combined, so one role must allow every requested metric and field",
+		ErrUnauthorized, strings.Join(reasons, ", "))
 }
 
 // claimRef matches a claim placeholder such as {{claim.region}} in a row

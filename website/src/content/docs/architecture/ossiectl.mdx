@@ -5,8 +5,9 @@ description: The command line tool that generates a semantic model from your cat
 
 import OssiectlDiagram from '../../../components/OssiectlDiagram.astro';
 
-`ossiectl` is where a model comes from. It runs on a workstation, reads metadata, writes a
-YAML file, and exits. It never runs inside the cluster and it is never in the query path.
+`ossiectl` is an optional model-authoring helper. It runs on a workstation, reads metadata,
+writes a YAML file, and exits. You can also write the same file by hand. It never runs
+inside the cluster and it is never in the query path.
 
 Everything it touches, it touches with the credentials of the person running it.
 
@@ -22,16 +23,20 @@ joins are inferred from key naming conventions and left commented out for a huma
 confirm. Metrics, primary keys, governance, and views are left as clearly marked
 placeholders.
 
-Two sources of physical structure ship.
+Two sources of physical structure ship. Use the engine source when an engine is available.
+It sees the schema and permissions that queries will use. The Glue source is an offline
+bootstrap option for authoring before an engine is available.
 
 ```bash
-# From AWS Glue, over the AWS SDK. No cluster needed.
-ossiectl derive -source glue -region us-west-2 -database sales -out model.yaml
-
-# From the live engine's information_schema. Works for any catalog the engine
+# Preferred connected workflow. Reads the live engine's information_schema.
+# Works for any catalog the engine
 # mounts, including Polaris, Hive Metastore, Unity, and Glue.
 export SQL_DIALECT=trino ENGINE_HOST=127.0.0.1 ENGINE_PORT=8080
 ossiectl derive -source engine -catalog polaris -database sales -out model.yaml
+
+# Offline bootstrap workflow. Reads AWS Glue over the AWS SDK.
+# No query engine or cluster is required.
+ossiectl derive -source glue -region us-west-2 -database sales -out model.yaml
 ```
 
 Both produce identical dataset and field structure for the same tables.

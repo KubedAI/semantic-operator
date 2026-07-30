@@ -11,7 +11,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: polaris-sa
-  namespace: chd
+  namespace: polaris
 ---
 # One-shot: bootstrap realm POLARIS + root principal. The -c argument takes
 # the root secret via Kubernetes $(VAR) expansion from the Secret, so the
@@ -20,7 +20,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: polaris-bootstrap
-  namespace: chd
+  namespace: polaris
 spec:
   backoffLimit: 2
   template:
@@ -39,13 +39,13 @@ spec:
             - {name: QUARKUS_DATASOURCE_USERNAME, value: polaris}
             - name: QUARKUS_DATASOURCE_PASSWORD
               valueFrom: {secretKeyRef: {name: postgres-credentials, key: POLARIS_DB_PASSWORD}}
-            - {name: QUARKUS_DATASOURCE_JDBC_URL, value: "jdbc:postgresql://postgres.chd.svc.cluster.local:5432/polaris"}
+            - {name: QUARKUS_DATASOURCE_JDBC_URL, value: "jdbc:postgresql://postgres.polaris.svc.cluster.local:5432/polaris"}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: polaris
-  namespace: chd
+  namespace: polaris
   labels: {app: polaris}
 spec:
   replicas: 1
@@ -62,7 +62,7 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              until psql -h postgres.chd.svc.cluster.local -U polaris -d polaris \
+              until psql -h postgres.polaris.svc.cluster.local -U polaris -d polaris \
                     -tAc "SELECT 1 FROM polaris_schema.version LIMIT 1" >/dev/null 2>&1; do
                 echo "waiting for polaris bootstrap..."; sleep 3
               done
@@ -81,7 +81,7 @@ spec:
             - {name: QUARKUS_DATASOURCE_USERNAME, value: polaris}
             - name: QUARKUS_DATASOURCE_PASSWORD
               valueFrom: {secretKeyRef: {name: postgres-credentials, key: POLARIS_DB_PASSWORD}}
-            - {name: QUARKUS_DATASOURCE_JDBC_URL, value: "jdbc:postgresql://postgres.chd.svc.cluster.local:5432/polaris"}
+            - {name: QUARKUS_DATASOURCE_JDBC_URL, value: "jdbc:postgresql://postgres.polaris.svc.cluster.local:5432/polaris"}
             - {name: POLARIS_PERSISTENCE_TYPE, value: relational-jdbc}
             - {name: POLARIS_REALM_CONTEXT_REALMS, value: POLARIS}
             # No AWS_* credentials: Pod Identity supplies the role through the
@@ -100,14 +100,28 @@ spec:
             requests: {cpu: 250m, memory: 512Mi}
             limits: {memory: 1Gi}
 ---
+# Two services, catalog and management, matching how the Data on EKS
+# semantic-on-eks stack exposes Polaris. Same split means the port-forward
+# commands in the walkthrough work whether Polaris came from that stack or
+# from this file.
 apiVersion: v1
 kind: Service
 metadata:
   name: polaris
-  namespace: chd
+  namespace: polaris
   labels: {app: polaris}
 spec:
   selector: {app: polaris}
   ports:
     - {name: catalog, port: 8181, targetPort: 8181}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: polaris-mgmt
+  namespace: polaris
+  labels: {app: polaris}
+spec:
+  selector: {app: polaris}
+  ports:
     - {name: mgmt, port: 8182, targetPort: 8182}
