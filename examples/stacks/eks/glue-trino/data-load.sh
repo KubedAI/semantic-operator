@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Loads the retail demo tables into a Glue-backed Iceberg schema through Trino.
+#
+# Source is Trino's built-in tpcds connector, so nothing outside this cluster is
+# read and no extra S3 grant is needed. Trino writes the Iceberg files to the
+# warehouse its own catalog is configured with, and Glue tracks the metadata.
+#
+# Idempotent. IF NOT EXISTS skips tables that already exist.
+set -euo pipefail
+NS_TRINO="${NS_TRINO:-trino}"
+CATALOG="${GLUE_CATALOG:-iceberg}"
+SCHEMA="${GLUE_SCHEMA:-osi_demo}"
+SF="${TPCDS_SCALE:-sf1}"
+Y1="${YEAR_FROM:-2000}"
+Y2="${YEAR_TO:-2002}"
+
+log() { printf '\033[1;32m[data-load]\033[0m %s\n' "$*"; }
+
+POD=$(kubectl -n "$NS_TRINO" get pods -o name | grep coordinator | head -1 | cut -d/ -f2)
+[ -n "$POD" ] || { echo "no Trino coordinator pod in namespace $NS_TRINO" >&2; exit 1; }
+# The Trino CLI writes a jline "dumb terminal" warning to stderr on every
+# non-interactive call. Filter that line only, so real failures still show.
+run() {
+  kubectl -n "$NS_TRINO" exec "$POD" -c trino-coordinator -- trino --execute "$1" \
+    2> >(grep -vE 'jline|Unable to create a system terminal|dumb terminal' >&2)
+}
+
+log "creating schema ${CATALOG}.${SCHEMA}"
+run "CREATE SCHEMA IF NOT EXISTS ${CATALOG}.${SCHEMA}" >/dev/null
+
+# tpcds date_dim has d_moy but not d_month_name, which the model uses as a
+# dimension. Derive it so the model needs no change.
+log "loading date_dim (${Y1}-${Y2})"
+run "CREATE TABLE IF NOT EXISTS ${CATALOG}.${SCHEMA}.date_dim AS
+     SELECT *, format_datetime(date_parse(cast(d_moy AS varchar), '%c'), 'MMMM') AS d_month_name
+     FROM tpcds.${SF}.date_dim WHERE d_year BETWEEN ${Y1} AND ${Y2}" >/dev/null
+
+for t in item customer store; do
+  log "loading ${t}"
+  run "CREATE TABLE IF NOT EXISTS ${CATALOG}.${SCHEMA}.${t} AS SELECT * FROM tpcds.${SF}.${t}" >/dev/null
+done
+
+log "loading store_sales (the big one, a few minutes)"
+run "CREATE TABLE IF NOT EXISTS ${CATALOG}.${SCHEMA}.store_sales AS
+     SELECT ss.* FROM tpcds.${SF}.store_sales ss
+     WHERE ss.ss_store_sk IS NOT NULL AND ss.ss_item_sk IS NOT NULL
+       AND ss.ss_customer_sk IS NOT NULL
+       AND ss.ss_sold_date_sk IN (
+         SELECT d_date_sk FROM tpcds.${SF}.date_dim WHERE d_year BETWEEN ${Y1} AND ${Y2})" >/dev/null
+
+# Every tpcds store sits in one state, so a by-state breakdown would be a single
+# row and a state row filter would match nothing. Only stores that carry sales
+# are eligible, because tpcds populates a subset of store keys.
+log "spreading stores with sales across two states"
+run "UPDATE ${CATALOG}.${SCHEMA}.store SET s_state = 'TN'" >/dev/null
+TX=$(run "SELECT array_join(array_agg(cast(sk AS varchar)), ',') FROM (
+            SELECT sk, row_number() OVER (ORDER BY sk) AS rn
+            FROM (SELECT DISTINCT ss_store_sk AS sk FROM ${CATALOG}.${SCHEMA}.store_sales)
+          ) WHERE rn % 2 = 0" | tr -d '"' | tail -1)
+[ -n "$TX" ] || { echo "could not determine which stores carry sales" >&2; exit 1; }
+log "  TX stores: $TX"
+run "UPDATE ${CATALOG}.${SCHEMA}.store SET s_state = 'TX' WHERE s_store_sk IN (${TX})" >/dev/null
+
+log "verify: row counts"
+run "SELECT 'store_sales' AS t, count(*) AS rows FROM ${CATALOG}.${SCHEMA}.store_sales
+     UNION ALL SELECT 'date_dim', count(*) FROM ${CATALOG}.${SCHEMA}.date_dim
+     UNION ALL SELECT 'customer', count(*) FROM ${CATALOG}.${SCHEMA}.customer
+     UNION ALL SELECT 'item', count(*) FROM ${CATALOG}.${SCHEMA}.item
+     UNION ALL SELECT 'store', count(*) FROM ${CATALOG}.${SCHEMA}.store ORDER BY 1"
+
+log "verify: stores by state, with sales"
+run "SELECT s.s_state, count(DISTINCT s.s_store_sk) AS stores, count(ss.ss_ticket_number) AS sales
+     FROM ${CATALOG}.${SCHEMA}.store s
+     LEFT JOIN ${CATALOG}.${SCHEMA}.store_sales ss ON ss.ss_store_sk = s.s_store_sk
+     GROUP BY s.s_state ORDER BY 1"

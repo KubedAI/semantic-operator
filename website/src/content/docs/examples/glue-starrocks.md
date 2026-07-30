@@ -56,21 +56,52 @@ and S3 access on the warehouse bucket.
 
 ## Step 2. Load the demo data
 
-The loader creates Iceberg tables through StarRocks itself, so there is no Spark job to
-run. It is idempotent and skips tables that already have rows.
+StarRocks reads Iceberg tables from Glue whoever wrote them, so there are two
+ways to get demo data. Both end with the same five tables.
+
+### Option A. Reuse tables another engine already wrote
+
+If you have run the [Glue and Trino walkthrough](/examples/glue-trino), its
+tables are already registered in Glue and StarRocks can read them directly.
+Point the model's `database` at that schema and skip ahead. Verified: StarRocks
+returns the same numbers from Iceberg files Trino produced.
+
+### Option B. Let StarRocks create them
+
+The loader creates the tables through StarRocks itself, so there is no Spark
+job. It is idempotent and skips tables that already have rows.
+
+:::caution[The database needs a location first]
+A Glue database created without a location cannot hold tables. StarRocks
+reports `Failed to find location in database`. Create it with an explicit S3
+prefix before running the loader.
+
+```sql
+CREATE DATABASE iceberg.osi_demo
+PROPERTIES ('location' = 's3://<your-warehouse-bucket>/osi_demo/');
+```
+
+The bucket must be one the StarRocks pods' IAM role can write to.
+:::
 
 ```bash
+kubectl -n starrocks port-forward svc/kube-starrocks-fe-service 9030:9030 &
 export STARROCKS_HOST=127.0.0.1
 make demo-data
 ```
 
-**Verify.** Five tables with roughly 204,000 rows in total.
+**Verify.** Query the row count through the catalog.
 
 ```sql
 SELECT count(*) FROM iceberg.osi_demo.store_sales;
 ```
 
-Expect 200000.
+:::note[If StarRocks cannot see a database you know exists]
+The external catalog caches Glue metadata, so a database created or dropped
+outside StarRocks can take a moment to appear. Re-connecting or recreating the
+catalog refreshes it. Checking Glue directly with
+`aws glue get-database --name <db>` tells you which side is stale.
+:::
 
 ## Step 3. Install the operator and server
 
@@ -78,8 +109,8 @@ Expect 200000.
 helm upgrade --install semantic-operator charts/semantic-operator \
   --set server.auth.allowInsecureHeaderAuth=true \
   --namespace semantic-system --create-namespace \
-  --set image.repository=<your-registry>/semantic-operator \
-  --set image.tag=0.1.0 \
+  --set image.repository=public.ecr.aws/data-on-eks/semantic-operator \
+  --set image.tag=v0.1.1 \
   --set engine.type=starrocks \
   --set engine.host=kube-starrocks-fe-service.starrocks.svc.cluster.local
 ```
@@ -176,6 +207,39 @@ GROUP BY s.s_state;
 That returns about `12.54` for New York against the correct `210176.60`. The compiler
 avoids it by splitting the ratio into two aggregations and deduplicating the denominator on
 the store primary key.
+
+<details>
+<summary>Expected output, and the same question on Trino</summary>
+
+```json
+[["TN","644567.24130897"],["TX","1826350.37571947"]]
+```
+
+The [Glue and Trino walkthrough](/examples/glue-trino) returns
+`644567.241309` and `1826350.375719` for the same model. The values agree. The
+strings differ because the two engines render decimals to a different number of
+places, which is a formatting difference and not a disagreement about the
+number.
+
+The SQL differs properly, though:
+
+```sql
+WITH `m_store_productivity_num` AS (
+  SELECT `store`.`s_state` AS `d0`,
+         SUM(`store_sales`.`ss_ext_sales_price`) AS `val`
+  FROM `iceberg`.`osi_demo`.`store_sales` AS `store_sales`
+  INNER JOIN `iceberg`.`osi_demo`.`store` AS `store`
+          ON `store_sales`.`ss_store_sk` = `store`.`s_store_sk`
+  GROUP BY 1
+), ...
+INNER JOIN `m_store_productivity_den`
+        ON `m_store_productivity_num`.`d0` <=> `m_store_productivity_den`.`d0`
+```
+
+Backticks and `<=>`. Trino gets double quotes and `IS NOT DISTINCT FROM` for
+exactly the same model.
+
+</details>
 
 ## Step 7. Prove it is deterministic
 
