@@ -3,312 +3,156 @@ title: DataHub, Polaris and Trino
 description: An open lakehouse walkthrough. Polaris is the Iceberg REST catalog, Trino is the engine, and DataHub supplies the business meaning that enrichment imports into the model.
 ---
 
-This stack replaces AWS Glue with [Apache Polaris](https://polaris.apache.org/) as the
-Iceberg REST catalog and adds DataHub as the source of business meaning. It is the closest
-of the walkthroughs to a fully open lakehouse.
+Many AI agents use an LLM to translate a user’s question directly into SQL. The SQL may run successfully and still return the wrong answer. The LLM can choose the wrong column, create an incorrect join, or use the wrong aggregation without producing an obvious error.
 
-Work through [Prerequisites](/examples/prerequisites) first. This walkthrough expects
-DataHub to be running already in the `datahub` namespace, with its system credential in
-`datahub-auth-secrets`. The scripts discover the GMS service themselves, because the
-DataHub chart names it after the release. Installing DataHub is not automated here.
+With Semantic Operator, an AI agent selects certified metrics and dimensions instead of generating SQL. Semantic Operator validates the request, applies governance policies, and deterministically generates a single SQL statement.
 
-The full flow on a real EKS cluster: deploy the prerequisites, generate a
-semantic model from the Polaris catalog, certify it, deploy it with kubectl,
-and query it through the governed semantic server. Every stage ends with a
-verification step so you always know where you are.
+This walkthrough shows how our Semantic Operator provides a governed semantic layer using DataHub, Polaris, and Trino.
 
-| Stage | What it does | On the semantic-on-eks stack |
-|---|---|---|
-| **0** Prerequisites | EKS cluster with Trino, Polaris, DataHub | Check only |
-| **1** Deploy Polaris | Postgres, Polaris, catalog `demo` on S3 | Already done, skip |
-| **2** Wire Trino | `polaris` catalog over Iceberg REST and OAuth | Already done, skip |
-| **3** Load data | CTAS the retail tables into Polaris | **Start here** |
-| **4** Install operator | `semantic-operator` with `engine.type=trino` | Run |
-| **5** DataHub metadata | Ingest tables, add stewardship metadata | Run |
-| **6** Author the model | Derive, enrich from DataHub, human certifies | Run |
-| **7** Deploy the model | `kubectl apply`, watch it reconcile | Run |
-| **8** Query it | REST, MCP, governance, views, Trino UI | Run |
+## Why direct SQL can return the wrong answer
 
-Every stage here has been run end to end on a live EKS cluster with Polaris,
-Trino, DataHub, and Valkey, and each one prints its own verification. The
-DataHub stages still assume DataHub is already installed. Installing it is not
-automated here.
+Consider a simple business question: **How much sales revenue is generated per
+employee in each state?**
 
----
+In the semantic model, this business concept is named `store_productivity`. It
+divides the total sales revenue from stores in a state by the total employee
+headcount for those stores.
 
-## Stage 0. Prerequisites
-**Run this stage: no, check only.** Nothing here changes your cluster.
+An LLM can generate SQL that looks correct but counts a store's employees once
+for every sale made there. That repeated headcount inflates the denominator and
+produces a plausible but incorrect result. The database reports no error
+because the query itself is valid.
 
+Later in this walkthrough, you will query `store_productivity` by state. The
+governed request returns **644,567.24** for Tennessee and **1,826,350.38** for
+Texas. You will inspect the generated SQL and see how Semantic Operator avoids
+duplicating employee headcount across the sales join.
 
-You need `kubectl`, `helm`, `aws`, and Go 1.26 on your workstation, and a
-cluster running Trino, Polaris, DataHub, and optionally Valkey.
+## How the semantic layer fixes it
 
-### The quickest route
+A semantic layer gives business concepts clear, reviewed definitions. It defines which columns represent those concepts, how metrics are calculated, how tables relate to one another, and who is allowed to access the data.
 
-The [Data on EKS](https://awslabs.github.io/data-on-eks/) **semantic-on-eks**
-stack deploys all of that in one go, along with the S3 bucket and the Pod
-Identity roles this walkthrough needs. It is what the walkthrough was tested
-against.
+In this example, `total_sales` uses the column the business recognizes as
+revenue. `store_productivity` calculates sales revenue per employee without
+counting the same employees once for every sale.
 
-:::caution[This stack costs real money]
-It provisions roughly 10 to 15 EC2 instances, plus EKS, S3, and networking.
-That is a substantial hourly cost. Deploy it when you are ready to work
-through the walkthrough, and run its `cleanup.sh` as soon as you are done.
-Check the cost yourself for your region before you start.
-:::
+An AI agent selects these certified metrics and dimensions instead of using an LLM to generate SQL. Semantic Operator validates the request, applies the model’s governance rules, and generates one deterministic SQL statement.
 
-Once it reports Ready, Stages 1 and 2 are already done for you. Polaris runs in
-the `polaris` namespace and Trino already has the `polaris` catalog, so **go
-straight to Stage 3**. Running Stages 1 and 2 anyway builds a second, unused
-Polaris.
+The same model and request produce the same SQL and the same result. If the caller requests a metric or field they are not allowed to use, Semantic Operator rejects the request before generating any SQL.
 
-### Or bring your own cluster
+Semantic Operator runs this governed semantic layer on Kubernetes.
 
-Nothing here depends on that stack. Any EKS cluster works if it has:
+## What you will build
 
-- **Trino**, with an Iceberg REST catalog connector available.
-- **Apache Polaris**, reachable in the cluster, with a catalog on S3.
-- **DataHub**, for Stages 5 and 6. The enrichment stages need it. The rest of
-  the walkthrough does not.
-- **Valkey** or any Redis-protocol cache, optional. Without it the semantic
-  server still answers, it just reports `cachedResult: false` every time.
+This walkthrough takes you through six stages on a live Kubernetes cluster
 
-Plus this one-time AWS setup, roles only, no IAM users:
+- Load a TPC-DS retail dataset into Apache Iceberg tables stored in Amazon S3 and cataloged by Apache Polaris.
+- Install Semantic Operator and connect it to Trino.
+- Add business descriptions, glossary terms, and a PII classification in DataHub.
+- Derive a semantic model from the physical schema, enrich it with DataHub metadata, and compare it with the certified model.
+- Deploy the certified model and watch Semantic Operator validate its tables and columns against Trino.
+- Query the model, compare the governed result with the LLM-generated result, and verify column and row-level access policies.
 
-- An S3 bucket for the Polaris warehouse.
-- An IAM role for Polaris bound with **EKS Pod Identity** to
-  `<namespace>/polaris-sa`, holding read/write on that bucket.
-- Trino's Pod Identity role with read/write on the same bucket. Trino writes
-  the table data and Polaris writes the table metadata, so both need it.
+## The stack
 
-If you are deploying Polaris yourself, start at **Stage 1**.
+This walkthrough combines an open table format, an open catalog, a distributed SQL engine, a metadata platform, and Semantic Operator. Each component has a specific role.
 
-### Either way
+| Component | What it does here |
+|---|---|
+| **Amazon S3** | Stores the Iceberg data files |
+| **Apache Iceberg** | Provides the table format for the retail data |
+| **Apache Polaris** | Catalogs the Iceberg tables and tracks their locations |
+| **Trino** | Generates the sample data, reads the tables, and executes SQL |
+| **DataHub** | Stores business descriptions, glossary terms, and data classifications |
+| **Semantic Operator** | Validates semantic models, enforces governance, and generates SQL |
+| **Apache Ossie** | Provides the open standard used to define the semantic model |
+| **Valkey** | Optionally caches query plans and results |
 
-Nothing in this walkthrough is exposed outside the cluster. Every service is
-reached with `kubectl port-forward`, and no stage creates a load balancer.
+The walkthrough uses the TPC-DS retail dataset generated by Trino, so you do not need to provide any source data.
 
-These are the local ports it uses. Trino is on 8081 rather than 8080 because
-8080 is a busy port, and the semantic-on-eks stack already suggests it for
-ArgoCD.
+### Request and data flow
 
-| Local port | Service | Needed from |
-|---|---|---|
-| 8181 | Polaris catalog API | Stage 1 |
-| 8182 | Polaris health and management | Stage 1 |
-| 8081 | Trino, mapped from its 8080 | Stage 6 |
-| 8091 | DataHub GMS, mapped from its 8080 | Stage 5 |
-| 8090 | Semantic server | Stage 4 |
+```
+User
+  |
+  |  "How much sales revenue is generated per employee in each state?"
+  v
+AI agent
+  |
+  |  Selects the certified metric and dimension
+  |  metric: store_productivity
+  |  dimension: store.s_state
+  v
+Semantic Operator
+  |
+  |  Validates the request and checks the caller's permissions
+  |  If access is denied, the request stops here
+  |
+  |  Generates one governed SQL statement
+  v
+Trino
+  |
+  |  Resolves the Iceberg tables through Apache Polaris
+  |  Reads the underlying data from Amazon S3
+  v
+Query result
+```
 
-:::note[About the port-forwards]
-Every port-forward below is preceded by a `pkill` for that specific port. A
-forward left running from an earlier stage would otherwise make the new one
-exit with `address already in use`, which looks like a failure and is not.
+DataHub is part of the authoring path, not the query path. While the model is
+being created, `ossiectl` reads the physical schema through Trino and enriches
+it with descriptions, glossary terms, and classifications from DataHub. A
+person then reviews and completes the model before deploying it.
 
-The `pkill` targets one port mapping, so it will not disturb your other
-forwards. To see what holds a port, or to clear them all:
+After the model is deployed, Semantic Operator checks its tables and columns
+against Trino before publishing it. At query time, the AI agent selects
+certified metrics and dimensions. Semantic Operator applies governance and
+generates the SQL that Trino executes.
+
+## Set up the cluster
+
+Install `kubectl`, `helm`, `aws`, `jq`, `git`, and Go 1.26 on your workstation.
+
+Deploy the
+[semantic-on-eks](https://github.com/awslabs/data-on-eks/tree/main/data-stacks/semantic-on-eks)
+stack from Data on EKS:
 
 ```bash
-lsof -ti tcp:8181
-pkill -f 'kubectl.*port-forward'
+./deploy.sh
 ```
-:::
 
-**Verify** whichever route you took:
+It deploys EKS, Trino, Polaris, DataHub, Valkey, an S3 bucket, and the required
+IAM roles. See
+[data-stack.tfvars](https://github.com/awslabs/data-on-eks/blob/main/data-stacks/semantic-on-eks/terraform/data-stack.tfvars)
+for the configuration.
+
+You can also use an existing cluster with Trino, Polaris, and DataHub.
+
+### Verify the environment
 
 ```bash
 kubectl get nodes | head -3
-# coordinator + worker Running
 kubectl -n trino get pods
-# Running
 kubectl get pods -A | grep -E 'polaris|datahub-gms'
-# credentials valid
 aws sts get-caller-identity
-```
-
-## Stage 1. Deploy Polaris
-
-**Run this stage: only if your cluster has no Polaris.**
-
-:::caution[On the semantic-on-eks stack, skip this stage and Stage 2]
-That stack already deploys Polaris and already wires Trino to it. Go to
-[Stage 3](#stage-3-load-the-demo-data).
-:::
-
-Check before you run anything.
-
-```bash
-kubectl -n polaris get pods
-```
-
-If Polaris is already Running, skip to Stage 2. Only run the script below when
-there is no Polaris on the cluster.
-
-It deploys into the `polaris` namespace, the same one the semantic-on-eks stack
-uses. That is deliberate. Whichever way Polaris got there, every command from
-here on is identical. Set `POLARIS_NS` if you need a different namespace, and
-substitute it in the commands that follow.
-
-```bash
-bash examples/stacks/eks/datahub-polaris-trino/eks-up.sh
-```
-
-This creates generated credentials (never committed), Postgres on a PVC, the
-Polaris server under `polaris-sa` (Pod Identity supplies AWS access. The pod
-holds no keys), bootstraps realm `POLARIS`, and creates catalog `demo` on S3
-with `stsUnavailable` so every engine brings its own identity.
-
-**Verify:**
-
-```bash
-# postgres + polaris Running
-kubectl -n polaris get pods
-pkill -f 'port-forward.*8181:8181' 2>/dev/null
-kubectl -n polaris port-forward svc/polaris 8181:8181 &
-pkill -f 'port-forward.*8182:8182' 2>/dev/null
-kubectl -n polaris port-forward svc/polaris-mgmt 8182:8182 &
-# "UP"
-curl -s localhost:8182/q/health | jq .status
-```
-
-<details>
-<summary>What a successful Stage 1 run looks like</summary>
-
-```
-namespace/polaris created
-secret/postgres-credentials created
-[eks-up] created postgres-credentials
-secret/polaris-credentials created
-[eks-up] created polaris-credentials
-configmap/postgres-init created
-persistentvolumeclaim/postgres-data created
-deployment.apps/postgres created
-service/postgres created
-deployment "postgres" successfully rolled out
-serviceaccount/polaris-sa created
-job.batch/polaris-bootstrap created
-deployment.apps/polaris created
-service/polaris created
-service/polaris-mgmt created
-[eks-up] waiting for bootstrap job (creates realm POLARIS + root principal)
-job.batch/polaris-bootstrap condition met
-deployment "polaris" successfully rolled out
-[eks-up] creating catalog 'demo' (base s3://<your-polaris-bucket>/demo)
-CREATE_HTTP=201
-[eks-up] polaris up: realm POLARIS, catalog 'demo' on s3://<your-polaris-bucket>/demo
-```
-
-`CREATE_HTTP=201` is the line that matters. A `409` means the catalog already
-exists, which is fine on a re-run.
-
-</details>
-
-Polaris exposes two ports on two services. `polaris` serves the catalog API on
-8181, and `polaris-mgmt` serves health and management on 8182, which is why
-there are two port-forwards.
-
-Polaris has no web UI. Its REST API is the interface. To browse it:
-
-```bash
-SECRET=$(kubectl -n polaris get secret polaris-credentials -o jsonpath='{.data.ROOT_CLIENT_SECRET}' | base64 -d)
-TOKEN=$(curl -s -X POST localhost:8181/api/catalog/v1/oauth/tokens -H 'Polaris-Realm: POLARIS' \
-  -d grant_type=client_credentials -d client_id=root -d "client_secret=$SECRET" -d scope=PRINCIPAL_ROLE:ALL | jq -r .access_token)
-curl -s -H "Authorization: Bearer $TOKEN" -H 'Polaris-Realm: POLARIS' \
-  localhost:8181/api/management/v1/catalogs | jq
-```
-
-<details>
-<summary>Expected catalog listing</summary>
-
-```json
-{
-  "catalogs": [
-    {
-      "type": "INTERNAL",
-      "name": "demo",
-      "properties": {
-        "default-base-location": "s3://<your-polaris-bucket>/demo"
-      },
-      "entityVersion": 1,
-      "storageConfigInfo": {
-        "region": "us-west-2",
-        "stsUnavailable": true,
-        "storageType": "S3",
-        "allowedLocations": [
-          "s3://<your-polaris-bucket>/demo"
-        ]
-      }
-    }
-  ]
-}
-```
-
-`stsUnavailable: true` is deliberate. Polaris hands out no credentials, so
-every engine arrives with its own identity.
-
-</details>
-
-## Stage 2. Wire Trino to Polaris
-
-**Run this stage: only if Trino has no `polaris` catalog.**
-
-:::caution[On the semantic-on-eks stack, skip this stage too]
-Trino already has the `polaris` catalog. Go to
-[Stage 3](#stage-3-load-the-demo-data).
-:::
-
-Check first. If this prints `polaris`, the catalog exists and you are done with
-this stage.
-
-```bash
 kubectl -n trino exec deploy/trino-coordinator -c trino-coordinator -- \
   trino --execute "SHOW CATALOGS" 2>/dev/null | grep polaris
 ```
 
-If it prints `"polaris"`, the catalog exists and this stage is done. Skip to
-[Stage 3](#stage-3-load-the-demo-data). If it prints nothing, run the script
-below.
+The final command must print `polaris`. The terminal warning hidden by
+`2>/dev/null` is harmless.
 
-Without the `2>/dev/null` the Trino CLI also prints
-`WARNING: Unable to create a system terminal`. That is the CLI noticing it has
-no interactive terminal, it is harmless, and it appears on every `trino
---execute` in this walkthrough.
+---
 
-Only if it printed nothing:
+## Stage 1. Load the demo data
 
-```bash
-bash examples/stacks/eks/datahub-polaris-trino/trino-catalog.sh
-```
-
-Adds a `polaris` catalog to Trino (Iceberg REST connector, OAuth2 client
-credentials injected from a Secret via `${ENV:..}`) and restarts the Trino
-pods. The script's last step is its own verification: `SHOW CATALOGS` must
-list `polaris`. A query may fail with `Cannot obtain metadata` for a few
-seconds while the worker rejoins after the restart. That is transient.
-
-## Stage 3. Load the demo data
-**Run this stage: yes, always.** This is where everyone starts on the
-semantic-on-eks stack.
-
+A semantic model describes tables, so you need tables first. This builds five
+retail tables in Polaris using CTAS from Trino's built in `tpcds` connector.
+Trino writes the Iceberg files and Polaris tracks the metadata. The data is
+generated inside the coordinator, so this needs no pre existing warehouse.
 
 ```bash
 bash examples/stacks/eks/datahub-polaris-trino/data-load.sh
 ```
-
-Builds the five retail tables in Polaris with CTAS from Trino's built-in
-`tpcds` connector. The data is generated inside the coordinator, so this stage
-needs no pre-existing warehouse and no S3 access beyond the Polaris bucket
-Trino already writes to. Trino writes the Iceberg files, Polaris tracks the
-metadata. Idempotent, so a second run skips tables that exist.
-
-Two things the script does that are worth knowing, because a plain copy of
-`tpcds` will not give you a working demo.
-
-It derives `d_month_name`, which the certified model uses as a dimension and
-`tpcds` does not provide. And it moves half the stores to Texas, choosing only
-from stores that actually carry sales, because `tpcds` puts every store in one
-state and populates only a subset of store keys. Without that, a breakdown by
-state is a single row and the `tx_analyst` row filter matches nothing.
 
 **Verify:** the script prints its own checks at the end.
 
@@ -382,26 +226,17 @@ UPDATE: 3 rows
 
 **`CREATE TABLE: 0 rows` is success, not failure.** Every create is
 `IF NOT EXISTS`, so a table that already exists is left alone and reports zero
-rows written. Nothing was skipped by mistake and nothing was lost. The counts
-underneath are read back from Polaris and are the real numbers, which is why
-they are identical to the first run.
-
-The two `UPDATE` lines run every time on purpose. The first resets all 12
-stores to `TN`, the second moves the ones that carry sales to `TX`. Doing it in
-that order means repeated runs always land on the same split rather than
-drifting.
+rows written. The counts underneath are read back from Polaris and are the real
+numbers, which is why they match the first run.
 
 </details>
 
-**Whichever run you are on, these must hold.** Both states show a non-zero
-sales count, and both orphan counts are `0`. If `TX` shows zero sales, the row
-filter in Stage 8 will return nothing.
+### Verify the loaded data
 
-### Check it yourself before moving on
+Three things have to hold before the rest of the walkthrough works. Check them
+yourself rather than trusting the script.
 
-The script grades its own homework, so run these two against Trino directly.
-
-**1. Is everything loaded?**
+**1. Verify the row counts.**
 
 ```bash
 kubectl -n trino exec deploy/trino-coordinator -c trino-coordinator -- trino --execute "
@@ -421,10 +256,10 @@ ORDER BY 1" 2>/dev/null
 "store_sales","1591154"
 ```
 
-**2. Do the joins the model needs actually resolve?**
+A missing table or a zero count means the load did not finish. Re-run
+`data-load.sh`, which only builds what is absent.
 
-This walks the same four joins the semantic model compiles, so if it returns
-sensible numbers, Stages 7 and 8 will work.
+**2. Verify the joins and state data.**
 
 ```bash
 kubectl -n trino exec deploy/trino-coordinator -c trino-coordinator -- trino --execute "
@@ -445,22 +280,15 @@ GROUP BY s.s_state ORDER BY s.s_state" 2>/dev/null
 "TX","3","794348","1510391760.72"
 ```
 
-Two rows, both with a non-zero revenue, is what you need. One row means the
-`TX` split did not take and the row-filter demo in Stage 8 will come back
-empty.
+You need two rows, both with non-zero revenue. **One row means the row filter
+demo in Stage 6 will return nothing.** Re-run `data-load.sh`, which resets the
+store states on every run.
 
 `stores_with_sales` is 3 for each because an inner join only sees stores that
-have rows. Twelve stores exist, six of them carry sales. That is how tpcds
-generates the data and it is not a problem.
+have rows. Twelve stores exist and six carry sales. That is how `tpcds`
+generates the data.
 
-Keep that `TN` revenue. In Stage 8 the semantic server returns exactly
-`1516666718.80` for `total_sales` in `TN`, which is the whole point: the
-governed path and hand written SQL agree.
-
-**3. Is it really Iceberg on S3?**
-
-Worth proving rather than assuming, since the whole point of this stack is an
-open table format you are not locked into.
+**3. Verify the Iceberg files in S3.**
 
 ```bash
 kubectl -n trino exec deploy/trino-coordinator -c trino-coordinator -- trino --execute "
@@ -474,7 +302,7 @@ SELECT * FROM polaris.osi_demo.\"store_sales\$properties\"" 2>/dev/null
 "location","s3://<your-polaris-bucket>/demo/osi_demo/store_sales-<uuid>"
 ```
 
-Take that `location` and look at it directly. Iceberg tables are a `data/`
+Take that `location` and look at it directly. An Iceberg table is a `data/`
 directory of Parquet plus a `metadata/` directory holding the table metadata,
 the manifests, and the snapshot log.
 
@@ -488,32 +316,18 @@ aws s3 ls s3://<your-polaris-bucket>/demo/osi_demo/store_sales-<uuid>/metadata/
 snap-....avro                    a snapshot, the atomic commit
 ```
 
-The snapshot log is queryable too, and `$snapshots` only exists on an Iceberg
-table.
+An empty listing means Trino's Pod Identity role cannot write to the bucket.
 
-```bash
-kubectl -n trino exec deploy/trino-coordinator -c trino-coordinator -- trino --execute "
-SELECT committed_at, operation, summary['total-records'] AS records
-FROM polaris.osi_demo.\"store_sales\$snapshots\" ORDER BY committed_at" 2>/dev/null
-```
+## Stage 2. Install the semantic operator
 
-```
-"2026-07-30 17:22:01.532 UTC","append","1591154"
-```
+This deploys the two halves of the system. The manager watches `SemanticModel`
+resources, validates them against the live engine, and publishes compiled
+artifacts. The server loads those artifacts and answers queries.
 
-Polaris is the catalog of record, not Glue. Nothing here writes to Glue, and
-any `osi_demo` tables you see there belong to a different stack.
-
-Scale is adjustable. `TPCDS_SCALE=sf10 bash .../data-load.sh` gives a larger
-fact table, at the cost of a longer load.
-
-## Stage 4. Install the semantic operator
-**Run this stage: yes, always.** The stack does not install the operator.
-
-
-The semantic-on-eks stack ships Valkey, so turn on result caching while you are
-here. A `secretKeyRef` can only read a Secret in its own namespace, so copy the
-password across first.
+The chart defaults to the published images, so no image flags are needed. If
+your cluster has Valkey, turn on result caching while you are here. A
+`secretKeyRef` can only read a Secret in its own namespace, so copy the password
+across first.
 
 ```bash
 kubectl create namespace semantic-system --dry-run=client -o yaml | kubectl apply -f -
@@ -527,14 +341,15 @@ Then install.
 helm upgrade --install semantic-operator charts/semantic-operator \
   --namespace semantic-system --create-namespace \
   --set server.auth.allowInsecureHeaderAuth=true \
-  --set image.repository=public.ecr.aws/data-on-eks/semantic-operator \
-  --set image.tag=v0.1.1 \
   --set engine.type=trino \
   --set engine.host=trino.trino.svc.cluster.local \
   --set valkey.addr=valkey.valkey.svc.cluster.local:6379 \
   --set valkey.passwordSecret.name=valkey-auth \
   --set valkey.passwordSecret.key=password
 ```
+
+Without a Valkey, drop the three `valkey.*` flags. Everything still works, the
+server just reports `cachedResult: false` on every request.
 
 `engine.port` is not set because the Trino client already defaults to 8080.
 
@@ -573,23 +388,10 @@ Next steps:
 ```
 
 `STATUS: deployed` is the line that matters. On a first install it says
-`has been installed` with `REVISION: 1`. Re-running the command says
-`has been upgraded` and the revision climbs, which is normal and not a sign
-anything went wrong.
-
-For this walkthrough the model to apply in Stage 7 is the Polaris and Trino
-one, the third in that list.
+`has been installed` with `REVISION: 1`. Re-running says `has been upgraded`
+and the revision climbs, which is normal.
 
 </details>
-
-Without a Valkey, drop the three `valkey.*` flags. Everything still works, the
-server just reports `cachedResult: false` on every request.
-
-:::note[Helm resets what you leave out]
-`helm upgrade` without `--reuse-values` returns any flag you omit to its chart
-default. Re-run the command in full every time rather than passing only what
-changed, or caching and other settings will switch off without saying so.
-:::
 
 **Verify:**
 
@@ -612,11 +414,11 @@ semantic-operator-server-845f47764d-ppq9b    1/1     Running   0          45s
 200
 ```
 
-The `200` from `/readyz` means more than "the process is up". The server has
-synced the model store and successfully pinged Trino. A `503` here is almost
-always the engine host or port.
+The `200` from `/readyz` means the server has synced the model store and
+successfully pinged Trino. Check the operator logs if you see anything other
+than `200`.
 
-Confirm caching is wired while you are here.
+If you set the Valkey flags, confirm they landed.
 
 ```bash
 kubectl -n semantic-system get deploy semantic-operator-server -o json \
@@ -629,37 +431,31 @@ VALKEY_DB
 VALKEY_PASSWORD
 ```
 
-Nothing printed means the `valkey.*` flags did not make it into the release, so
-Stage 8 will report `cachedResult: false` every time.
-
 </details>
 
-## Stage 5. Import metadata from DataHub
-**Run this stage: yes, if you want the DataHub part of the story.** Skip it and
-Stage 6 still works, the model just arrives without imported descriptions,
-synonyms, or the PII tag.
+## Stage 3. Add metadata to DataHub
 
+Stage 1 gave you tables. Tables tell you a column is called
+`ss_ext_sales_price` and holds a decimal. They do not tell you it is what the
+business calls revenue, or that `c_email_address` is personal data.
 
-DataHub must already be running in the `datahub` namespace. The DataHub chart
-prefixes its services with the release name, so GMS is `<release>-datahub-gms`
-rather than one fixed name. Both scripts discover it, and `DATAHUB_GMS_SVC`
-overrides that if discovery picks the wrong one.
+That knowledge lives in a metadata catalog, curated by people. This stage puts
+it into DataHub so Stage 4 can pull descriptions, synonyms, and the PII tag into
+the model.
 
-```bash
-kubectl -n datahub get svc | grep datahub-gms
-```
-
-Ingest the Polaris
-datasets through Trino:
+First, register the Polaris tables in DataHub. The script creates a DataHub
+ingestion job that reads the `osi_demo` schema through Trino and imports its
+datasets, columns, and types.
 
 ```bash
 bash examples/stacks/eks/datahub-polaris-trino/datahub-ingest.sh
 kubectl -n datahub logs job/datahub-ingest-polaris --tail=20
 ```
 
-For a reproducible demo, the annotation script creates a small glossary, documents
-selected datasets and fields, and marks the customer email field as PII. Start a
-port-forward first:
+Then add the business meaning. In a real organisation a data steward builds this
+up over weeks. The annotation script creates a small glossary, documents
+selected datasets and fields, and marks the customer email field as PII, so the
+demo is reproducible.
 
 ```bash
 GMS=$(kubectl -n datahub get svc -o name | grep -m1 datahub-gms | cut -d/ -f2)
@@ -668,10 +464,7 @@ kubectl -n datahub port-forward "svc/$GMS" 8091:8080 &
 bash examples/stacks/eks/datahub-polaris-trino/datahub-annotate.sh
 ```
 
-### See it in the DataHub UI
-
-This is the stage worth showing on a screen. Everything the scripts just wrote
-is what a data steward would normally curate by hand over weeks.
+### Verify the metadata in DataHub
 
 ```bash
 FE=$(kubectl -n datahub get svc -o name | grep -m1 datahub-frontend | cut -d/ -f2)
@@ -679,10 +472,11 @@ pkill -f 'port-forward.*9002:9002' 2>/dev/null
 kubectl -n datahub port-forward "svc/$FE" 9002:9002 &
 ```
 
-Open <http://localhost:9002> and sign in with `datahub` / `datahub`.
+Open <http://localhost:9002> and sign in with the credentials your DataHub
+install was configured with.
 
 Search for `osi_demo` and open **customer** on the **Trino** platform. Look for
-three things, because these are exactly what Stage 6 imports into the model.
+three things, because these are exactly what Stage 4 imports into the model.
 
 | In the UI | Becomes in the model |
 |---|---|
@@ -719,21 +513,23 @@ column        : c_email_address
 
 </details>
 
-These scripts still need stronger GraphQL error and read-back checks. Confirm the
-descriptions, glossary terms, and PII tag in DataHub before continuing.
+Confirm the descriptions, glossary terms, and PII tag are present before
+continuing. Stage 4 imports exactly what is there.
 
-## Stage 6. Author the model (derive, enrich, then certify)
+## Stage 4. Author the model
 
-**Run this stage: yes.** Do it in two passes, because the difference between
-them is the clearest way to show what a metadata catalog is worth.
+This is where the operator's tooling starts doing the work. A semantic model has
+two halves. The physical half says which tables and columns exist. The business
+half says what the numbers mean and who may see them.
 
-Output goes to `tmp/` in the repo, which is gitignored.
+`ossiectl derive` writes the physical half for you by reading the engine. It
+cannot write the business half, because no machine knows what your company means
+by revenue. Run it twice, once without DataHub and once with, and the difference
+shows exactly which parts a catalog can fill in and which parts stay human work.
+
+Output goes to `tmp/`, which is gitignored.
 
 ### Pass 1. Derive without DataHub
-
-The physical skeleton, straight from the Polaris catalog. No Glue and no SDK.
-The derive command reads Trino's `information_schema`, so it sees exactly what
-the engine sees.
 
 ```bash
 pkill -f 'port-forward.*8081:8080' 2>/dev/null
@@ -744,24 +540,28 @@ go run ./cmd/ossiectl derive -source engine -catalog polaris -database osi_demo 
   -model tpcds_retail_model -name tpcds-retail -out tmp/scaffold-plain.yaml
 ```
 
-Every dataset and column is filled in and candidate joins are inferred from key
-naming. What is missing is meaning. Open the file and look at the governance
-block:
+The command reads Trino's `information_schema`, so it sees exactly what the
+engine sees. Every dataset and column is filled in, and candidate joins are
+inferred from key naming.
+
+What is missing is meaning. Open the file and look at the governance block:
 
 ```yaml
 #       denyFields: []                 # e.g. ["customer.c_email_address"]
 ```
 
-A commented-out placeholder. Correct, and useless until somebody remembers
-which columns hold personal data.
+That commented-out placeholder is the honest result. The tool knows
+`c_email_address` is a `varchar`. It has no way to know it holds personal data,
+so it refuses to guess and leaves the decision to you. On a real schema with
+hundreds of columns, somebody has to remember every sensitive one. That is the
+gap the next pass closes.
 
 ### Pass 2. Derive with DataHub
 
-Same command, plus the enrichment flags.
-
-This pass needs the DataHub port-forward from Stage 5 on 8091. The `export`
-below does not, because it reads the Secret through the Kubernetes API rather
-than over the forward, but the `derive` call does.
+Same command, plus the enrichment flags. This pass needs the DataHub
+port-forward on 8091. The `export` below does not, because it reads the Secret
+through the Kubernetes API rather than over the forward, but the `derive` call
+does.
 
 ```bash
 GMS=$(kubectl -n datahub get svc -o name | grep -m1 datahub-gms | cut -d/ -f2)
@@ -784,7 +584,7 @@ enriched 5/5 tables from DataHub (1 sensitive columns, 0 deprecated)
 If DataHub is unreachable the command fails and writes nothing, rather than
 quietly producing a model that looks enriched and is not.
 
-### Compare the two
+### Compare the derived models
 
 ```bash
 for f in tmp/scaffold-plain.yaml tmp/scaffold-enriched.yaml; do
@@ -802,8 +602,6 @@ scaffold-plain.yaml          fields=244 descriptions=7  synonyms=6
 scaffold-enriched.yaml       fields=244 descriptions=12 synonyms=9
 ```
 
-The physical half is identical, 244 fields either way. What arrives is meaning:
-
 ```
 + synonyms: ["Buyer"]
 + description: "Customer contact email."
@@ -820,42 +618,84 @@ The physical half is identical, 244 fields either way. What arrives is meaning:
 
 </details>
 
-Three of those matter more than the rest.
+The physical half is identical, 244 fields either way. Both files describe the
+same tables. What changed is that one of them now carries what people know.
+Three of those additions matter more than the rest.
 
 **`synonyms: ["Revenue"]` on `ss_ext_sales_price`.** That table has seven
 plausible money columns: `ss_ext_list_price`, `ss_ext_sales_price`,
 `ss_list_price`, `ss_net_paid`, `ss_net_paid_inc_tax`, `ss_net_profit`,
 `ss_sales_price`. An agent writing SQL picks one and cannot tell you why. The
-glossary term says which one the business means by revenue.
+glossary term records which one the business means.
 
-**"Do not sum across a sales join" on `s_number_employees`.** That is the
-fan-out trap written down. Summing headcount over a joined fact table gives a
-number orders of magnitude too large. A steward wrote that sentence once and
-now every consumer sees it.
+**"Do not sum across a sales join" on `s_number_employees`.** That is the fan-out
+trap from the top of this page, written down. A steward wrote that sentence once
+and now every consumer of the model sees it.
 
 **`denyFields` is real, not a comment.** The steward's PII tag became an access
-rule. In Stage 8 a request for that column returns 403 before any SQL exists.
+rule the compiler enforces. In Stage 6 a request for that column returns 403
+before any SQL exists.
 
-### Then a human certifies it
+### Complete the certified model
 
-Neither scaffold contains metrics. **A person turns the scaffold into the
-certified model**, and this repo already contains that version,
-[`semanticmodel.yaml`](https://github.com/KubedAI/semantic-operator/blob/main/examples/stacks/eks/datahub-polaris-trino/semanticmodel.yaml).
+**Neither scaffold contains a single metric.** Apply either one and it will
+validate, publish, and report healthy, but it cannot answer a metric request
+because `total_sales` and the other business calculations have not been
+defined.
+
+A **certified model** is the scaffold after a person has finished it. Certified
+means somebody with the authority to define these terms has written down what
+each metric computes, which joins are real, and who may read what, and has put
+their name to it in review. From then on every agent, dashboard, and application
+that asks for `total_sales` gets that one definition.
+
+Semantic Operator does not ask an LLM to turn that name into SQL. Its Go planner
+reads the metric expression, fields, relationships, and primary keys from the
+compiled model. It applies governance, builds the required joins and
+aggregations, and emits SQL for Trino.
+
+This repo already contains the certified version of this model,
+[`semanticmodel.yaml`](https://github.com/KubedAI/semantic-operator/blob/main/examples/stacks/eks/datahub-polaris-trino/semanticmodel.yaml),
+so the walkthrough does not stall while you hand write seven metrics.
+
+Here is what a person added on top of your scaffold:
+
+| | your scaffold | the certified model | who decided |
+|---|---|---|---|
+| datasets | 5 | 5 | machine |
+| fields | **121** | **34** | a person, by pruning |
+| field descriptions | 5 | 34 | a person, 5 came from DataHub |
+| field synonyms | 3 | 20 | a person, 3 came from DataHub |
+| primary keys | **0** | 5 | a person |
+| relationships | **0** | 4 | a person, from the machine's candidates |
+| metrics | **0** | 7 | a person |
+| views | **0** | 5 | a person |
+| roles | 1 | 3 | a person |
+| denyFields | 1 | 2 | 1 from DataHub, 1 added |
+| rowFilters | **0** | 1 | a person |
+| `TODO` markers | 23 | 0 | |
+
+Two rows are worth pausing on.
+
+**Primary keys go from 0 to 5.** That is what makes a ratio metric safe across a
+join, and it is how the certified `store_productivity` avoids counting each
+store's employee headcount once per sale.
+
+**Fields go down, from 121 to 34.** A semantic model is meant to be smaller than
+the schema. Deciding that 87 columns should not be offered to an agent is
+authoring work just as much as writing a metric is.
+
+Look at the difference yourself:
 
 ```bash
-# the machine filled the physical half
-grep -c 'expression:' tmp/scaffold-enriched.yaml
-# and left the business half explicitly open
+diff tmp/scaffold-enriched.yaml examples/stacks/eks/datahub-polaris-trino/semanticmodel.yaml | head -40
+# the machine left the business half open
 grep -c 'TODO' tmp/scaffold-enriched.yaml
 # none left in the certified model
 grep -c 'TODO' examples/stacks/eks/datahub-polaris-trino/semanticmodel.yaml
-# what the human wrote: certified metrics and access policy
+# what the person wrote: metrics and access policy
 grep -A12 'governance:' examples/stacks/eks/datahub-polaris-trino/semanticmodel.yaml | head -14
 ```
-
-That is the demo's honest moment. Machines wrote the physical half, the catalog
-supplied the vocabulary and the sensitivity, people wrote the metrics and the
-access rules, and no LLM invented any of it.
 
 **Verify:** all three validate offline, no cluster needed.
 
@@ -865,71 +705,68 @@ go run ./cmd/ossiectl validate -f tmp/scaffold-enriched.yaml
 go run ./cmd/ossiectl validate -f examples/stacks/eks/datahub-polaris-trino/semanticmodel.yaml
 ```
 
-## Stage 7. Deploy the model
+## Stage 5. Deploy the model
 
-**Run this stage: yes, always.**
+Applying the model is what makes it live. The operator does not take the file on
+trust. It introspects every table and column through Trino first and refuses to
+publish anything that does not match the engine. That check is the difference
+between a broken model failing here, visibly, and failing later inside somebody's
+dashboard.
 
-### First, the handoff
-
-In Stage 6 a machine wrote you a model. It read the Polaris catalog and filled
-in everything a database can tell you: five datasets, all 121 columns, the
-join candidates it could infer from `*_sk` naming. DataHub added what a steward
-had recorded, so descriptions and the PII classification arrived too.
-
-Then it stopped, on purpose, at the point where judgement begins. Open your
-scaffold and it says so plainly:
-
-```yaml
-metrics: []
-# metrics: certified aggregate definitions, the core of the model. A model
-# with no metrics validates but answers nothing; define at least one.
-```
-
-No machine and no LLM decides what your business means by revenue.
-
-**Now it is your turn.** A person opens that file and does the half a generator
-cannot. They drop the columns nobody should be querying, 121 down to 34. They
-confirm which of the inferred joins are real and delete the rest. They set a
-primary key on every dataset, which is what makes a ratio metric safe across a
-join. They write the metric expressions. They decide who may see what.
-
-That finished file is already in this repo, so the walkthrough does not stall
-while you hand write seven metrics. It is the same model as your scaffold,
-further along:
-
-| | your scaffold | the finished model | who |
-|---|---|---|---|
-| datasets | 5 | 5 | machine |
-| fields | **121** | **34** | you, by pruning |
-| field descriptions | 5 | 34 | you, 5 came from DataHub |
-| field synonyms | 3 | 20 | you, 3 came from DataHub |
-| primary keys | **0** | 5 | you |
-| relationships | **0** | 4 | you, from the machine's candidates |
-| metrics | **0** | 7 | you |
-| views | **0** | 5 | you |
-| roles | 1 | 3 | you |
-| denyFields | 1 | 2 | 1 from DataHub, 1 you added |
-| rowFilters | **0** | 1 | you |
-| `TODO` markers | 23 | 0 | |
-
-Two things in that table are worth pausing on.
-
-**The scaffold has no metrics at all.** Apply it and it will validate, publish,
-and report healthy. Stage 8 would then return an empty metric list, because
-nothing has defined `total_sales` yet.
-
-**The finished model has fewer fields, not more.** A semantic model is meant to
-be smaller than the schema. Deciding that 87 of 121 columns should not be
-offered to an agent is authoring work just as much as writing a metric is.
-
-So the file you apply below is not the file you generated, and that is the
-whole point rather than a mistake. Check the difference yourself:
+Apply the certified model from the repo rather than the scaffold you generated,
+because the scaffold has no metrics and would serve an empty model.
 
 ```bash
-diff tmp/scaffold-enriched.yaml examples/stacks/eks/datahub-polaris-trino/semanticmodel.yaml | head -40
-grep -c TODO tmp/scaffold-enriched.yaml
-grep -c TODO examples/stacks/eks/datahub-polaris-trino/semanticmodel.yaml
+kubectl apply -f examples/stacks/eks/datahub-polaris-trino/semanticmodel.yaml
+# wait for VALIDATED=True PUBLISHED=True DRIFT=False
+kubectl -n semantic-system get semanticmodels -w
 ```
+
+### Publish governed views
+
+Not every tool speaks REST or MCP. Most BI tools only know how to read a table.
+So the operator writes ordinary SQL views for them, using the same compiler that
+answers API calls.
+
+The model asks for them. Near the bottom of `semanticmodel.yaml`:
+
+```yaml
+  views:
+    - name: store_productivity_by_state
+      metrics: [store_productivity]
+      dimensions: [store.s_state]
+      role: admin
+```
+
+Five of those are defined, and the top of the file says where they go:
+
+```yaml
+  connection:
+    viewDatabase: polaris.semantic_views
+```
+
+When you applied the model, the manager compiled each entry into a
+`CREATE OR REPLACE VIEW` and ran it against Trino. `role: admin` means the view
+is built with that role's permissions baked in, so a view of restricted data
+carries the restriction in its own `WHERE` clause.
+
+They are replaced, not appended, on every publish. Change a metric and the view
+follows on the next reconcile. See them:
+
+```bash
+kubectl -n trino exec deploy/trino-coordinator -c trino-coordinator -- \
+  trino --execute "SHOW TABLES FROM polaris.semantic_views" 2>/dev/null
+```
+
+```
+"clv_by_year"
+"monthly_sales"
+"sales_by_brand_year"
+"sales_by_category_year"
+"store_productivity_by_state"
+```
+
+You query one of them in Stage 6.
 
 :::tip[Want to deploy your own file instead?]
 Finish your scaffold rather than using the prepared one. Set a `primary_key` on
@@ -937,14 +774,6 @@ each dataset, uncomment the correct `relationships`, and write at least one
 metric. Change `metadata.name` and the model name so it does not collide, then
 apply that. It is a slower demo and a much more convincing one.
 :::
-
-### Deploy
-
-```bash
-kubectl apply -f examples/stacks/eks/datahub-polaris-trino/semanticmodel.yaml
-# wait for VALIDATED=True PUBLISHED=True DRIFT=False
-kubectl -n semantic-system get semanticmodels -w
-```
 
 **Verify** what the operator did:
 
@@ -982,19 +811,15 @@ And the published artifact carries its version:
  "semantic.ossie.io/version":"4ee25537eec3"}
 ```
 
-`DRIFT=False` is the interesting one. The operator introspected every table
-through Trino before publishing. Had a column been missing, it would have
-refused to publish and left the previous version serving.
+`DRIFT=False` is the interesting one. Had a column been dropped from the table,
+the operator would have refused to publish and left the previous version
+serving.
 
 </details>
 
-## Stage 8. Query it
-**Run this stage: yes.** This is the payoff.
+## Stage 6. Query it
 
-
-Discovery, then the certified number, then proof of determinism:
-
-Everything below talks to the semantic server on 8090. Stage 4 started that
+Everything below talks to the semantic server on 8090. Stage 2 started that
 forward, but start it again if you are in a new terminal.
 
 ```bash
@@ -1002,6 +827,8 @@ pkill -f 'port-forward.*8090:8090' 2>/dev/null
 kubectl -n semantic-system port-forward svc/semantic-operator-server 8090:8090 &
 sleep 3
 ```
+
+### Query sales per employee by state
 
 Discovery is authenticated and governed, so pass a role here too.
 
@@ -1014,11 +841,11 @@ curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
   -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["store_productivity"],"dimensions":["store.s_state"]}' \
   | jq '{rows, requestHash, cachedResult}'
-# run it twice: identical requestHash, and cachedResult true the second time
+# run it twice
 ```
 
 <details>
-<summary>Expected Stage 8 output</summary>
+<summary>Expected output</summary>
 
 Seven certified metric names:
 
@@ -1043,27 +870,37 @@ Then the metric, twice:
 ```
 
 The numbers depend on the scale factor you loaded, so yours may differ. What
-must hold is that the hash is identical across both runs and that
-`cachedResult` flips to true on the second, dropping the response from a couple
-of seconds to about a millisecond.
+must hold is that the hash is identical across both runs.
 
-If `cachedResult` stays false, Valkey is not wired. Go back to Stage 4.
+`cachedResult` only flips to true if you installed with the Valkey flags in
+Stage 2. Without a cache it stays false and the answer is still correct.
 
 </details>
 
-Governance, compiled in, never bolted on:
+**This is the fan-out fix from the top of the page, working.**
+`store_productivity` is total sales revenue divided by the employee headcount
+for stores in each state. Through the certified model it returns `644567.24` for TN and
+`1826350.38` for TX. The compiler knows that `store` has a primary key, so it
+plans the two sides of the ratio separately and counts each store's headcount
+once rather than once per sale.
+
+The `requestHash` is the other half. The same request compiles to the same SQL
+and the same hash, every time, from any client. That is what makes an answer
+auditable. You can point at a number in a report and find the exact request that
+produced it.
+
+### Test the governance policies
 
 ```bash
-# column policy: analyst may not read PII -> 403 before any SQL exists
+# column policy: analyst may not read PII
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
   -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["total_sales"],"dimensions":["customer.c_email_address"]}' | jq
 
-# row policy: tx_analyst is compiled down to Texas only
+# row policy: tx_analyst is restricted to Texas
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
   -H 'X-Semantic-Role: tx_analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["total_sales"],"dimensions":["store.s_state"]}' | jq '.rows'
-# analyst sees both states, tx_analyst sees one. Same request, same model.
 
 # the exact SQL, without executing it
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/sql \
@@ -1072,9 +909,9 @@ curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/sql \
 ```
 
 <details>
-<summary>Expected governance output</summary>
+<summary>Expected output</summary>
 
-The PII request is refused before any SQL exists:
+The PII request is refused:
 
 ```json
 {"error":"unauthorized: role \"analyst\" may not read field \"customer.c_email_address\""}
@@ -1087,8 +924,7 @@ The PII request is refused before any SQL exists:
 [["TN","1516666718.80"],["TX","1510391760.72"]]
 ```
 
-And the compiled SQL carries the row filter, so the restriction is in the
-statement rather than applied to the result afterwards:
+And the compiled SQL carries the row filter:
 
 ```sql
 /* semantic-layer model=tpcds_retail_model version=4ee25537eec3 request=4cfc29f3... */
@@ -1110,17 +946,35 @@ not set one of its own.
 
 </details>
 
-**Verify from the engine's side:** the Trino web UI shows every governed query
-as the engine saw it.
+Two things happened there that are easy to skim past.
+
+**The 403 came back before any SQL existed.** The compiler refused at planning
+time, so the email column was never named in a query, never sent to Trino, and
+never appeared in an engine log. Compare that with filtering results after the
+fact, where the data has already left the database.
+
+**The row filter is inside the `WHERE` clause.** It is not applied to the
+response afterwards, and there is no code path where forgetting to apply it is
+possible. `tx_analyst` cannot see Tennessee because the SQL that would return it
+is never generated.
+
+The TN total, `1516666718.80`, is the same number the hand written SQL returned
+in Stage 1. The governed path and a direct query agree.
+
+### Query the model from other clients
+
+The Trino web UI shows every governed query as the engine saw it, tagged with the
+model and request identifiers from the SQL comment.
 
 ```bash
 pkill -f 'port-forward.*8081:8080' 2>/dev/null
 kubectl -n trino port-forward svc/trino 8081:8080 &
 ```
 
-Open <http://localhost:8081/ui> and sign in with any username, no password. Every governed query
-appears there carrying its `/* semantic-layer model=.. Request=.. */`
-comment, and the governed views are plain SQL objects any client can read:
+Open <http://localhost:8081/ui> and sign in with your Trino credentials.
+
+Now query one of the views the operator created in Stage 5. It is an ordinary
+Trino view, so a BI tool reads it knowing nothing about the semantic layer:
 
 ```bash
 POD=$(kubectl -n trino get pods -o name | grep coordinator | head -1 | cut -d/ -f2)
@@ -1128,27 +982,40 @@ kubectl -n trino exec "$POD" -c trino-coordinator -- \
   trino --execute "SELECT * FROM polaris.semantic_views.store_productivity_by_state ORDER BY 1"
 ```
 
-AI agents use the same server over MCP at `/mcp` (tools: `list_models`,
-`list_metrics`, `list_dimensions`, `query_metric`). The agent selects
-certified metrics and never writes SQL. The [agent example](https://github.com/KubedAI/semantic-operator/blob/main/examples/stacks/kind/datahub-polaris-starrocks/agent) drives
-exactly this.
-
-## Reset / re-run
-
-The Polaris, Trino, and data-loading scripts are intended to be idempotent. The DataHub
-integration remains a preview and should be verified after every run. Port-forward
-hygiene between runs:
-
-```bash
-pkill -f 'kubectl.*port-forward'
+```
+"TN","644567.241309"
+"TX","1826350.375719"
 ```
 
-Known operational note: the `trino-catalog` ConfigMap may be managed by the
-cluster's Terraform, so re-run `trino-catalog.sh` after any infrastructure
-apply.
+The same numbers the API returned, from the same compiled definition.
 
-Numbers depend on the scale factor you loaded in Stage 3. At the default
-`sf1` they are:
+AI agents use the same server over MCP at `/mcp` (tools: `list_models`,
+`list_metrics`, `list_dimensions`, `query_metric`). The agent selects certified
+metrics by name and never writes SQL. The [agent example](https://github.com/KubedAI/semantic-operator/blob/main/examples/stacks/kind/datahub-polaris-starrocks/agent) drives exactly this.
+
+## Results
+
+The question that opened this page now has a precise, governed definition.
+`store_productivity` returns `644567.24` for TN and `1826350.38` for TX, and you
+can inspect the SQL that produced both values.
+
+| | What you saw |
+|---|---|
+| A tool wrote the boring half | `derive` filled 5 datasets and 121 columns straight from the engine |
+| A catalog supplied the meaning | The enriched scaffold gained synonyms, descriptions, and a working `denyFields` |
+| People wrote the rest | 7 metrics, 5 primary keys, and 4 joins no tool could have chosen |
+| Kubernetes checked it first | Drift checked against Trino before anything served |
+| Same question, same answer | Identical `requestHash` on every run |
+| Rules that cannot be skipped | 403 before any SQL existed, and a `WHERE` clause the caller cannot remove |
+| One model, every consumer | Same numbers over REST, over MCP, and from a plain SQL view |
+
+Next: run the same model on [Glue and Trino](/examples/glue-trino) or
+[Glue and StarRocks](/examples/glue-starrocks) and watch the numbers match, or
+write your own with the [authoring guide](/guides/authoring).
+
+## Reference numbers
+
+At the default `sf1` scale factor:
 
 | Check | Value |
 |---|---|
@@ -1156,6 +1023,40 @@ Numbers depend on the scale factor you loaded in Stage 3. At the default
 | `total_sales` as `tx_analyst` | TX 1510391760.72, one row |
 | `total_sales` as `analyst` | TN 1516666718.80, TX 1510391760.72 |
 
-The TN figure also matches the hand written SQL in Stage 3, which is the point
-worth making: the governed path and a direct query agree.
+## Clean up
 
+Remove what this walkthrough created, in reverse order. This leaves your
+cluster, Trino, Polaris, and DataHub untouched.
+
+```bash
+# stop every port-forward
+pkill -f 'kubectl.*port-forward'
+
+# the model and the operator
+kubectl delete -f examples/stacks/eks/datahub-polaris-trino/semanticmodel.yaml
+helm uninstall semantic-operator -n semantic-system
+kubectl delete namespace semantic-system
+
+# the governed views the operator created in Trino
+kubectl -n trino exec deploy/trino-coordinator -c trino-coordinator -- \
+  trino --execute "DROP SCHEMA IF EXISTS polaris.semantic_views CASCADE" 2>/dev/null
+
+# the demo tables and their Iceberg files
+kubectl -n trino exec deploy/trino-coordinator -c trino-coordinator -- \
+  trino --execute "DROP SCHEMA IF EXISTS polaris.osi_demo CASCADE" 2>/dev/null
+
+# local scaffolds
+rm -rf tmp/
+```
+
+### Delete the EKS stack
+
+If you deployed `semantic-on-eks` for this walkthrough, run its
+[`cleanup.sh`](https://github.com/awslabs/data-on-eks/blob/main/data-stacks/semantic-on-eks/cleanup.sh)
+script from the `data-stacks/semantic-on-eks` directory:
+
+```bash
+./cleanup.sh
+```
+
+This removes the EKS cluster and the AWS resources created by `deploy.sh`.

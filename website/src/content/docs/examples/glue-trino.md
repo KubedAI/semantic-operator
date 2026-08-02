@@ -3,16 +3,35 @@ title: Retail on Glue and Trino
 description: The same retail model served by Trino instead of StarRocks, which is the clearest demonstration that the semantics are portable.
 ---
 
-This walkthrough is deliberately short, because it is the
-[StarRocks walkthrough](/examples/glue-starrocks) with two flags changed. That is the
-demonstration. The model does not change, the metrics do not change, and the numbers do not
-change.
+This walkthrough runs the retail semantic model with Glue, Iceberg, and Trino.
+It demonstrates that the metric definitions and governance rules remain the
+same when the query engine changes.
 
-Work through [Prerequisites](/examples/prerequisites) first, with Trino as your engine.
+An AI agent selects certified metrics and dimensions. Semantic Operator applies
+governance and uses its Go planner to generate Trino SQL. No LLM is involved in
+SQL generation.
 
-## What actually differs
+Install `kubectl`, `helm`, `aws`, `jq`, `git`, and Go 1.26 on your workstation.
 
-Three things, and nothing else.
+## Stage 1. Deploy the cluster
+
+Clone the
+[`semantic-on-eks`](https://github.com/awslabs/data-on-eks/tree/main/data-stacks/semantic-on-eks)
+stack from Data on EKS. Trino is enabled by default in this stack.
+
+Deploy the stack:
+
+```bash
+./deploy.sh
+```
+
+Verify that the Trino coordinator and worker pods are running:
+
+```bash
+kubectl -n trino get pods
+```
+
+## What changes with Trino
 
 **The engine setting.** `engine.type=trino` selects both the SQL dialect and the connection
 client.
@@ -23,13 +42,10 @@ client.
 qualified schema such as `iceberg.semantic_views`. On StarRocks a bare `semantic_views` is
 enough.
 
-The emitted SQL differs too, but you do not have to care. Trino gets double quoted
-identifiers and `IS NOT DISTINCT FROM`, StarRocks gets backticks and `<=>`. The compiler
-handles it.
+Trino SQL uses double-quoted identifiers and `IS NOT DISTINCT FROM` for
+null-safe equality. The planner handles these dialect differences.
 
-## Load the demo data
-
-**Run this stage: yes.** The model needs tables to bind to.
+## Stage 2. Load the demo data
 
 ```bash
 bash examples/stacks/eks/glue-trino/data-load.sh
@@ -80,17 +96,17 @@ sales count or the row-filter check below returns nothing.
 
 </details>
 
-## Install
+## Stage 3. Install Semantic Operator
 
-**Run this stage: yes.**
+The chart deploys the manager and server images. The manager validates and
+publishes models. The server loads those models and serves REST and MCP
+requests.
 
 ```bash
 kubectl create namespace semantic-system --dry-run=client -o yaml | kubectl apply -f -
 helm upgrade --install semantic-operator charts/semantic-operator \
   --namespace semantic-system --create-namespace \
   --set server.auth.allowInsecureHeaderAuth=true \
-  --set image.repository=public.ecr.aws/data-on-eks/semantic-operator \
-  --set image.tag=v0.1.1 \
   --set engine.type=trino \
   --set engine.host=trino.trino.svc.cluster.local
 ```
@@ -109,11 +125,11 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:8090/readyz
 Expect `200`. If it reports the engine as unreachable, the message names the engine, which
 tells you the dialect selection worked and the connection did not.
 
-## Apply the model
+## Stage 4. Deploy the model
 
-**Run this stage: yes.** This example ships its own model, already set up for
-Trino. Its `viewDatabase` is catalog qualified, which is the one structural
-difference from StarRocks.
+This example ships a certified model configured for Trino. Its `viewDatabase`
+is catalog qualified, which is the structural difference from the StarRocks
+model.
 
 ```yaml
 spec:
@@ -130,9 +146,14 @@ kubectl -n semantic-system get semanticmodels -w
 
 **Verify.** `VALIDATED=True PUBLISHED=True DRIFT=False`, exactly as on StarRocks.
 
-## Ask the same question
+## Stage 5. Query sales per employee by state
 
-**Run this stage: yes. This is the point of the walkthrough.**
+Ask the business question:
+
+> **How much sales revenue is generated per employee in each state?**
+
+The AI agent maps this question to the certified `store_productivity` metric
+and the `store.s_state` dimension.
 
 ```bash
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
@@ -147,9 +168,7 @@ curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
 [["TN","644567.241309"],["TX","1826350.375719"]]
 ```
 
-The [Polaris walkthrough](/examples/datahub-polaris-trino) returns the same two
-numbers from the same model against a completely different catalog. Two catalog
-implementations, one set of semantics, one answer.
+These are the governed results for the two-state dataset loaded in Stage 2.
 
 </details>
 
@@ -199,9 +218,7 @@ aggregated separately over `store` alone.
 
 </details>
 
-## Governance and views
-
-**Run this stage: yes.**
+## Stage 6. Test governance and views
 
 ```bash
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
@@ -238,18 +255,7 @@ server.
 
 </details>
 
-## The rest is identical
-
-Determinism, the 403 on a denied field, the row filtered role, and the governed views all
-behave exactly as in the
-[StarRocks walkthrough, from step 7 onward](/examples/glue-starrocks). Read the views from
-Trino instead.
-
-```sql
-SELECT * FROM iceberg.semantic_views.store_productivity_by_state ORDER BY 1;
-```
-
-## Watching it from the engine side
+## Stage 7. Inspect queries in Trino
 
 Trino ships a web interface, which makes a good demo. Forward it and open it in a browser.
 
@@ -265,9 +271,12 @@ its identifier, carrying the model version and request hash.
 ```bash
 kubectl delete -f examples/stacks/eks/glue-trino/semanticmodel.yaml
 helm uninstall semantic-operator -n semantic-system
+kubectl delete namespace semantic-system
 ```
 
-## Next
+From the `data-stacks/semantic-on-eks` directory, delete the EKS stack and its
+AWS resources:
 
-[DataHub, Polaris and Trino](/examples/datahub-polaris-trino) adds an open lakehouse
-catalog and imports business meaning from a metadata platform.
+```bash
+./cleanup.sh
+```

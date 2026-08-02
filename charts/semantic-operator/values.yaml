@@ -1,10 +1,11 @@
 # All connection details are values. Nothing is hardcoded in the images.
 
 image:
-  # Base repository; the chart appends /manager and /server.
-  # Example: 123456789012.dkr.ecr.us-west-2.amazonaws.com/semantic-operator
-  repository: ""
-  tag: "latest"
+  manager:
+    repository: public.ecr.aws/data-on-eks/semantic-operator/manager
+  server:
+    repository: public.ecr.aws/data-on-eks/semantic-operator/server
+  tag: "v0.1.1"
   pullPolicy: IfNotPresent
 
 # Query engine the semantic layer compiles for and connects to. One engine

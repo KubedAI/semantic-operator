@@ -32,8 +32,6 @@ optional and only adds caching, so drop that line to run without it.
 helm install semantic-operator charts/semantic-operator \
   --set server.auth.allowInsecureHeaderAuth=true \
   --namespace semantic-system --create-namespace \
-  --set image.repository=public.ecr.aws/data-on-eks/semantic-operator \
-  --set image.tag=v0.1.1 \
   --set engine.type=starrocks \
   --set engine.host=kube-starrocks-fe-service.starrocks.svc.cluster.local \
   --set valkey.addr=valkey.valkey.svc.cluster.local:6379

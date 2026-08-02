@@ -41,7 +41,6 @@ jobs:
       - name: Chart must refuse to expose the server publicly
         run: |
           if helm template charts/semantic-operator \
-            --set image.repository=example.com/semantic-operator \
             --set engine.host=engine.example \
             --set server.auth.allowInsecureHeaderAuth=true \
             --set server.service.type=LoadBalancer >/dev/null 2>&1; then
@@ -49,7 +48,6 @@ jobs:
             exit 1
           fi
           if ! helm template charts/semantic-operator \
-            --set image.repository=example.com/semantic-operator \
             --set engine.host=engine.example \
             --set server.auth.allowInsecureHeaderAuth=true \
             | grep -q 'type: ClusterIP'; then
@@ -59,19 +57,40 @@ jobs:
       - name: Render templates (starrocks, legacy values)
         run: >
           helm template charts/semantic-operator
-          --set image.repository=example.com/semantic-operator
           --set starrocks.host=fe.example
           --set server.auth.allowInsecureHeaderAuth=true >/dev/null
       - name: Render templates (trino)
         run: >
           helm template charts/semantic-operator
-          --set image.repository=example.com/semantic-operator
           --set engine.type=trino --set engine.host=trino.example
           --set server.auth.allowInsecureHeaderAuth=true >/dev/null
+      # The chart used to append /manager and /server to image.repository, so a
+      # registry laid out any other way could not be installed at all. The
+      # per-component values are now used verbatim, and the old key is refused
+      # rather than ignored, so an existing --set does not silently pull the
+      # chart defaults instead of the image the user asked for.
+      - name: Chart must use image repositories verbatim
+        run: |
+          if ! helm template charts/semantic-operator \
+            --set engine.host=engine.example \
+            --set server.auth.allowInsecureHeaderAuth=true \
+            --set image.manager.repository=example.com/mgr \
+            --set image.server.repository=example.com/srv \
+            --set image.tag=t1 \
+            | grep -q 'image: "example.com/mgr:t1"'; then
+            echo "chart did not use image.manager.repository verbatim"
+            exit 1
+          fi
+          if helm template charts/semantic-operator \
+            --set engine.host=engine.example \
+            --set server.auth.allowInsecureHeaderAuth=true \
+            --set image.repository=example.com/semantic-operator >/dev/null 2>&1; then
+            echo "chart silently ignored the removed image.repository value"
+            exit 1
+          fi
       - name: Chart must reject an unknown engine
         run: |
           if helm template charts/semantic-operator \
-            --set image.repository=example.com/semantic-operator \
             --set engine.host=engine.example \
             --set server.auth.allowInsecureHeaderAuth=true \
             --set engine.type=nonesuch >/dev/null 2>&1; then
@@ -81,7 +100,6 @@ jobs:
       - name: Chart must refuse trusted-header auth unless acknowledged
         run: |
           if helm template charts/semantic-operator \
-            --set image.repository=example.com/semantic-operator \
             --set engine.host=engine.example >/dev/null 2>&1; then
             echo "chart allowed header auth without acknowledgement"
             exit 1
@@ -95,7 +113,6 @@ jobs:
       - name: Manager scope defaults to its own namespace
         run: |
           helm template charts/semantic-operator -n prod \
-            --set image.repository=example.com/semantic-operator \
             --set engine.host=engine.example \
             --set server.auth.allowInsecureHeaderAuth=true > /tmp/default.yaml
           if grep -q 'kind: ClusterRole' /tmp/default.yaml; then
@@ -109,7 +126,6 @@ jobs:
       - name: watchNamespaces issues one Role per namespace
         run: |
           helm template charts/semantic-operator -n prod \
-            --set image.repository=example.com/semantic-operator \
             --set engine.host=engine.example \
             --set server.auth.allowInsecureHeaderAuth=true \
             --set 'manager.watchNamespaces={analytics,finance}' > /tmp/scoped.yaml
@@ -126,7 +142,6 @@ jobs:
       - name: Cluster-wide is opt-in and mutually exclusive
         run: |
           if ! helm template charts/semantic-operator -n prod \
-            --set image.repository=example.com/semantic-operator \
             --set engine.host=engine.example \
             --set server.auth.allowInsecureHeaderAuth=true \
             --set manager.watchAllNamespaces=true \
@@ -135,7 +150,6 @@ jobs:
             exit 1
           fi
           if helm template charts/semantic-operator -n prod \
-            --set image.repository=example.com/semantic-operator \
             --set engine.host=engine.example \
             --set server.auth.allowInsecureHeaderAuth=true \
             --set manager.watchAllNamespaces=true \
@@ -148,7 +162,6 @@ jobs:
       - name: Availability defaults are safe
         run: |
           helm template charts/semantic-operator \
-            --set image.repository=example.com/semantic-operator \
             --set engine.host=engine.example \
             --set server.auth.allowInsecureHeaderAuth=true > /tmp/av.yaml
           if ! grep -q 'maxUnavailable' /tmp/av.yaml; then
@@ -170,7 +183,6 @@ jobs:
             exit 1
           fi
           if helm template charts/semantic-operator \
-            --set image.repository=example.com/semantic-operator \
             --set engine.host=engine.example \
             --set server.auth.allowInsecureHeaderAuth=true \
             --kube-version 1.28.0 | grep -q 'preStop'; then

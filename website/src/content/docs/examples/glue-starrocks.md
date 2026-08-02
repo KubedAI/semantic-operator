@@ -3,17 +3,40 @@ title: Retail on Glue and StarRocks
 description: The reference walkthrough. Install the operator, load demo data, generate and certify a model, deploy it, and prove that governance and determinism hold.
 ---
 
-This is the reference path. It takes about thirty minutes and ends with a governed query
-service answering questions over Iceberg tables, with numbers you can check against ground
-truth.
+This is the reference walkthrough for running Semantic Operator with Glue,
+Iceberg, and StarRocks. You will load retail data, deploy a certified semantic
+model, and query it through the semantic server.
 
-Work through [Prerequisites](/examples/prerequisites) first. You need a cluster, StarRocks,
-and images pushed to a registry.
+An AI agent selects certified metrics and dimensions instead of generating
+SQL. Semantic Operator validates the request, applies governance, and uses its
+Go planner to generate SQL for StarRocks. No LLM is involved in SQL generation.
 
-Each step below finishes with a verification. If a verification does not match, stop there
-rather than continuing, because later steps build on it.
+Install `kubectl`, `helm`, `aws`, `jq`, `git`, `mysql`, and Go 1.26 on your
+workstation.
 
-## Step 1. Create the Iceberg catalog in StarRocks
+## Stage 1. Deploy the cluster
+
+Clone the
+[`semantic-on-eks`](https://github.com/awslabs/data-on-eks/tree/main/data-stacks/semantic-on-eks)
+stack from Data on EKS. In `terraform/data-stack.tfvars`, enable StarRocks:
+
+```hcl
+enable_starrocks = true
+```
+
+Deploy the stack:
+
+```bash
+./deploy.sh
+```
+
+Verify that the StarRocks front end and back end pods are running:
+
+```bash
+kubectl -n starrocks get pods
+```
+
+## Stage 2. Create the Iceberg catalog
 
 StarRocks reads Iceberg tables through an external catalog. This is the one manual data
 step and you do it once.
@@ -54,19 +77,7 @@ SHOW DATABASES FROM iceberg;
 If this fails with a Glue permission error, the StarRocks pods need an IAM role with Glue
 and S3 access on the warehouse bucket.
 
-## Step 2. Load the demo data
-
-StarRocks reads Iceberg tables from Glue whoever wrote them, so there are two
-ways to get demo data. Both end with the same five tables.
-
-### Option A. Reuse tables another engine already wrote
-
-If you have run the [Glue and Trino walkthrough](/examples/glue-trino), its
-tables are already registered in Glue and StarRocks can read them directly.
-Point the model's `database` at that schema and skip ahead. Verified: StarRocks
-returns the same numbers from Iceberg files Trino produced.
-
-### Option B. Let StarRocks create them
+## Stage 3. Load the demo data
 
 The loader creates the tables through StarRocks itself, so there is no Spark
 job. It is idempotent and skips tables that already have rows.
@@ -103,14 +114,17 @@ catalog refreshes it. Checking Glue directly with
 `aws glue get-database --name <db>` tells you which side is stale.
 :::
 
-## Step 3. Install the operator and server
+## Stage 4. Install Semantic Operator
+
+The chart deploys two images. The manager validates and publishes semantic
+models. The stateless server loads those models and serves REST and MCP
+requests. Both images are built from this repository and share the planner,
+governance, and engine integrations.
 
 ```bash
 helm upgrade --install semantic-operator charts/semantic-operator \
   --set server.auth.allowInsecureHeaderAuth=true \
   --namespace semantic-system --create-namespace \
-  --set image.repository=public.ecr.aws/data-on-eks/semantic-operator \
-  --set image.tag=v0.1.1 \
   --set engine.type=starrocks \
   --set engine.host=kube-starrocks-fe-service.starrocks.svc.cluster.local
 ```
@@ -126,7 +140,7 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:8090/readyz
 
 Expect `200`.
 
-## Step 4. Generate a model from the catalog
+## Stage 5. Derive the model
 
 You could write the model by hand. It is faster to generate the mechanical part.
 
@@ -147,16 +161,16 @@ grep -c 'TODO' tmp/scaffold.yaml          # decisions left for a person
 go run ./cmd/ossiectl validate -f tmp/scaffold.yaml
 ```
 
-Expect roughly 70 fields and around 23 placeholders. The scaffold is already valid, because
-a model with no metrics is legal. It just cannot answer anything yet.
+The scaffold is valid because a model with no metrics is legal. It cannot
+answer metric requests until a person completes the business definitions.
 
 This is the honest split. The machine wrote every dataset and column. A person still has to
 certify what revenue means and who may read what.
 
-## Step 5. Apply the certified model
+## Stage 6. Deploy the certified model
 
-The repository contains the filled in version, with seven metrics, governance roles, and
-two governed views.
+The repository contains the completed version with seven metrics, governance
+roles, and five governed views.
 
 ```bash
 kubectl apply -f examples/retail/model/semanticmodel.yaml
@@ -180,23 +194,16 @@ kubectl -n semantic-system get semanticmodel tpcds-retail \
 
 Each dataset should map to a physical table in `iceberg.osi_demo`.
 
-## Step 6. Ask a question
+## Stage 7. Compare direct SQL with a semantic query
 
-```bash
-curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
-  -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
-  -d '{"metrics":["store_productivity"],"dimensions":["store.s_state"]}' | jq
-```
+Ask the same business question through both paths:
 
-**Verify.** Six rows, one per state. New York should be `210176.60448413`.
+> **How much sales revenue is generated per employee in each state?**
 
-That number is the point of the whole exercise. `store_productivity` is sales divided by
-headcount, and headcount lives on the store dimension. The obvious query joins store to
-sales and sums the employee count, which repeats each store's headcount once per sales row
-and inflates the denominator enormously. Check it yourself.
+Without a semantic model, a reasonable query joins sales to stores and sums
+employee headcount across the joined rows:
 
 ```sql
--- The wrong version, which looks completely reasonable
 SELECT s.s_state,
        SUM(ss.ss_ext_sales_price) / SUM(s.s_number_employees) AS naive
 FROM iceberg.osi_demo.store_sales ss
@@ -204,24 +211,24 @@ JOIN iceberg.osi_demo.store s ON ss.ss_store_sk = s.s_store_sk
 GROUP BY s.s_state;
 ```
 
-That returns about `12.54` for New York against the correct `210176.60`. The compiler
-avoids it by splitting the ratio into two aggregations and deduplicating the denominator on
-the store primary key.
+The SQL is valid, but it counts each store's employees once for every sale. For
+New York it returns about `12.54`.
 
-<details>
-<summary>Expected output, and the same question on Trino</summary>
+With Semantic Operator, the AI agent maps the question to the certified
+`store_productivity` metric and the `store.s_state` dimension:
 
-```json
-[["TN","644567.24130897"],["TX","1826350.37571947"]]
+```bash
+curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
+  -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
+  -d '{"metrics":["store_productivity"],"dimensions":["store.s_state"]}' | jq
 ```
 
-The [Glue and Trino walkthrough](/examples/glue-trino) returns
-`644567.241309` and `1826350.375719` for the same model. The values agree. The
-strings differ because the two engines render decimals to a different number of
-places, which is a formatting difference and not a disagreement about the
-number.
+The semantic query returns six rows, one per state. New York returns
+`210176.60448413`. The Go planner calculates revenue and employee headcount
+separately, so each store's employees are counted once.
 
-The SQL differs properly, though:
+<details>
+<summary>Generated StarRocks SQL</summary>
 
 ```sql
 WITH `m_store_productivity_num` AS (
@@ -236,12 +243,11 @@ INNER JOIN `m_store_productivity_den`
         ON `m_store_productivity_num`.`d0` <=> `m_store_productivity_den`.`d0`
 ```
 
-Backticks and `<=>`. Trino gets double quotes and `IS NOT DISTINCT FROM` for
-exactly the same model.
+StarRocks uses backticks for identifiers and `<=>` for null-safe equality.
 
 </details>
 
-## Step 7. Prove it is deterministic
+## Stage 8. Verify deterministic planning
 
 Run exactly the same request again.
 
@@ -267,7 +273,7 @@ curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/sql \
 Note the leading comment carrying the model name, version, and request hash. That is what
 lets you trace a query in the StarRocks log back to the request that caused it.
 
-## Step 8. Prove governance holds
+## Stage 9. Test governance policies
 
 An analyst asks for an email address.
 
@@ -291,7 +297,7 @@ curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
 **Verify.** One row, Texas only. The row filter was compiled into the WHERE clause rather
 than applied to the results afterwards.
 
-## Step 9. Check the BI path
+## Stage 10. Query a governed view
 
 The operator created governed views in StarRocks. Any SQL client can read them, with no
 semantic server involved.
@@ -300,23 +306,7 @@ semantic server involved.
 SELECT * FROM semantic_views.store_productivity_by_state ORDER BY 1;
 ```
 
-**Verify.** The same numbers as step 6. One definition, two access paths, no disagreement.
-
-## Optional. Compare against raw text to SQL
-
-If you have Amazon Bedrock available, run the same business question both ways.
-
-```bash
-export MCP_ENDPOINT=http://localhost:8090/mcp
-export BEDROCK_MODEL_ID=<your enabled model id>
-make demo-nl QUESTION="What is our sales per employee by state?"
-```
-
-It prints both queries and both results. The raw path writes the fan out join and reports
-about twelve dollars per employee. The semantic path calls the certified metric and reports
-the correct figure.
-
-The full measured comparison is in [Benchmark results](/examples/benchmark-results).
+**Verify.** The view returns the same numbers as Stage 7.
 
 ## Clean up
 
@@ -328,21 +318,21 @@ helm uninstall semantic-operator -n semantic-system
 kubectl delete namespace semantic-system
 ```
 
-The demo data stays in Glue and S3. Drop the `osi_demo` database if you want it gone.
+From the `data-stacks/semantic-on-eks` directory, delete the EKS stack and its
+AWS resources:
 
-## If something did not work
+```bash
+./cleanup.sh
+```
+
+## Troubleshooting
 
 **The model sits at `DRIFT=True`.** Read the message with `kubectl describe`. It names the
 dataset and the missing table or column. The usual cause is the external catalog not being
 readable, which StarRocks reports as a table resolution failure.
 
 **StarRocks forgot the catalog after a restart.** External catalogs do not always survive a
-front end restart. Recreate it with step 1.
+front end restart. Recreate it with Stage 2.
 
 **A query returns `no policy for role`.** Pass a role that exists in the model. This one
 defines `analyst`, `tx_analyst`, and `admin`.
-
-## Next
-
-[The same model on Trino](/examples/glue-trino), which is the same walkthrough with two
-different flags and identical results.

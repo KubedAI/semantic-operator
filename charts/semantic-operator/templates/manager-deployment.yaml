@@ -25,7 +25,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: manager
-          image: "{{ required "image.repository is required" .Values.image.repository }}/manager:{{ .Values.image.tag }}"
+          image: "{{ include "semantic-operator.image" (dict "root" . "component" "manager") }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --leader-elect={{ .Values.manager.leaderElect }}

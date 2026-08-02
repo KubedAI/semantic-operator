@@ -55,16 +55,23 @@ public.ecr.aws/data-on-eks/semantic-operator/manager:v0.1.1
 public.ecr.aws/data-on-eks/semantic-operator/server:v0.1.1
 ```
 
-Pass the base path and the tag to Helm.
+These are the chart defaults, so a plain `helm install` pulls them and no image
+flags are needed.
 
-```bash
---set image.repository=public.ecr.aws/data-on-eks/semantic-operator --set image.tag=v0.1.1
-```
-
-To run a build of your own instead, push to any registry your cluster can pull from.
+To run a build of your own instead, push to any registry your cluster can pull
+from. The chart uses each repository exactly as you write it, so the two images
+can live anywhere and need not share a path.
 
 ```bash
 make docker-build docker-push REGISTRY=<your-registry> TAG=<tag>
+```
+
+Then point the chart at them.
+
+```bash
+--set image.manager.repository=<your-registry>/manager \
+--set image.server.repository=<your-registry>/server \
+--set image.tag=<tag>
 ```
 
 For Amazon ECR, authenticate first and create the repositories once.
