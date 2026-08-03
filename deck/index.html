@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="An introduction to semantic-operator.">
     <title>semantic-operator</title>
+    <script>
+      try {
+        const savedTheme = window.localStorage.getItem("semantic-operator-deck-theme");
+        if (["operator", "field-notes", "blueprint", "high-voltage"].includes(savedTheme)) {
+          document.documentElement.dataset.theme = savedTheme;
+        }
+      } catch {
+        // The default theme remains available when storage is blocked.
+      }
+    </script>
     <link rel="stylesheet" href="deck.css">
     <script src="deck.js" defer></script>
   </head>
@@ -399,6 +409,17 @@ semantic_model:
       <button class="control control--fullscreen" id="toggle-fullscreen" type="button" aria-label="Enter fullscreen" title="Toggle fullscreen (F)">
         <span aria-hidden="true">⛶</span>
       </button>
+      <label class="theme-picker" title="Change theme (T)">
+        <span class="theme-picker__icon" aria-hidden="true">◐</span>
+        <span class="visually-hidden">Presentation theme</span>
+        <select class="theme-select" id="theme-select" aria-label="Presentation theme">
+          <option value="operator">Operator</option>
+          <option value="field-notes">Field Notes</option>
+          <option value="blueprint">Blueprint</option>
+          <option value="high-voltage">High Voltage · Bold</option>
+        </select>
+      </label>
+      <output class="visually-hidden" id="theme-status" aria-live="polite"></output>
     </nav>
 
     <noscript>

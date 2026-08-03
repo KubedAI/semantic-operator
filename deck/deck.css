@@ -16,6 +16,421 @@
   --data: #b295e0;
   --slide-padding-inline: clamp(1.5rem, 7vw, 8rem);
   --slide-padding-block: clamp(4rem, 10vh, 7rem);
+  --font-display: var(--font-sans);
+  --code-bg: rgba(12, 20, 24, 0.9);
+  --code-text: #d9e3e6;
+  --code-caption-bg: var(--surface-strong);
+  --code-caption-text: var(--text-muted);
+  --logo-filter: grayscale(1) brightness(0) invert(1);
+  --control-disabled: #506169;
+}
+
+/*
+ * Themes are intentionally more than palette swaps. Each one changes the
+ * typography, texture, geometry, and visual emphasis while sharing one layout.
+ */
+:root[data-theme="field-notes"] {
+  color-scheme: light;
+  --font-display: Georgia, "Times New Roman", serif;
+  --bg: #f3eee3;
+  --surface: #e8dfcf;
+  --surface-strong: #d9cdb8;
+  --text: #17212a;
+  --text-muted: #596169;
+  --line: #b5aa98;
+  --accent: #b63a30;
+  --accent-bright: #8c2922;
+  --metadata: #1d608c;
+  --ddl: #8b5a00;
+  --data: #69478b;
+  --code-bg: #20252b;
+  --code-text: #f4efe6;
+  --code-caption-bg: #292f35;
+  --code-caption-text: #d8d0c3;
+  --logo-filter: grayscale(1) brightness(0);
+  --control-disabled: #9c958a;
+}
+
+:root[data-theme="blueprint"] {
+  color-scheme: dark;
+  --font-display: var(--font-mono);
+  --bg: #061a31;
+  --surface: #0a2746;
+  --surface-strong: #0e345b;
+  --text: #edf8ff;
+  --text-muted: #a7c5dc;
+  --line: #2a587a;
+  --accent: #00cdea;
+  --accent-bright: #7cecff;
+  --metadata: #43adff;
+  --ddl: #ffca63;
+  --data: #cd96ff;
+  --code-bg: #031326;
+  --code-text: #dff6ff;
+  --code-caption-bg: #0d3155;
+  --code-caption-text: #b5d4e9;
+  --logo-filter: grayscale(1) brightness(0) invert(1);
+  --control-disabled: #55738b;
+}
+
+:root[data-theme="high-voltage"] {
+  color-scheme: light;
+  --font-display: Impact, Haettenschweiler, "Arial Narrow Bold", var(--font-sans);
+  --bg: #f4ef00;
+  --surface: #fff84d;
+  --surface-strong: #111111;
+  --text: #111111;
+  --text-muted: #41410f;
+  --line: #111111;
+  --accent: #c00082;
+  --accent-bright: #111111;
+  --code-accent: #ff65dc;
+  --metadata: #0046e5;
+  --ddl: #a91e00;
+  --data: #6100c7;
+  --code-bg: #111111;
+  --code-text: #f8f8e8;
+  --code-caption-bg: #111111;
+  --code-caption-text: #f4ef00;
+  --logo-filter: grayscale(1) brightness(0);
+  --control-disabled: #77751d;
+}
+
+:root[data-theme] h1,
+:root[data-theme] h2 {
+  font-family: var(--font-display);
+}
+
+:root[data-theme] .ossie-logo,
+:root[data-theme] .concept-mark--logo img {
+  filter: var(--logo-filter);
+}
+
+:root[data-theme] .yaml-example {
+  color: var(--code-text);
+  background: var(--code-bg);
+}
+
+:root[data-theme] .yaml-example figcaption {
+  color: var(--code-caption-text);
+  background: var(--code-caption-bg);
+}
+
+:root[data-theme] .yaml-example figcaption span:last-child {
+  color: var(--code-accent, var(--accent));
+}
+
+:root[data-theme] .yaml-example pre {
+  color: var(--code-text);
+}
+
+:root[data-theme] .lane-node--operator .lane-icon {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+}
+
+:root[data-theme] .authoring-stage--human {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, transparent), color-mix(in srgb, var(--accent) 2.5%, transparent));
+}
+
+:root[data-theme] .controls {
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border-color: var(--line);
+}
+
+:root[data-theme] .control:disabled {
+  color: var(--control-disabled);
+}
+
+:root[data-theme] .progress {
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+}
+
+/* Field Notes: warm, editorial, and intentionally quiet. */
+:root[data-theme="field-notes"] .slide::before {
+  background: radial-gradient(circle, rgba(23, 33, 42, 0.16) 1px, transparent 1.25px);
+  background-size: 1rem 1rem;
+  mask-image: linear-gradient(to right, black, transparent 72%);
+}
+
+:root[data-theme="field-notes"] .slide::after {
+  top: 0;
+  right: var(--slide-padding-inline);
+  width: 0.35rem;
+  height: 7.5rem;
+  border: 0;
+  border-radius: 0;
+  background: var(--accent);
+  box-shadow: none;
+}
+
+:root[data-theme="field-notes"] h1,
+:root[data-theme="field-notes"] h2 {
+  font-weight: 600;
+  letter-spacing: -0.055em;
+}
+
+:root[data-theme="field-notes"] .leading-question blockquote {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+}
+
+:root[data-theme="field-notes"] .concept-mark,
+:root[data-theme="field-notes"] .lane-icon,
+:root[data-theme="field-notes"] .serving-icon,
+:root[data-theme="field-notes"] .policy-icon {
+  border-radius: 0.2rem;
+}
+
+:root[data-theme="field-notes"] .yaml-example,
+:root[data-theme="field-notes"] .controls {
+  border-radius: 0.2rem;
+  box-shadow: 0.35rem 0.35rem 0 rgba(23, 33, 42, 0.12);
+}
+
+/* Blueprint: dense grid, engineered type, and precise square geometry. */
+:root[data-theme="blueprint"] .slide::before {
+  background:
+    linear-gradient(rgba(124, 236, 255, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 236, 255, 0.09) 1px, transparent 1px),
+    linear-gradient(rgba(124, 236, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 236, 255, 0.035) 1px, transparent 1px);
+  background-size: 4rem 4rem, 4rem 4rem, 1rem 1rem, 1rem 1rem;
+  mask-image: linear-gradient(to bottom right, black, transparent 88%);
+}
+
+:root[data-theme="blueprint"] .slide::after {
+  border-color: rgba(124, 236, 255, 0.28);
+  border-radius: 0;
+  box-shadow:
+    0 0 0 8vmax rgba(0, 205, 234, 0.035),
+    0 0 0 17vmax rgba(67, 173, 255, 0.025);
+  transform: rotate(45deg);
+}
+
+:root[data-theme="blueprint"] h1,
+:root[data-theme="blueprint"] h2 {
+  font-weight: 760;
+  letter-spacing: -0.065em;
+}
+
+:root[data-theme="blueprint"] .eyebrow::before {
+  content: "// ";
+}
+
+:root[data-theme="blueprint"] .concept-mark,
+:root[data-theme="blueprint"] .lane-icon,
+:root[data-theme="blueprint"] .serving-icon,
+:root[data-theme="blueprint"] .policy-icon,
+:root[data-theme="blueprint"] .yaml-example,
+:root[data-theme="blueprint"] .controls {
+  border-radius: 0;
+}
+
+:root[data-theme="blueprint"] .yaml-example {
+  box-shadow: 0.75rem 0.75rem 0 rgba(0, 205, 234, 0.12);
+}
+
+/* High Voltage: intentionally loud. The heavy contrast serves the core claims. */
+:root[data-theme="high-voltage"] .slide::before {
+  background: repeating-linear-gradient(-45deg, rgba(17, 17, 17, 0.08) 0 2px, transparent 2px 1.5rem);
+  mask-image: linear-gradient(to bottom right, black, transparent 82%);
+}
+
+:root[data-theme="high-voltage"] .slide::after {
+  top: -18vmax;
+  right: -12vmax;
+  width: 48vmax;
+  height: 48vmax;
+  border: 5vmax solid var(--accent);
+  border-radius: 0;
+  box-shadow: none;
+  opacity: 0.16;
+  transform: rotate(14deg);
+}
+
+:root[data-theme="high-voltage"] h1,
+:root[data-theme="high-voltage"] h2 {
+  font-weight: 900;
+  letter-spacing: -0.035em;
+  line-height: 0.91;
+  text-transform: uppercase;
+}
+
+:root[data-theme="high-voltage"] h1 {
+  text-decoration: underline 0.09em var(--accent);
+  text-underline-offset: 0.08em;
+}
+
+:root[data-theme="high-voltage"] .slide--interstitial h2 {
+  text-shadow: 0.065em 0.065em 0 var(--accent);
+}
+
+:root[data-theme="high-voltage"] .eyebrow {
+  width: fit-content;
+  padding: 0.35rem 0.55rem;
+  color: var(--bg);
+  background: var(--text);
+  transform: rotate(-1deg);
+}
+
+:root[data-theme="high-voltage"] .leading-question,
+:root[data-theme="high-voltage"] .evidence-stage,
+:root[data-theme="high-voltage"] .authoring-stages,
+:root[data-theme="high-voltage"] .policy-types {
+  border-width: 3px;
+  border-color: var(--line);
+}
+
+:root[data-theme="high-voltage"] .prompt-path + .prompt-path,
+:root[data-theme="high-voltage"] .authoring-stage + .authoring-stage,
+:root[data-theme="high-voltage"] .policy-type + .policy-type,
+:root[data-theme="high-voltage"] .benchmark-result {
+  border-width: 3px;
+  border-color: var(--line);
+}
+
+:root[data-theme="high-voltage"] .concept-mark:not(.concept-mark--logo),
+:root[data-theme="high-voltage"] .lane-icon,
+:root[data-theme="high-voltage"] .serving-icon,
+:root[data-theme="high-voltage"] .policy-icon {
+  border-width: 3px;
+  border-radius: 0;
+}
+
+:root[data-theme="high-voltage"] .yaml-example {
+  border: 3px solid var(--text);
+  border-top: 0.75rem solid var(--accent);
+  border-radius: 0;
+  box-shadow: 0.75rem 0.75rem 0 var(--metadata);
+}
+
+:root[data-theme="high-voltage"] .authoring-stage {
+  border-top-width: 0.65rem;
+}
+
+:root[data-theme="high-voltage"] .serving-principle,
+:root[data-theme="high-voltage"] .governance-principle {
+  border-left-width: 0.55rem;
+}
+
+:root[data-theme="high-voltage"] .controls {
+  color: var(--bg);
+  background: var(--text);
+  border: 3px solid var(--text);
+  border-radius: 0;
+  box-shadow: 0.45rem 0.45rem 0 var(--accent);
+}
+
+:root[data-theme="high-voltage"] .control,
+:root[data-theme="high-voltage"] .slide-counter,
+:root[data-theme="high-voltage"] .theme-select {
+  color: var(--bg);
+}
+
+:root[data-theme="high-voltage"] .control:hover,
+:root[data-theme="high-voltage"] .control:focus-visible,
+:root[data-theme="high-voltage"] .theme-select:hover,
+:root[data-theme="high-voltage"] .theme-select:focus-visible {
+  color: var(--bg);
+  background: var(--accent);
+}
+
+:root[data-theme="high-voltage"] .control:disabled:hover {
+  color: var(--control-disabled);
+  background: transparent;
+}
+
+:root[data-theme="high-voltage"] .theme-picker {
+  border-left-color: #6c6a16;
+}
+
+:root[data-theme="high-voltage"] .theme-select option {
+  color: var(--bg);
+  background: var(--text);
+}
+
+:root[data-theme="high-voltage"] .progress {
+  height: 0.4rem;
+  background: var(--text);
+}
+
+:root[data-theme="high-voltage"] .progress__bar {
+  background: linear-gradient(90deg, var(--accent) 0 50%, var(--metadata) 50%);
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.theme-picker {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 2.4rem;
+  margin-left: 0.15rem;
+  padding-left: 0.45rem;
+  border-left: 1px solid var(--line);
+}
+
+.theme-picker__icon {
+  flex: 0 0 auto;
+  color: var(--accent-bright);
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+
+.theme-select {
+  width: 7.6rem;
+  height: 2.1rem;
+  min-width: 0;
+  padding: 0 0.35rem;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  background: transparent;
+  border: 0;
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
+
+.theme-select:hover,
+.theme-select:focus-visible {
+  color: var(--accent-bright);
+  background: var(--surface-strong);
+}
+
+.theme-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.theme-select option {
+  color: var(--text);
+  background: var(--surface);
+}
+
+@media (max-width: 32rem) {
+  .theme-select {
+    width: 5.5rem;
+  }
+}
+
+@media print {
+  :root[data-theme="field-notes"],
+  :root[data-theme="high-voltage"] {
+    color-scheme: light;
+  }
 }
 
 * {
