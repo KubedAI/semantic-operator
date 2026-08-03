@@ -27,18 +27,44 @@ The mechanical parts (datasets, fields, candidate joins) are generated. You supp
 
 `ossiectl derive` reads your catalog and writes a full, schema-valid `SemanticModel`. Datasets and fields come from the catalog, with `is_time` flagged on date and timestamp columns. `metrics`, `relationships`, `primary_key`, synonyms, governance, and views are left as clearly marked `TODO` placeholders, with a worked metric example. Candidate joins are inferred from key-name conventions and left commented out for you to confirm.
 
-Two sources ship. `-source glue` (the default) reads AWS Glue directly over the AWS SDK. It needs AWS credentials and Glue read access, and no cluster. `-source engine` reads the live query engine's `information_schema` through the same connection the operator uses (`ENGINE_*` env, `-engine trino` or `-engine starrocks`), which makes derivation work for **any catalog the engine mounts**: Glue, an Iceberg REST catalog such as Apache Polaris or Nessie, Hive Metastore, or Unity. Both sources produce identical dataset and field structure for the same tables.
+Two sources ship. Prefer `-source engine` when an engine is available. It reads the live
+query engine's `information_schema` through an `ENGINE_*` connection. Select Trino or
+StarRocks with `-engine`. This works for **any catalog the engine mounts**: Glue, an
+Iceberg REST catalog such as Apache Polaris or Nessie, Hive Metastore, or Unity. It also
+sees the schema and permissions that queries will use.
 
 ```bash
-go run ./cmd/ossiectl derive -region us-west-2 -database <your_glue_db> -out model.yaml
+go run ./cmd/ossiectl derive \
+  -source engine -engine trino \
+  -catalog <engine_catalog> -database <schema> \
+  -out model.yaml
 # writes to stdout if -out is omitted
 ```
 
-Flags: `-region` (or `$AWS_REGION`), `-database` (required), `-catalog` (the StarRocks external-catalog name, default `iceberg`), and `-model`, `-name`, `-namespace` for identifiers.
+`-source glue` is the offline bootstrap option. It reads AWS Glue directly over the AWS
+SDK and needs AWS credentials with Glue read access. It does not need a running query
+engine or Kubernetes cluster.
+
+```bash
+go run ./cmd/ossiectl derive \
+  -source glue -region us-west-2 \
+  -database <your_glue_db> -catalog <future_engine_catalog> \
+  -out model.yaml
+```
+
+The command currently defaults to `-source glue` for compatibility, so always pass
+`-source` explicitly. Both sources produce identical dataset and field structure for the
+same tables. Neither source is used at runtime.
+
+Common flags are `-database` (required), `-catalog` (the catalog name as mounted in the
+engine), and `-model`, `-name`, and `-namespace` for identifiers. `-region` or
+`$AWS_REGION` applies only to the Glue source.
 
 The generated file passes `ossiectl validate` as is, because empty metrics and relationships are legal. It grows richer as you fill in the placeholders.
 
-> No Glue? Use `-source engine` against your running engine, or hand-write `datasets`. `derive` is a convenience, not a requirement.
+> `derive` is a convenience, not a requirement. Use `-source engine` for the normal
+> connected workflow, `-source glue` to bootstrap without an engine, or hand-write
+> `datasets` yourself.
 
 ### Import business meaning from a metadata catalog
 
@@ -180,11 +206,22 @@ kubectl apply -f model.yaml                        # or git push, then ArgoCD
 kubectl -n semantic-system get semanticmodels -w   # Validated, Published, Drift=False
 ```
 
-`validate` runs the full structural and planner-subset checks and prints the content-addressed model version. Once the model is Published with Drift=False, the server serves it within seconds.
+`validate` runs structural and planner checks and prints the content-addressed model
+version. It makes no network calls and does not prove that the physical tables are
+available. After deployment, the operator asks the live engine to bind every referenced
+table and column. Once the model is Published with Drift=False, the server serves it
+within seconds.
 
 ## Keeping it current
 
-You maintain only metrics, joins, and synonyms. When the physical schema changes, re-run `derive` (or the controller's catalog sync) to regenerate field lists. Existing fields, metrics, and relationships are never overwritten. A missing bound column shows up as `DriftDetected` while the last good compiled artifact keeps serving, so a schema change never silently breaks queries.
+The current `derive` command writes a new scaffold. It does not merge that scaffold into an
+existing model. When the physical schema changes, derive a fresh file and review its
+dataset and field differences before copying the intended changes into the certified
+model. Keep metrics, relationships, governance, and other authored decisions under version
+control.
+
+A missing bound column shows up as `DriftDetected` while the last good compiled artifact
+keeps serving, so a schema change never silently breaks queries.
 
 ---
 

@@ -37,7 +37,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: server
-          image: "{{ required "image.repository is required" .Values.image.repository }}/server:{{ .Values.image.tag }}"
+          image: "{{ include "semantic-operator.image" (dict "root" . "component" "server") }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             {{- include "semantic-operator.engineEnv" (dict "root" . "component" "server") | nindent 12 }}

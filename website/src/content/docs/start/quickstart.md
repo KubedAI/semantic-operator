@@ -11,15 +11,17 @@ Read [Prerequisites](/examples/prerequisites) first if you have not set up a clu
 query engine yet. If you want the fuller version of this with a verification after every
 step, go straight to [Retail on Glue and StarRocks](/examples/glue-starrocks).
 
-## 1. Build and push the images
+## 1. Get the images
 
-Images are not published yet, so build them into a registry your cluster can pull from. The
-tag has to match the one you install with in the next step.
+Published multi-arch for `linux/amd64` and `linux/arm64`, so they run on
+Graviton and x86 alike. Nothing to build.
 
-```bash
-make ecr-create ecr-login docker-build docker-push \
-  REGISTRY=<acct>.dkr.ecr.us-west-2.amazonaws.com TAG=0.1.0
 ```
+public.ecr.aws/data-on-eks/semantic-operator/manager:v0.1.1
+public.ecr.aws/data-on-eks/semantic-operator/server:v0.1.1
+```
+
+To run your own build instead, see [Developing and testing](/guides/developing).
 
 ## 2. Install the operator and server
 
@@ -30,8 +32,6 @@ optional and only adds caching, so drop that line to run without it.
 helm install semantic-operator charts/semantic-operator \
   --set server.auth.allowInsecureHeaderAuth=true \
   --namespace semantic-system --create-namespace \
-  --set image.repository=<acct>.dkr.ecr.us-west-2.amazonaws.com/semantic-operator \
-  --set image.tag=0.1.0 \
   --set engine.type=starrocks \
   --set engine.host=kube-starrocks-fe-service.starrocks.svc.cluster.local \
   --set valkey.addr=valkey.valkey.svc.cluster.local:6379

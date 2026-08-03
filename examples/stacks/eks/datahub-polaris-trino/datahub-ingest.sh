@@ -12,6 +12,12 @@ CATALOG="${TRINO_CATALOG:-polaris}"
 SCHEMA="${POLARIS_SCHEMA:-osi_demo}"
 JOB=datahub-ingest-polaris
 
+# The DataHub chart prefixes its services with the release name, so the GMS
+# service is "<release>-datahub-gms" and differs between installs. Discover it
+# rather than hardcoding one spelling.
+GMS_SVC="${DATAHUB_GMS_SVC:-$(kubectl -n "$NS" get svc -o name 2>/dev/null | grep -m1 'datahub-gms' | cut -d/ -f2)}"
+[ -n "$GMS_SVC" ] || { echo "no datahub-gms service found in namespace $NS. Set DATAHUB_GMS_SVC." >&2; exit 1; }
+
 log() { printf '\033[1;32m[datahub-ingest]\033[0m %s\n' "$*"; }
 
 kubectl -n "$NS" delete job "$JOB" --ignore-not-found >/dev/null
@@ -29,7 +35,7 @@ source:
 sink:
   type: datahub-rest
   config:
-    server: http://datahub-datahub-gms.${NS}.svc.cluster.local:8080
+    server: http://${GMS_SVC}.${NS}.svc.cluster.local:8080
     # DataHub's system authenticator takes 'Basic <clientId>:<clientSecret>'
     # verbatim (not base64). The REST sink's 'token' option would send a
     # Bearer personal access token instead, which we would have to mint and

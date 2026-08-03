@@ -17,6 +17,25 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- default (printf "%s-server" (include "semantic-operator.name" .)) .Values.serviceAccount.server.name -}}
 {{- end -}}
 
+{{/*
+  The image reference for one deployment. Call with a dict:
+    (dict "root" . "component" "manager"|"server")
+
+  The repository is used exactly as given. The chart appends no path segment of
+  its own, so a registry that does not use the manager/server layout still
+  works. Tag falls back to the shared image.tag when the component sets none.
+*/}}
+{{- define "semantic-operator.image" -}}
+{{- $root := .root -}}
+{{- if $root.Values.image.repository -}}
+{{- fail "image.repository has been replaced by image.manager.repository and image.server.repository, which are used verbatim. Set those instead." -}}
+{{- end -}}
+{{- $img := index $root.Values.image .component | default dict -}}
+{{- $repo := required (printf "image.%s.repository is required" .component) $img.repository -}}
+{{- $tag := $img.tag | default $root.Values.image.tag -}}
+{{- printf "%s:%s" $repo (required "image.tag is required" $tag) -}}
+{{- end -}}
+
 {{/* Query-engine env for one deployment. Call with a dict:
        (dict "root" . "component" "manager"|"server")
 

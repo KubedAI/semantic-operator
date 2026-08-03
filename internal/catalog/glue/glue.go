@@ -1,6 +1,6 @@
-// Package glue implements catalog.Source against the AWS Glue Data Catalog.
-// Credentials come from the default AWS chain, so IRSA works in-cluster with
-// no static keys.
+// Package glue implements the optional offline catalog.Source against AWS Glue.
+// ossiectl obtains credentials from the local default AWS credential chain.
+// The operator and semantic server do not import or call this package.
 package glue
 
 import (
