@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="An introduction to semantic-operator.">
+    <title>semantic-operator</title>
+    <link rel="stylesheet" href="deck.css">
+    <script src="deck.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#slide-1">Skip to presentation</a>
+
+    <main class="deck" id="deck" aria-label="semantic-operator presentation">
+      <section class="slide slide--title" id="slide-1" tabindex="-1" data-title="Semantic Operator">
+        <div class="slide__content title-layout">
+          <p class="eyebrow">Apache Ossie on Kubernetes</p>
+          <h1>Semantic Operator</h1>
+          <p class="lede">
+              Business meaning, enforced in every query
+          </p>
+        </div>
+        <p class="slide__hint" aria-hidden="true">Use arrow keys or swipe to navigate</p>
+      </section>
+
+      <section class="slide slide--problem" id="slide-2" tabindex="-1" data-title="The semantic gap">
+        <div class="slide__content problem-setup">
+          <p class="eyebrow">The problem</p>
+          <h2>Business questions hide data decisions.</h2>
+          <p class="problem-statement">
+              You must decide what it means, where the data lives, and what counts.
+          </p>
+          <div class="leading-question">
+            <span>So what data answers this question?</span>
+            <blockquote>“What was revenue last quarter?”</blockquote>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide slide--evidence" id="slide-3" tabindex="-1" data-title="Agent variability">
+        <div class="slide__content evidence-layout">
+          <header class="evidence-copy">
+            <p class="eyebrow">Ask an agent</p>
+            <h2>The SQL runs. The answer is still wrong.</h2>
+            <p>
+              Change the phrasing and an agent may choose a different, equally plausible interpretation.
+            </p>
+          </header>
+
+          <div class="evidence-stage">
+            <div class="prompt-paths" aria-label="Two plausible interpretations of revenue">
+              <article class="prompt-path">
+                <p>“What was revenue last quarter?”</p>
+                <div><span>Agent chose</span> Gross sales · order date · before returns</div>
+              </article>
+              <article class="prompt-path">
+                <p>“What did we earn last quarter?”</p>
+                <div><span>Agent chose</span> Net sales · invoice date · after returns</div>
+              </article>
+            </div>
+
+            <aside class="benchmark-result" aria-label="28 wrong answers across 90 prompts">
+              <strong>28</strong>
+              <span>wrong answers</span>
+              <p>across 90 prompts</p>
+              <small>Every query executed successfully.</small>
+            </aside>
+          </div>
+
+          <p class="benchmark-method">30 business questions · 3 phrasings each · temperature 0</p>
+        </div>
+      </section>
+
+      <section class="slide slide--ossie" id="slide-4" tabindex="-1" data-title="Define meaning once">
+        <div class="slide__content ossie-layout">
+          <div class="ossie-intro">
+            <p class="eyebrow">A source of business meaning</p>
+            <h2>Define meaning once. <span>Use it everywhere.</span></h2>
+            <img class="ossie-logo" src="ossie.svg" alt="Apache Ossie">
+          </div>
+
+          <figure class="yaml-example">
+            <figcaption><span>retail.ossie.yaml</span><span>simplified</span></figcaption>
+            <pre aria-label="Simplified Apache Ossie YAML model"><code>version: "0.1.1"
+semantic_model:
+  - name: retail
+    datasets:
+      - name: store_sales
+        source: store_sales
+      - name: date
+        source: date_dim
+    relationships:
+      - name: sales_to_date
+        from: store_sales
+        to: date
+        from_columns: [ss_sold_date_sk]
+        to_columns: [d_date_sk]
+    metrics:
+      - name: total_sales
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: SUM(store_sales.ss_ext_sales_price)
+        ai_context:
+          synonyms: [revenue, gross sales]</code></pre>
+          </figure>
+        </div>
+      </section>
+
+      <section class="slide slide--operator" id="slide-5" tabindex="-1" data-title="Put the specification to work">
+        <div class="slide__content operator-layout">
+          <p class="eyebrow">From specification to operation</p>
+          <h2>A specification defines meaning. <span>Semantic Operator puts it to work.</span></h2>
+
+          <div class="concept-flow" role="img" aria-label="Apache Ossie defines business meaning, Semantic Operator applies that meaning, and Query Engines execute against data">
+            <div class="concept-step concept-step--ossie">
+              <div class="concept-mark concept-mark--logo">
+                <img src="ossie.svg" alt="">
+              </div>
+              <strong>Apache Ossie</strong>
+              <small>defines meaning</small>
+            </div>
+            <span class="concept-arrow" aria-hidden="true">→</span>
+            <div class="concept-step concept-step--operator">
+              <div class="concept-mark">
+                <svg class="concept-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <circle cx="12" cy="3" r="2"></circle>
+                  <circle cx="4" cy="19" r="2"></circle>
+                  <circle cx="20" cy="19" r="2"></circle>
+                  <path d="M12 5v4M6 18l4-4M18 18l-4-4"></path>
+                </svg>
+              </div>
+              <strong>Semantic Operator</strong>
+              <small>applies that meaning</small>
+            </div>
+            <span class="concept-arrow" aria-hidden="true">→</span>
+            <div class="concept-step concept-step--engine">
+              <div class="concept-mark">
+                <svg class="concept-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <ellipse cx="12" cy="5" rx="8" ry="3"></ellipse>
+                  <path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5"></path>
+                  <path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"></path>
+                </svg>
+              </div>
+              <strong>Query Engines (StarRocks · Trino)</strong>
+              <small>execute against data</small>
+            </div>
+          </div>
+
+          <p class="concept-principle">Semantic contract <span aria-hidden="true">→</span> governed retrieval</p>
+        </div>
+      </section>
+
+      <section class="slide slide--architecture" id="slide-6" tabindex="-1" data-title="Two paths">
+        <div class="slide__content architecture-layout">
+          <svg class="architecture-symbols" width="0" height="0" aria-hidden="true">
+            <symbol id="architecture-database" viewBox="0 0 24 24">
+              <ellipse cx="12" cy="5" rx="8" ry="3"></ellipse>
+              <path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5"></path>
+              <path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"></path>
+            </symbol>
+            <symbol id="architecture-terminal" viewBox="0 0 24 24">
+              <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+              <path d="m7 9 3 3-3 3"></path>
+              <path d="M13 15h4"></path>
+            </symbol>
+            <symbol id="architecture-document" viewBox="0 0 24 24">
+              <path d="M6 3h8l4 4v14H6z"></path>
+              <path d="M14 3v5h5"></path>
+              <path d="M9 12h6M9 16h6"></path>
+            </symbol>
+            <symbol id="architecture-network" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="3"></circle>
+              <circle cx="12" cy="3" r="2"></circle>
+              <circle cx="4" cy="19" r="2"></circle>
+              <circle cx="20" cy="19" r="2"></circle>
+              <path d="M12 5v4M6 18l4-4M18 18l-4-4"></path>
+            </symbol>
+            <symbol id="architecture-consumers" viewBox="0 0 24 24">
+              <circle cx="8" cy="7" r="3"></circle>
+              <path d="M2.5 20c0-4 2-7 5.5-7s5.5 3 5.5 7"></path>
+              <rect x="15" y="8" width="6" height="10" rx="1.5"></rect>
+            </symbol>
+            <symbol id="architecture-api" viewBox="0 0 24 24">
+              <path d="m8 4-5 8 5 8M16 4l5 8-5 8M14 3l-4 18"></path>
+            </symbol>
+            <symbol id="architecture-agent" viewBox="0 0 24 24">
+              <circle cx="9" cy="8" r="4"></circle>
+              <path d="M3 21v-2c0-3.3 2.7-6 6-6s6 2.7 6 6v2"></path>
+              <path d="M19 2v5M16.5 4.5h5"></path>
+            </symbol>
+            <symbol id="architecture-application" viewBox="0 0 24 24">
+              <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+              <path d="M3 9h18"></path>
+              <circle cx="6.5" cy="6.5" r="0.5"></circle>
+              <circle cx="9.5" cy="6.5" r="0.5"></circle>
+            </symbol>
+            <symbol id="architecture-result" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="9"></circle>
+              <path d="m8 12 3 3 5-6"></path>
+            </symbol>
+            <symbol id="architecture-metrics" viewBox="0 0 24 24">
+              <path d="M4 20V10M10 20V5M16 20v-7M22 20V8"></path>
+              <path d="M2 20h21"></path>
+            </symbol>
+            <symbol id="architecture-columns" viewBox="0 0 24 24">
+              <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+              <path d="M9 4v16M15 4v16M3 9h18"></path>
+            </symbol>
+            <symbol id="architecture-rows" viewBox="0 0 24 24">
+              <path d="M3 5h18l-7 8v6l-4 2v-8z"></path>
+            </symbol>
+          </svg>
+
+          <p class="eyebrow">Architecture</p>
+          <h2>Two paths. <span>One semantic contract.</span></h2>
+
+          <div class="architecture-lanes">
+            <section class="architecture-lane architecture-lane--create" aria-label="Creating the model">
+              <header><span>01</span><h3>Create the model</h3></header>
+              <div class="lane-flow">
+                <div class="lane-node">
+                  <svg class="lane-icon" aria-hidden="true"><use href="#architecture-database"></use></svg>
+                  <div class="lane-copy"><strong>Metadata sources</strong><small>physical structure · business context</small></div>
+                </div>
+                <span class="lane-arrow" aria-hidden="true">→</span>
+                <div class="lane-node">
+                  <svg class="lane-icon" aria-hidden="true"><use href="#architecture-terminal"></use></svg>
+                  <div class="lane-copy"><strong>ossiectl</strong><small>discover structure</small></div>
+                </div>
+                <span class="lane-arrow" aria-hidden="true">→</span>
+                <div class="lane-node">
+                  <svg class="lane-icon" aria-hidden="true"><use href="#architecture-document"></use></svg>
+                  <div class="lane-copy"><strong>Ossie YAML</strong><small>certify meaning</small></div>
+                </div>
+                <span class="lane-arrow" aria-hidden="true">→</span>
+                <div class="lane-node lane-node--operator">
+                  <svg class="lane-icon" aria-hidden="true"><use href="#architecture-network"></use></svg>
+                  <div class="lane-copy"><strong>Semantic Operator</strong><small>publish model</small></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="architecture-lane architecture-lane--consume" aria-label="Consuming the model">
+              <header><span>02</span><h3>Consume the model</h3></header>
+              <div class="lane-flow">
+                <div class="lane-node">
+                  <svg class="lane-icon" aria-hidden="true"><use href="#architecture-consumers"></use></svg>
+                  <div class="lane-copy"><strong>Agents · apps</strong><small>business question</small></div>
+                </div>
+                <span class="lane-arrow" aria-hidden="true">→</span>
+                <div class="lane-node">
+                  <svg class="lane-icon" aria-hidden="true"><use href="#architecture-api"></use></svg>
+                  <div class="lane-copy"><strong>MCP · REST</strong><small>semantic request</small></div>
+                </div>
+                <span class="lane-arrow" aria-hidden="true">→</span>
+                <div class="lane-node lane-node--operator">
+                  <svg class="lane-icon" aria-hidden="true"><use href="#architecture-network"></use></svg>
+                  <div class="lane-copy"><strong>Semantic Operator</strong><small>use certified meaning</small></div>
+                </div>
+                <span class="lane-arrow" aria-hidden="true">→</span>
+                <div class="lane-node">
+                  <svg class="lane-icon" aria-hidden="true"><use href="#architecture-database"></use></svg>
+                  <div class="lane-copy"><strong>Query Engines (StarRocks · Trino)</strong><small>return data</small></div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide slide--authoring" id="slide-7" tabindex="-1" data-title="Creating the model">
+        <div class="slide__content authoring-layout">
+          <p class="eyebrow">Creating the model</p>
+          <h2>Automation discovers structure. <span>People certify meaning.</span></h2>
+
+          <div class="authoring-stages">
+            <article class="authoring-stage">
+              <span class="stage-number">01</span>
+              <h3>Discover &amp; enrich</h3>
+              <p>Combine physical structure with existing business context.</p>
+              <small>schemas · descriptions · terminology</small>
+            </article>
+            <article class="authoring-stage authoring-stage--human">
+              <span class="stage-number">02</span>
+              <h3>Define</h3>
+              <p>An author certifies the semantic contract.</p>
+              <small>relationships · keys · metrics · policies</small>
+            </article>
+            <article class="authoring-stage">
+              <span class="stage-number">03</span>
+              <h3>Publish</h3>
+              <p>Apply the model to Kubernetes.</p>
+              <small>validated · ready to serve</small>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide slide--governance" id="slide-8" tabindex="-1" data-title="Access policies">
+        <div class="slide__content governance-layout">
+          <p class="eyebrow">Access policies</p>
+          <h2>Governance is part of the semantic contract.</h2>
+
+          <div class="policy-types">
+            <article class="policy-type policy-type--metrics">
+              <svg class="policy-icon" aria-hidden="true"><use href="#architecture-metrics"></use></svg>
+              <div class="policy-copy">
+                <h3>Metrics</h3>
+                <p>Choose which metrics a role can request.</p>
+                <code>allowMetrics</code>
+              </div>
+            </article>
+            <article class="policy-type policy-type--columns">
+              <svg class="policy-icon" aria-hidden="true"><use href="#architecture-columns"></use></svg>
+              <div class="policy-copy">
+                <h3>Columns</h3>
+                <p>Hide sensitive customer fields.</p>
+                <code>denyFields</code>
+              </div>
+            </article>
+            <article class="policy-type policy-type--rows">
+              <svg class="policy-icon" aria-hidden="true"><use href="#architecture-rows"></use></svg>
+              <div class="policy-copy">
+                <h3>Rows</h3>
+                <p>Restrict data by region or tenant.</p>
+                <code>rowFilters</code>
+              </div>
+            </article>
+          </div>
+
+          <p class="governance-principle">Same model. Access shaped by identity.</p>
+        </div>
+      </section>
+
+      <section class="slide slide--serving" id="slide-9" tabindex="-1" data-title="Consuming the model">
+        <div class="slide__content serving-layout">
+          <p class="eyebrow">Consuming the model</p>
+          <h2>Every request follows the same governed path.</h2>
+
+          <div class="serving-flow" role="img" aria-label="Agents use MCP and applications use REST to request certified meaning from Semantic Operator, which retrieves data from query engines such as StarRocks or Trino and returns a result">
+            <div class="consumer-group">
+              <div class="consumer">
+                <svg class="serving-icon serving-icon--agent" aria-hidden="true"><use href="#architecture-agent"></use></svg>
+                <div class="serving-copy"><small>Agent</small><strong>MCP</strong></div>
+              </div>
+              <div class="consumer">
+                <svg class="serving-icon serving-icon--application" aria-hidden="true"><use href="#architecture-application"></use></svg>
+                <div class="serving-copy"><small>Application</small><strong>REST</strong></div>
+              </div>
+            </div>
+            <span class="serving-arrow" aria-hidden="true">→</span>
+            <div class="serving-node serving-node--operator">
+              <svg class="serving-icon" aria-hidden="true"><use href="#architecture-network"></use></svg>
+              <div class="serving-copy"><small>Certified meaning</small><strong>Semantic Operator</strong><span>govern · retrieve</span></div>
+            </div>
+            <span class="serving-arrow" aria-hidden="true">→</span>
+            <div class="serving-node">
+              <svg class="serving-icon serving-icon--engine" aria-hidden="true"><use href="#architecture-database"></use></svg>
+              <div class="serving-copy"><small>Execution</small><strong>Query Engines (StarRocks · Trino)</strong><span>execute</span></div>
+            </div>
+            <span class="serving-arrow" aria-hidden="true">→</span>
+            <div class="serving-result">
+              <svg class="serving-icon serving-icon--result" aria-hidden="true"><use href="#architecture-result"></use></svg>
+              <div class="serving-copy"><small>Return</small><strong>Result</strong></div>
+            </div>
+          </div>
+
+          <p class="serving-principle">The agent selects certified concepts. It never writes SQL.</p>
+        </div>
+      </section>
+
+      <section class="slide slide--interstitial slide--demo" id="slide-10" tabindex="-1" data-title="Demo">
+        <div class="slide__content interstitial-layout">
+          <h2>Demo</h2>
+        </div>
+      </section>
+
+      <section class="slide slide--interstitial slide--thanks" id="slide-11" tabindex="-1" data-title="Thank You">
+        <div class="slide__content interstitial-layout">
+          <h2>Thank You</h2>
+        </div>
+      </section>
+    </main>
+
+    <div class="progress" aria-hidden="true">
+      <span class="progress__bar" id="progress-bar"></span>
+    </div>
+
+    <nav class="controls" aria-label="Presentation controls">
+      <button class="control" id="previous-slide" type="button" aria-label="Previous slide" title="Previous slide (Left arrow)">
+        <span aria-hidden="true">←</span>
+      </button>
+      <output class="slide-counter" id="slide-counter" aria-live="polite">1 / 11</output>
+      <button class="control" id="next-slide" type="button" aria-label="Next slide" title="Next slide (Right arrow)">
+        <span aria-hidden="true">→</span>
+      </button>
+      <button class="control control--fullscreen" id="toggle-fullscreen" type="button" aria-label="Enter fullscreen" title="Toggle fullscreen (F)">
+        <span aria-hidden="true">⛶</span>
+      </button>
+    </nav>
+
+    <noscript>
+      <p class="noscript">JavaScript is optional. Scroll to move between slides.</p>
+    </noscript>
+  </body>
+</html>
