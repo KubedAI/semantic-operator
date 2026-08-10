@@ -1,146 +1,182 @@
 # Semantic Operator speaker notes
 
-The slide carries the idea. These notes provide the explanation and the transition to the next slide.
+The slides carry one idea at a time. Use these notes for the explanation and transition.
 
-## Slide 1: Semantic Operator
+## Slide 1: Stop agents from guessing SQL
 
-Reliable business answers depend on more than generating valid SQL. They depend on retrieving the data that matches the business definition of the question.
+AI agents are becoming a new interface to enterprise data. They can generate SQL, but a database schema does not explain what revenue means, which date defines a quarter, how returns are treated, or what a caller may see.
 
-Semantic Operator makes that retrieval governed and deterministic. Given the same certified model, semantic request, and caller identity, it produces the same query plan and SQL.
+Semantic Operator gives agents a safer contract. Agents select certified business concepts. A deterministic planner produces the SQL, and governance is applied before that SQL exists.
 
-### Transition
-
-Why is this necessary? Because the language used by the business and the structure stored in the warehouse are not the same thing.
-
-## Slide 2: The semantic gap
-
-Business questions often sound simple, but retrieving the right data is difficult, even for a human. You need to decide what the metric means, where the data lives, how the tables relate, which timestamp applies, and which records count.
+This project runs Apache Ossie semantic models as an operational service on Kubernetes.
 
 ### Transition
 
-Consider a simple example: What was revenue last quarter?
+To understand why this matters, start with a question that sounds simple.
 
-## Slide 3: Agent variability
+## Slide 2: Business questions hide decisions
 
-If we ask an agent to answer it by writing SQL, it has to guess at all of those decisions.
-An agent can generate SQL that looks reasonable and executes successfully. That does not prove that it selected the intended business definition.
+Ask, “What was revenue last quarter?” A person still needs to resolve several hidden decisions.
 
-Changing the phrasing can cause the agent to choose a different metric, date field, join path, or treatment of returns. Each choice can produce valid SQL and a different result.
+Which revenue definition applies? Which timestamp determines the quarter? Are refunds subtracted? Which joins preserve the correct grain? Can this caller see every region and customer?
 
-We tested 30 business questions with three phrasings each at temperature zero. The raw text-to-SQL path returned 28 wrong answers across 90 prompts. Every incorrect query executed successfully.
-
-The failure was not SQL syntax. The failure was uncodified business meaning.
+Those decisions are business knowledge. They are rarely encoded in table and column names. If the knowledge is missing, every tool and every agent must reconstruct it.
 
 ### Transition
 
-What if the agent did not need to reconstruct that meaning for every question? What if we defined it once and reused it?
+Valid SQL does not prove that those decisions were correct.
 
-## Slide 4: Define meaning once
+## Slide 3: Valid SQL can still be wrong
 
-Apache Ossie is an incubating, vendor-neutral specification for semantic models. It defines datasets, fields, metrics, relationships, and business context in a form that different tools can share.
+We compared direct text-to-SQL with semantic retrieval. The test used 30 business questions, three phrasings of each question, and temperature zero.
 
-The simplified YAML on the slide shows those concepts working together. It identifies the physical sales and date datasets, defines how the datasets relate, certifies the `total_sales` formula, and records the business phrases that refer to it.
+The direct text-to-SQL path produced 28 wrong answers across 90 prompts. Every query executed successfully. The failures were semantic, not syntactic. The model selected a plausible but incorrect metric, date, join, or filter.
 
-It provides a common source of business meaning across AI, BI, and data tools. The project is developed by a broad industry community with participation from companies including Databricks, Snowflake, and Salesforce.
-
-Instead of asking each tool to redefine revenue, we define and certify that meaning once.
+This is the key problem. An agent can be confident, the database can accept the SQL, and the answer can still be wrong.
 
 ### Transition
 
-A specification can describe what the data means. But a specification is not a running system. How do we use it to answer a real question?
+We need a translation layer between business language and physical data.
 
-## Slide 5: Put the specification to work
+### Sources
 
+- Project benchmark methodology and results: `examples/retail/bench/RESULTS.md`
 
-Semantic Operator applies that meaning when data is requested. The existing Query Engines execute against the underlying data platform.
+## Slide 4: What is a semantic layer?
 
-This connects a portable semantic contract to real infrastructure without asking every agent or application to recreate the definitions.
+Think of enterprise meaning as three connected layers.
 
-Apache Ossie defines the meaning. Semantic Operator applies it. Query Engines execute against the data.
+The physical layer says where data lives. It contains tables, columns, engines, and catalogs.
 
-### Transition
+The logical layer says what the data means for analysis. It defines datasets, fields, dimensions, metrics, relationships, and grain. For example, it defines revenue once instead of asking each consumer to invent it.
 
-Now we can zoom out. There are two ways people interact with the system: creating the shared model and consuming it.
+The conceptual layer says why those definitions matter. It describes business concepts, relationships, rules, and eventually reasoning. A Subscriber can be a type of Customer. A Refund can reduce Revenue.
 
-## Slide 6: Two paths
+Mappings connect conceptual knowledge to the logical model. Bindings connect the logical model to physical data.
 
-The architecture has two distinct flows connected by one semantic contract.
-
-In the creation flow, metadata sources provide physical structure and existing business context. `ossiectl` combines those inputs into an Ossie YAML scaffold. People review and certify the business meaning, then Semantic Operator publishes the model so it is ready to use.
-
-In the consumption flow, agents and applications ask for business concepts through MCP or REST. Semantic Operator uses the same published meaning to retrieve data from the existing StarRocks or Trino platform.
-
-Both flows depend on the same model. Meaning is defined once and reused for every consumer.
+Semantic Operator operationalizes the logical layer today. The conceptual ontology layer is the direction we are following with the Apache Ossie community.
 
 ### Transition
 
-First, let us look more closely at how the model is created.
+A shared logical layer is most valuable when its format is open and portable.
 
-## Slide 7: Creating the model
+## Slide 5: Apache Ossie makes meaning portable
 
-Automation can discover physical structure and enrich it with business metadata already available to the organization. `ossiectl` combines schemas, descriptions, and terminology into a starting scaffold.
+Apache Ossie is an incubating open source standard for semantic models. The project was formerly known as Open Semantic Interchange, or OSI.
 
-That scaffold is only a starting point. Existing context is useful input, but it is not certified business meaning. A person must define or verify the relationships, primary keys, metrics, synonyms, and governance policies that reflect how the organization actually uses its data.
+An Ossie model can express datasets, fields, relationships, dimensions, metrics, and business context in a vendor-neutral YAML contract.
 
-Once the model is ready, it is applied to Kubernetes as a `SemanticModel`. Semantic Operator validates and publishes it. The model is then ready for agents and applications to consume.
+The example on the slide is deliberately small. The business term Revenue points to a certified metric named `total_sales`, and that metric has one approved definition. Agents, BI tools, and applications can reference the same definition.
 
-Automation saves the mechanical work. People remain responsible for the meaning.
-
-### Transition
-
-Business meaning also includes who is allowed to use each part of the model. Those access rules are defined alongside the metrics and relationships.
-
-## Slide 8: Access policies
-
-Governance is part of the semantic contract rather than an afterthought applied to the result.
-
-Metric policies determine which certified metrics a role may request. Column policies deny access to sensitive fields such as customer email. Row policies restrict the data by region, tenant, or another identity-specific boundary.
-
-The same model can therefore serve several audiences without creating separate copies. An analyst can use approved metrics without seeing sensitive fields. A regional analyst can use those metrics over only the rows they are authorized to access.
-
-Unauthorized metric or column requests are rejected. Row restrictions are applied before the query reaches the engine. Access is shaped by the verified identity of the caller.
+The standard makes meaning portable. It does not by itself validate live schemas, publish runtime artifacts, enforce caller policies, or operate a query service. That is the gap Semantic Operator addresses.
 
 ### Transition
 
-With both meaning and access defined, every consumer can use the same governed path.
+The standard defines meaning. The operator turns it into a running system.
 
-## Slide 9: Consuming the model
+### Sources
 
-An application can request certified metrics and dimensions through REST. An agent can select those same concepts through MCP.
+- [Apache Ossie](https://ossie.apache.org/)
+- [Apache Ossie on GitHub](https://github.com/apache/ossie)
 
-Neither consumer needs to recreate the metric definition or understand the physical joins. Semantic Operator uses the published model, applies the relevant governance, retrieves the data from StarRocks or Trino, and returns the result.
+## Slide 6: Put the standard to work
 
-The agent selects certified business concepts. It never writes the SQL that reaches the query engine.
+The flow has three responsibilities.
 
-This gives applications and agents different interfaces without giving them different definitions of the business.
+Apache Ossie provides the portable semantic contract. Semantic Operator validates, compiles, governs, and plans requests from that contract. StarRocks or Trino executes the resulting SQL against the organization’s existing data platform.
 
-### Transition
+The planner is deterministic. The same compiled model, request, dialect, and verified identity produce byte-identical SQL. The agent does not improvise joins or formulas.
 
-With the model published and the consumption path established, we can see the complete experience in the demo.
-
-## Slide 10: Demo
-
-Demonstrate the three promises from the presentation:
-
-1. Show the certified `total_sales` metric and its relationship to the business term revenue.
-2. Ask “What was revenue last quarter?” through MCP and show the returned result.
-3. Show the equivalent REST request using the same certified concepts.
-4. Demonstrate an access policy with a denied field or a role-scoped row filter.
-
-Keep the demo focused on the business question, consistent meaning, and governed result. Avoid turning it into a deployment walkthrough.
+This separation matters. The community standard remains portable. The Kubernetes operator handles operations. Existing query engines continue doing the work they are designed to do.
 
 ### Transition
 
-The demo shows the complete path from defined meaning to governed retrieval.
+Before a model can serve requests, teams need a practical way to create it.
 
-## Slide 11: Thank You
+## Slide 7: Start with metadata, finish with certified meaning
 
-Close with the central takeaway:
+Writing a semantic model from a blank file is unnecessary work. `ossiectl` can discover physical structure from supported sources such as AWS Glue or a live engine schema. DataHub can enrich that scaffold with descriptions, glossary terms, ownership, and classifications.
 
-Define meaning once. Govern it once. Use it everywhere.
+Automation handles structure and existing metadata. It cannot decide the organization’s official revenue definition. A domain owner still certifies metrics, joins, synonyms, and governance policies.
 
-Invite questions and discussion.
+The finished model is applied to Kubernetes as a `SemanticModel` custom resource.
+
+This is a human-in-the-loop workflow. Machines reduce mechanical effort. People remain accountable for business meaning.
 
 ### Transition
 
-Open the floor for questions.
+Once submitted, the operator must protect production from incomplete or stale definitions.
+
+## Slide 8: Bad models never replace good ones
+
+The Kubernetes reconciliation loop provides a safety boundary.
+
+First, the operator validates the model structure, metric grammar, and join graph. Next, it checks the physical bindings against the live engine schema to detect missing tables or columns. It then compiles a deterministic artifact and publishes that artifact for serving.
+
+If validation or drift checking fails, the new version is not published. The last known good artifact keeps serving. This prevents a broken edit or schema change from silently changing production answers.
+
+Kubernetes status and events show model readiness and failure reasons through the operational interface platform teams already use.
+
+### Transition
+
+Publication is only half the story. The request path must enforce the same meaning and policy every time.
+
+## Slide 9: Agents choose meaning, never SQL
+
+Agents use MCP and applications use REST, but both interfaces enter one service path.
+
+The caller requests certified metrics, dimensions, filters, and time grain. Semantic Operator resolves the verified identity, authorizes metrics and columns, applies row policies, creates the plan, and emits one SQL statement for the query engine.
+
+Governance runs before SQL exists. A prohibited metric or column is rejected instead of being fetched and hidden later. Row boundaries become part of the planned query.
+
+The LLM is limited to selecting known business concepts. It never writes the SQL sent to StarRocks or Trino.
+
+### Transition
+
+That shared contract serves several groups without creating separate definitions for each tool.
+
+## Slide 10: Who should use it?
+
+Agent builders get trusted context and a constrained retrieval interface. They do not need to prompt an LLM with warehouse schemas and hope it chooses the right joins.
+
+BI and analytics teams get consistent metrics across natural language experiences and conventional tools.
+
+Data platform and governance teams get a Kubernetes-native lifecycle, live drift checks, identity-aware policies, deterministic SQL, and audit context.
+
+All three groups use one certified model. That is the leverage: define and govern business meaning once, then reuse it across consumers.
+
+### Transition
+
+Metrics answer analytical questions. The next community challenge is richer business understanding.
+
+## Slide 11: The ontology direction
+
+Today the project focuses on deterministic semantic models: certified metrics, dimensions, joins, filters, and policies.
+
+The Apache Ossie Ontology Working Group is exploring the conceptual layer above that model. This includes concepts, typed relationships, rules, and mappings into logical semantic elements.
+
+That layer can help an agent understand that a Subscriber is a Customer, that a Refund affects Revenue, or that an Offer requires approval. It can also make the same conceptual knowledge portable across organizations and tools.
+
+Our direction is to follow this community work and map ontology concepts into the existing deterministic planner. We should preserve the safety boundary. The ontology supplies richer context, while certified mappings and bounded planning still control what reaches the data engine.
+
+### Transition
+
+Now let us see the current end-to-end experience.
+
+### Sources
+
+- [Apache Ossie](https://ossie.apache.org/)
+- Apache Ossie Ontology Working Group materials shared in the community channels
+
+## Slide 12: Demo
+
+Keep the demo centered on one business question: “What was revenue last quarter?”
+
+1. Show the certified revenue metric and its physical bindings in the Ossie model.
+2. Apply the `SemanticModel` and show that the operator validates and publishes it.
+3. Ask the question through the agent or MCP path.
+4. Show the semantic request and the single generated SQL statement.
+5. Show the governed result.
+6. If time permits, request a denied field or use a restricted role to demonstrate that policy is enforced before execution.
+
+Close with the three promises the audience just saw: no guessed SQL, one certified meaning, and one governed path from agent to data.
