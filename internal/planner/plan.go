@@ -13,7 +13,7 @@ import (
 	"github.com/KubedAI/semantic-operator/internal/planner/expr"
 )
 
-// Request is a semantic query: metrics by dimensions, filtered, at a grain.
+// Request is a semantic query: metrics by dimensions, filtered, ordered, at a grain.
 type Request struct {
 	Model      string   `json:"model"`
 	Metrics    []string `json:"metrics"`
@@ -21,8 +21,16 @@ type Request struct {
 	Filters    []Filter `json:"filters,omitempty"`
 	// TimeGrain is one of day, week, month, quarter, year. It truncates the
 	// first requested time dimension (dimension.is_time).
-	TimeGrain string `json:"timeGrain,omitempty"`
-	Limit     int    `json:"limit,omitempty"`
+	TimeGrain string          `json:"timeGrain,omitempty"`
+	OrderBy   []OrderByClause `json:"orderBy,omitempty"`
+	Limit     int             `json:"limit,omitempty"`
+}
+
+// OrderByClause orders by one requested output field. Field is a certified
+// metric name or dataset.field dimension, never a SQL expression.
+type OrderByClause struct {
+	Field     string `json:"field"`
+	Direction string `json:"direction"` // asc or desc
 }
 
 // Filter restricts rows before aggregation.
@@ -76,6 +84,12 @@ type dimSpec struct {
 	Grained bool // TimeGrain applies to this dimension
 }
 
+// orderSpec is a validated final-output ordinal and fixed SQL direction.
+type orderSpec struct {
+	Ordinal   int
+	Direction string
+}
+
 // Build compiles a semantic request into one SQL statement. It is a pure
 // function of (model, dialect, request, identity): no I/O, no randomness,
 // map iteration only through order slices.
@@ -123,6 +137,11 @@ func Build(cm *CompiledModel, d emitter.Dialect, req Request, id governance.Iden
 		if !applied {
 			return nil, fmt.Errorf("timeGrain %q requires a time dimension (dimension.is_time) among the requested dimensions", req.TimeGrain)
 		}
+	}
+
+	order, err := resolveOrderBy(req)
+	if err != nil {
+		return nil, err
 	}
 
 	// Resolve filters.
@@ -230,13 +249,13 @@ func Build(cm *CompiledModel, d emitter.Dialect, req Request, id governance.Iden
 		if err != nil {
 			return nil, err
 		}
-		sql = finishQuery(sql, len(dims), req.Limit)
+		sql = finishQuery(sql, len(dims), order, req.Limit)
 	} else {
 		sql, err = b.compositeQuery(baseRequired, inline, split[0], split[1:], req.Filters)
 		if err != nil {
 			return nil, err
 		}
-		sql = finishQuery(sql, len(dims), req.Limit)
+		sql = finishQuery(sql, len(dims), order, req.Limit)
 	}
 
 	return &Plan{
@@ -290,8 +309,52 @@ func resolveFieldRef(cm *CompiledModel, s string) (expr.FieldRef, *CompiledField
 	return ref, cf, nil
 }
 
-func finishQuery(sql string, ndims, limit int) string {
-	if ndims > 0 {
+func resolveOrderBy(req Request) ([]orderSpec, error) {
+	positions := make(map[string][]int, len(req.Dimensions)+len(req.Metrics))
+	for i, name := range req.Dimensions {
+		positions[name] = append(positions[name], i+1)
+	}
+	for i, name := range req.Metrics {
+		positions[name] = append(positions[name], len(req.Dimensions)+i+1)
+	}
+
+	seen := make(map[string]bool, len(req.OrderBy))
+	order := make([]orderSpec, 0, len(req.OrderBy))
+	for i, clause := range req.OrderBy {
+		pos, ok := positions[clause.Field]
+		if !ok {
+			return nil, fmt.Errorf("orderBy[%d].field %q must reference a requested metric or dimension", i, clause.Field)
+		}
+		if len(pos) > 1 {
+			return nil, fmt.Errorf("orderBy[%d].field %q is ambiguous because it is requested more than once", i, clause.Field)
+		}
+		if seen[clause.Field] {
+			return nil, fmt.Errorf("orderBy[%d].field %q appears more than once", i, clause.Field)
+		}
+
+		var direction string
+		switch clause.Direction {
+		case "asc":
+			direction = "ASC"
+		case "desc":
+			direction = "DESC"
+		default:
+			return nil, fmt.Errorf("orderBy[%d].direction %q is invalid: use asc or desc", i, clause.Direction)
+		}
+		seen[clause.Field] = true
+		order = append(order, orderSpec{Ordinal: pos[0], Direction: direction})
+	}
+	return order, nil
+}
+
+func finishQuery(sql string, ndims int, order []orderSpec, limit int) string {
+	if len(order) > 0 {
+		parts := make([]string, len(order))
+		for i, spec := range order {
+			parts[i] = fmt.Sprintf("%d %s", spec.Ordinal, spec.Direction)
+		}
+		sql += "\nORDER BY " + strings.Join(parts, ", ")
+	} else if ndims > 0 {
 		ords := make([]string, ndims)
 		for i := range ords {
 			ords[i] = fmt.Sprint(i + 1)

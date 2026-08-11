@@ -33,13 +33,39 @@ type filterIn struct {
 	Values []any  `json:"values,omitempty" jsonschema:"Values for IN / NOT IN / BETWEEN"`
 }
 
+type orderByIn struct {
+	Field     string `json:"field" jsonschema:"Requested certified metric or dimension to order by"`
+	Direction string `json:"direction" jsonschema:"Sort direction: asc or desc"`
+}
+
 type queryIn struct {
-	Model      string     `json:"model,omitempty" jsonschema:"Semantic model name. Optional when exactly one model is published."`
-	Metrics    []string   `json:"metrics" jsonschema:"Certified metric names from list_metrics. At least one."`
-	Dimensions []string   `json:"dimensions,omitempty" jsonschema:"Group-by dimensions as dataset.field from list_dimensions"`
-	Filters    []filterIn `json:"filters,omitempty" jsonschema:"Row filters applied before aggregation"`
-	Grain      string     `json:"grain,omitempty" jsonschema:"Time grain: day, week, month, quarter, or year. Requires a time dimension in dimensions."`
-	Limit      int        `json:"limit,omitempty" jsonschema:"Row limit"`
+	Model      string      `json:"model,omitempty" jsonschema:"Semantic model name. Optional when exactly one model is published."`
+	Metrics    []string    `json:"metrics" jsonschema:"Certified metric names from list_metrics. At least one."`
+	Dimensions []string    `json:"dimensions,omitempty" jsonschema:"Group-by dimensions as dataset.field from list_dimensions"`
+	Filters    []filterIn  `json:"filters,omitempty" jsonschema:"Row filters applied before aggregation"`
+	Grain      string      `json:"grain,omitempty" jsonschema:"Time grain: day, week, month, quarter, or year. Requires a time dimension in dimensions."`
+	OrderBy    []orderByIn `json:"orderBy,omitempty" jsonschema:"Ordered requested fields. Add every requested dimension after a metric to guarantee stable Top-N ties."`
+	Limit      int         `json:"limit,omitempty" jsonschema:"Row limit applied after ordering"`
+}
+
+func (in queryIn) plannerRequest() planner.Request {
+	req := planner.Request{
+		Metrics:    in.Metrics,
+		Dimensions: in.Dimensions,
+		TimeGrain:  in.Grain,
+		Limit:      in.Limit,
+	}
+	for _, f := range in.Filters {
+		req.Filters = append(req.Filters, planner.Filter{
+			Field: f.Field, Op: f.Op, Value: f.Value, Values: f.Values,
+		})
+	}
+	for _, order := range in.OrderBy {
+		req.OrderBy = append(req.OrderBy, planner.OrderByClause{
+			Field: order.Field, Direction: order.Direction,
+		})
+	}
+	return req
 }
 
 type queryOut struct {
@@ -117,26 +143,17 @@ func NewServer(svc *serving.Service, version string) *sdk.Server {
 	sdk.AddTool(srv, &sdk.Tool{
 		Name: "query_metric",
 		Description: "Query one or more certified metrics grouped by dimensions with " +
-			"optional filters and time grain. The semantic planner compiles the request " +
-			"into deterministic, governed SQL and executes it on the configured query " +
-			"engine. The response " +
-			"includes the SQL for provenance. Do not write SQL yourself.",
+			"optional filters, time grain, ordering, and a row limit. For highest, lowest, " +
+			"or Top-N questions, order by the requested metric and add every requested " +
+			"dimension to guarantee stable ties before setting the limit. The semantic planner compiles " +
+			"the request into deterministic, governed SQL and executes it on the configured " +
+			"query engine. The response includes the SQL for provenance. Do not write SQL yourself.",
 	}, func(ctx context.Context, req *sdk.CallToolRequest, in queryIn) (*sdk.CallToolResult, queryOut, error) {
 		m, err := svc.Resolve(in.Model)
 		if err != nil {
 			return nil, queryOut{}, err
 		}
-		preq := planner.Request{
-			Metrics:    in.Metrics,
-			Dimensions: in.Dimensions,
-			TimeGrain:  in.Grain,
-			Limit:      in.Limit,
-		}
-		for _, f := range in.Filters {
-			preq.Filters = append(preq.Filters, planner.Filter{
-				Field: f.Field, Op: f.Op, Value: f.Value, Values: f.Values,
-			})
-		}
+		preq := in.plannerRequest()
 		res, err := svc.Query(ctx, "mcp", m, preq, serving.IdentityFrom(ctx))
 		if err != nil {
 			return nil, queryOut{}, err
