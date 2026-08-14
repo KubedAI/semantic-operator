@@ -79,13 +79,26 @@ func TestOversizedBodyIsRejected(t *testing.T) {
 // rather than through the handler, because driving the full query path would
 // require a wired cache, tracer, and engine to prove a point about decoding.
 func TestWellFormedBodyPassesDecoding(t *testing.T) {
-	body := `{"metrics":["revenue"],"dimensions":["store.s_state"],"filters":[{"field":"store.s_state","op":"=","value":"NY"}],"timeGrain":"month","limit":10}`
+	body := `{"metrics":["revenue"],"dimensions":["store.s_state"],"filters":[{"field":"store.s_state","op":"=","value":"NY"}],"timeGrain":"month","orderBy":[{"field":"revenue","direction":"desc"},{"field":"store.s_state","direction":"asc"}],"limit":10}`
 	r := httptest.NewRequest(http.MethodPost, "/v1/models/retail/query", strings.NewReader(body))
 	var req planner.Request
 	if err := decodeJSON(httptest.NewRecorder(), r, 1<<20, &req); err != nil {
 		t.Fatalf("valid body was rejected: %v", err)
 	}
-	if len(req.Metrics) != 1 || req.Limit != 10 || len(req.Filters) != 1 {
+	if len(req.Metrics) != 1 || req.Limit != 10 || len(req.Filters) != 1 || len(req.OrderBy) != 2 {
 		t.Fatalf("body decoded incorrectly: %+v", req)
+	}
+	if req.OrderBy[0].Field != "revenue" || req.OrderBy[0].Direction != "desc" {
+		t.Fatalf("orderBy decoded incorrectly: %+v", req.OrderBy)
+	}
+}
+
+func TestUnknownOrderByPropertyIsRejected(t *testing.T) {
+	body := `{"metrics":["revenue"],"orderBy":[{"field":"revenue","direction":"desc","expression":"revenue DESC"}]}`
+	r := httptest.NewRequest(http.MethodPost, "/v1/models/retail/query", strings.NewReader(body))
+	var req planner.Request
+	err := decodeJSON(httptest.NewRecorder(), r, 1<<20, &req)
+	if err == nil || !strings.Contains(err.Error(), "expression") {
+		t.Fatalf("expected unknown nested property error, got %v", err)
 	}
 }

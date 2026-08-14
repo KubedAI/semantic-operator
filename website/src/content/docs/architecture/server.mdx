@@ -70,6 +70,30 @@ join, summing it directly would multiply it by the number of fact rows. The plan
 those into separate aggregations and deduplicates on the dimension's primary key. This is
 the single most common way hand written and generated SQL produce a wrong number.
 
+Ranking requests use `orderBy`. Each field must be a metric or dimension already requested,
+and each direction must be `asc` or `desc`. The planner resolves fields to output columns.
+It does not accept SQL expressions. When `orderBy` contains clauses, the planner emits
+exactly those clauses and does not append hidden tie-breakers. An omitted or empty `orderBy`
+retains the existing default ordering by requested dimensions. Ordering is applied before
+the row limit.
+
+```json
+{
+  "metrics": ["total_sales"],
+  "dimensions": ["item.i_category"],
+  "orderBy": [
+    {"field": "total_sales", "direction": "desc"},
+    {"field": "item.i_category", "direction": "asc"}
+  ],
+  "limit": 5
+}
+```
+
+The dimension clause makes selection stable when categories have equal sales. Tie-breakers
+are explicit. For a result grouped by several dimensions, include every dimension to
+produce a complete and stable tie-breaker. A metric-only ordering remains valid, but tied
+rows at the limit boundary may be returned in an engine-dependent order.
+
 Row filters are conjoined within a role and disjoined across the roles that authorized the
 request, so a caller sees the union of the rows those roles allow. A role that authorized
 the request and carries no filters can see every row, which collapses the whole disjunction

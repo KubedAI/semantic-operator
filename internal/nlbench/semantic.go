@@ -17,9 +17,11 @@ const SemanticSystemPrompt = `You answer business questions using a governed sem
 exposed as tools. Workflow:
 1. Call list_metrics and list_dimensions to see what is certified. Match the user's
    wording against names, descriptions, and synonyms.
-2. Call query_metric with the chosen metric(s), dimensions, filters, and grain.
-   Filters use {"field":"dataset.field","op":"=","value":...}; use op "IN" with
-   "values" for multiple values.
+2. Call query_metric with the chosen metric(s), dimensions, filters, grain, ordering,
+   and limit. Filters use {"field":"dataset.field","op":"=","value":...}; use op
+   "IN" with "values" for multiple values. For highest, lowest, or Top-N questions,
+   order by the requested metric and add every requested dimension as an explicit
+   tie-breaker before setting the limit.
 3. Answer the question from the returned rows, briefly. Report numbers exactly as
    returned. If the layer refuses a request, say so; never invent numbers.`
 

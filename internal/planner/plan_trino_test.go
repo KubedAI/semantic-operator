@@ -93,3 +93,22 @@ func TestTrinoPlanIsDeterministic(t *testing.T) {
 		t.Fatalf("same request produced different SQL:\n%s\n---\n%s", a.SQL, b.SQL)
 	}
 }
+
+func TestTrinoOrderByMetricAndDimension(t *testing.T) {
+	cm := compiled(t)
+	plan, err := Build(cm, trinoDialect(t), Request{
+		Metrics:    []string{"total_sales"},
+		Dimensions: []string{"item.i_category"},
+		OrderBy: []OrderByClause{
+			{Field: "total_sales", Direction: "desc"},
+			{Field: "item.i_category", Direction: "asc"},
+		},
+		Limit: 3,
+	}, governance.Single("admin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(plan.SQL, "ORDER BY 2 DESC, 1 ASC\nLIMIT 3") {
+		t.Fatalf("unexpected Trino ordering:\n%s", plan.SQL)
+	}
+}

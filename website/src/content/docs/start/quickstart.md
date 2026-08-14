@@ -89,6 +89,23 @@ it does not make that mistake.
 Run the same request again and the response carries the same `requestHash` with
 `cachedResult` set to true. Identical requests compile to identical SQL.
 
+Order by a requested metric to ask a Top-N question. Add every requested dimension
+explicitly when tied metric values need stable selection.
+
+```bash
+curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
+  -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
+  -d '{
+    "metrics": ["total_sales"],
+    "dimensions": ["item.i_category"],
+    "orderBy": [
+      {"field": "total_sales", "direction": "desc"},
+      {"field": "item.i_category", "direction": "asc"}
+    ],
+    "limit": 5
+  }' | jq
+```
+
 ## What you have now
 
 Three ways to reach the same certified definitions.

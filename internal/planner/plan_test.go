@@ -132,6 +132,10 @@ func TestDeterminism(t *testing.T) {
 		Metrics:    []string{"total_sales", "customer_lifetime_value", "store_productivity"},
 		Dimensions: []string{"item.i_category", "date_dim.d_year"},
 		Filters:    []Filter{{Field: "store.s_state", Op: "IN", Values: []any{"TX", "CA"}}},
+		OrderBy: []OrderByClause{
+			{Field: "store_productivity", Direction: "desc"},
+			{Field: "item.i_category", Direction: "asc"},
+		},
 	}
 	first, err := Build(cm, testDialect(t), req, governance.Single("admin"))
 	if err != nil {
@@ -333,6 +337,16 @@ func TestRequestHashStability(t *testing.T) {
 	if RequestHash(req2, "analyst") == a {
 		t.Fatal("hash must vary by grain")
 	}
+	ordered := req
+	ordered.OrderBy = []OrderByClause{{Field: "total_sales", Direction: "desc"}}
+	orderedHash := RequestHash(ordered, "analyst")
+	if orderedHash == a {
+		t.Fatal("hash must vary by ordering")
+	}
+	ordered.OrderBy[0].Direction = "asc"
+	if RequestHash(ordered, "analyst") == orderedHash {
+		t.Fatal("hash must vary by ordering direction")
+	}
 }
 
 func TestRoleChangesPlanNotJustKey(t *testing.T) {
@@ -358,6 +372,158 @@ func TestUnknownMetricListsAvailable(t *testing.T) {
 	_, err := Build(cm, testDialect(t), Request{Metrics: []string{"revenue"}}, governance.Single("admin"))
 	if err == nil || !strings.Contains(err.Error(), "total_sales") {
 		t.Fatalf("expected helpful unknown-metric error, got %v", err)
+	}
+}
+
+func TestOrderByMetricAndDimensionBeforeLimit(t *testing.T) {
+	cm := compiled(t)
+	plan, err := Build(cm, testDialect(t), Request{
+		Metrics:    []string{"total_sales"},
+		Dimensions: []string{"item.i_category"},
+		OrderBy: []OrderByClause{
+			{Field: "total_sales", Direction: "desc"},
+			{Field: "item.i_category", Direction: "asc"},
+		},
+		Limit: 1,
+	}, governance.Single("admin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(plan.SQL, "ORDER BY 2 DESC, 1 ASC\nLIMIT 1") {
+		t.Fatalf("expected explicit ordering before LIMIT:\n%s", plan.SQL)
+	}
+}
+
+func TestEmptyOrderByMatchesOmittedOrderBy(t *testing.T) {
+	cm := compiled(t)
+	base := Request{
+		Metrics:    []string{"total_sales"},
+		Dimensions: []string{"item.i_category"},
+	}
+	omitted, err := Build(cm, testDialect(t), base, governance.Single("admin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.OrderBy = []OrderByClause{}
+	empty, err := Build(cm, testDialect(t), base, governance.Single("admin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty.SQL != omitted.SQL || empty.RequestHash != omitted.RequestHash {
+		t.Fatalf("empty orderBy must match omission:\nomitted: %s\nempty:   %s", omitted.SQL, empty.SQL)
+	}
+}
+
+func TestOrderByDoesNotAppendDimensions(t *testing.T) {
+	cm := compiled(t)
+	plan, err := Build(cm, testDialect(t), Request{
+		Metrics:    []string{"total_sales"},
+		Dimensions: []string{"item.i_category", "item.i_brand"},
+		OrderBy:    []OrderByClause{{Field: "total_sales", Direction: "desc"}},
+		Limit:      5,
+	}, governance.Single("admin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(plan.SQL, "ORDER BY 3 DESC\nLIMIT 5") {
+		t.Fatalf("planner added an ordering clause that was not requested:\n%s", plan.SQL)
+	}
+}
+
+func TestOrderByCompositeMetric(t *testing.T) {
+	cm := compiled(t)
+	plan, err := Build(cm, testDialect(t), Request{
+		Metrics:    []string{"store_productivity"},
+		Dimensions: []string{"item.i_category"},
+		OrderBy:    []OrderByClause{{Field: "store_productivity", Direction: "desc"}},
+	}, governance.Single("admin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(plan.SQL, "WITH ") {
+		t.Fatalf("expected composite query:\n%s", plan.SQL)
+	}
+	if !strings.HasSuffix(plan.SQL, "ORDER BY 2 DESC") {
+		t.Fatalf("expected final composite output to be ordered by metric:\n%s", plan.SQL)
+	}
+}
+
+func TestOrderByValidation(t *testing.T) {
+	base := Request{
+		Metrics:    []string{"total_sales"},
+		Dimensions: []string{"item.i_category"},
+	}
+	cases := []struct {
+		name string
+		req  Request
+		want string
+	}{
+		{
+			name: "unrequested certified field",
+			req: func() Request {
+				r := base
+				r.OrderBy = []OrderByClause{{Field: "total_profit", Direction: "desc"}}
+				return r
+			}(),
+			want: "must reference a requested metric or dimension",
+		},
+		{
+			name: "raw SQL expression",
+			req: func() Request {
+				r := base
+				r.OrderBy = []OrderByClause{{Field: "SUM(total_sales)", Direction: "desc"}}
+				return r
+			}(),
+			want: "must reference a requested metric or dimension",
+		},
+		{
+			name: "uppercase direction",
+			req: func() Request {
+				r := base
+				r.OrderBy = []OrderByClause{{Field: "total_sales", Direction: "DESC"}}
+				return r
+			}(),
+			want: "use asc or desc",
+		},
+		{
+			name: "missing direction",
+			req: func() Request {
+				r := base
+				r.OrderBy = []OrderByClause{{Field: "total_sales"}}
+				return r
+			}(),
+			want: "use asc or desc",
+		},
+		{
+			name: "duplicate clause",
+			req: func() Request {
+				r := base
+				r.OrderBy = []OrderByClause{
+					{Field: "total_sales", Direction: "desc"},
+					{Field: "total_sales", Direction: "asc"},
+				}
+				return r
+			}(),
+			want: "appears more than once",
+		},
+		{
+			name: "ambiguous requested field",
+			req: Request{
+				Metrics: []string{"total_sales", "total_sales"},
+				OrderBy: []OrderByClause{{Field: "total_sales", Direction: "desc"}},
+			},
+			want: "ambiguous",
+		},
+	}
+
+	cm := compiled(t)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Build(cm, testDialect(t), tc.req, governance.Single("admin"))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected error containing %q, got %v", tc.want, err)
+			}
+		})
 	}
 }
 
