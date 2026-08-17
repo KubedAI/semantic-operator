@@ -88,6 +88,11 @@ func run() error {
 	metrics := observability.NewMetrics()
 	metrics.StoreSynced.Set(0)
 	metrics.LoadedModels.Set(0)
+	authorizers, err := authorizationRegistryFromEnv()
+	if err != nil {
+		log.Error("configuring external authorization", "err", err)
+		return err
+	}
 	namespace := envOr("WATCH_NAMESPACE", "semantic-system")
 	go func() {
 		callbacks := &serving.WatchCallbacks{
@@ -101,13 +106,14 @@ func run() error {
 	}()
 
 	svc := &serving.Service{
-		Store:   store,
-		Dialect: dialect,
-		Cache:   valkey,
-		DB:      engineClient,
-		Metrics: metrics,
-		Log:     log,
-		Tracer:  tracer,
+		Store:         store,
+		Dialect:       dialect,
+		Cache:         valkey,
+		DB:            engineClient,
+		Metrics:       metrics,
+		Log:           log,
+		Tracer:        tracer,
+		Authorization: authorizers,
 		// Off unless asked for. A metric listing is meant to ground an agent on
 		// certified names, and the raw SQL is the definition itself.
 		ExposeExpressions: envOr("EXPOSE_METRIC_EXPRESSIONS", "false") == "true",
@@ -127,24 +133,25 @@ func run() error {
 		},
 	}
 
-	// Identity resolution. Header mode trusts X-Semantic-Role and therefore
-	// requires an authenticating proxy in front; jwt mode validates a bearer
-	// token against the issuer's JWKS and ignores the header entirely.
+	// Identity resolution. Header mode trusts X-Semantic-User and
+	// X-Semantic-Role and therefore requires an authenticating proxy in front;
+	// jwt mode validates a bearer token and ignores both headers.
 	authn, err := auth.New(ctx, auth.Options{
-		Mode:         auth.Mode(envOr("AUTH_MODE", string(auth.ModeHeader))),
-		JWKSURL:      os.Getenv("OIDC_JWKS_URL"),
-		Issuer:       os.Getenv("OIDC_ISSUER"),
-		Audience:     os.Getenv("OIDC_AUDIENCE"),
-		RoleClaim:    os.Getenv("OIDC_ROLE_CLAIM"),
-		GroupsClaim:  os.Getenv("OIDC_GROUPS_CLAIM"),
-		ClaimsToCopy: splitList(os.Getenv("OIDC_CLAIMS_TO_COPY")),
+		Mode:           auth.Mode(envOr("AUTH_MODE", string(auth.ModeHeader))),
+		JWKSURL:        os.Getenv("OIDC_JWKS_URL"),
+		Issuer:         os.Getenv("OIDC_ISSUER"),
+		Audience:       os.Getenv("OIDC_AUDIENCE"),
+		PrincipalClaim: os.Getenv("OIDC_PRINCIPAL_CLAIM"),
+		RoleClaim:      os.Getenv("OIDC_ROLE_CLAIM"),
+		GroupsClaim:    os.Getenv("OIDC_GROUPS_CLAIM"),
+		ClaimsToCopy:   splitList(os.Getenv("OIDC_CLAIMS_TO_COPY")),
 	})
 	if err != nil {
 		log.Error("configuring authentication", "err", err)
 		return err
 	}
 	if authn.Mode() == auth.ModeHeader {
-		log.Warn("AUTH_MODE=header: the X-Semantic-Role header is trusted verbatim; " +
+		log.Warn("AUTH_MODE=header: the X-Semantic-User and X-Semantic-Role headers are trusted verbatim; " +
 			"put an authenticating proxy in front of this service or set AUTH_MODE=jwt")
 	}
 

@@ -33,6 +33,7 @@ type roleTransport struct {
 
 func (t roleTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if t.role != "" {
+		req.Header.Set("X-Semantic-User", "nlbench")
 		req.Header.Set("X-Semantic-Role", t.role)
 	}
 	return t.base.RoundTrip(req)

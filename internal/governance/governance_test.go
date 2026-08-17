@@ -183,9 +183,24 @@ func TestIdentityKeySeparatesCallersByClaims(t *testing.T) {
 	if strings.Contains(ka, "acme") || strings.Contains(kb, "globex") {
 		t.Fatalf("raw claim value leaked into the key: %q %q", ka, kb)
 	}
-	// A caller with no claims still keys on roles alone.
-	if got := IdentityKey(g, Identity{Roles: []string{"analyst"}}); got != "analyst" {
+	// A caller with no claims still gets a full identity digest.
+	if got := IdentityKey(g, Identity{Roles: []string{"analyst"}}); !strings.HasPrefix(got, "analyst|") || len(got) != len("analyst|")+64 {
 		t.Fatalf("claimless identity key = %q", got)
+	}
+}
+
+func TestGroupsAndRolesShareBuiltInPoliciesButNotIdentity(t *testing.T) {
+	g := spec()
+	groupIdentity := Identity{Principal: "alice", Groups: []string{"analyst"}}
+	roleIdentity := Identity{Principal: "alice", Roles: []string{"analyst"}}
+	for _, id := range []Identity{groupIdentity, roleIdentity} {
+		visible, err := Visible(g, id)
+		if err != nil || visible.RoleKey() != "analyst" {
+			t.Fatalf("built-in effective role = %q, err=%v", visible.RoleKey(), err)
+		}
+	}
+	if IdentityDigest(groupIdentity) == IdentityDigest(roleIdentity) {
+		t.Fatal("group and role namespaces collided in identity digest")
 	}
 }
 

@@ -89,7 +89,7 @@ spec:
                    setup behind an authenticating proxy, but it must be a
                    decision rather than a default nobody noticed. */ -}}
             {{- if and (eq $mode "header") (not $auth.allowInsecureHeaderAuth) }}
-            {{- fail "server.auth.mode=header trusts the X-Semantic-Role header verbatim, so any client that reaches the service can assert any role. Set server.auth.mode=jwt with a jwksURL for production, or set server.auth.allowInsecureHeaderAuth=true to confirm an authenticating proxy strips and sets that header." }}
+            {{- fail "server.auth.mode=header trusts X-Semantic-User and X-Semantic-Role verbatim, so any client that reaches the service can assert an identity. Set server.auth.mode=jwt with a jwksURL for production, or set server.auth.allowInsecureHeaderAuth=true to confirm an authenticating proxy strips and sets both headers." }}
             {{- end }}
             - name: AUTH_MODE
               value: {{ $mode | quote }}
@@ -104,6 +104,10 @@ spec:
             - name: OIDC_AUDIENCE
               value: {{ . | quote }}
             {{- end }}
+            {{- with $auth.principalClaim }}
+            - name: OIDC_PRINCIPAL_CLAIM
+              value: {{ . | quote }}
+            {{- end }}
             {{- with $auth.roleClaim }}
             - name: OIDC_ROLE_CLAIM
               value: {{ . | quote }}
@@ -115,6 +119,22 @@ spec:
             {{- with $auth.claimsToCopy }}
             - name: OIDC_CLAIMS_TO_COPY
               value: {{ join "," . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- $authorization := .Values.server.authorization | default dict }}
+            {{- $providers := $authorization.providers | default list }}
+            {{- if $providers }}
+            - name: AUTHORIZATION_PROVIDERS_FILE
+              value: /etc/semantic-server/authorization/providers.yaml
+            {{- range $i, $provider := $providers }}
+            {{- $secret := $provider.bearerTokenSecret | default dict }}
+            {{- if $secret.name }}
+            - name: {{ printf "AUTHORIZATION_PROVIDER_TOKEN_%d" $i }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret.name }}
+                  key: {{ $secret.key | default "token" }}
+            {{- end }}
             {{- end }}
             {{- end }}
             - name: WATCH_NAMESPACE
@@ -178,7 +198,19 @@ spec:
             allowPrivilegeEscalation: false
             capabilities: {drop: [ALL]}
             readOnlyRootFilesystem: true
+          {{- if $providers }}
+          volumeMounts:
+            - name: authorization-providers
+              mountPath: /etc/semantic-server/authorization
+              readOnly: true
+          {{- end }}
           resources: {{- toYaml .Values.server.resources | nindent 12 }}
+      {{- if $providers }}
+      volumes:
+        - name: authorization-providers
+          secret:
+            secretName: {{ include "semantic-operator.name" . }}-server-authorization
+      {{- end }}
       {{- /* Must exceed the preStop pause plus the server's own 10s shutdown
              deadline, or the kubelet kills it mid-drain. */}}
       terminationGracePeriodSeconds: {{ (.Values.server.gracefulShutdown | default dict).terminationGracePeriodSeconds | default 30 }}
@@ -208,15 +240,15 @@ spec:
 ---
 {{/*
   Refuse to expose the semantic server outside the cluster by default. The
-  server authorizes callers from the X-Semantic-Role header and expects an
-  authenticating proxy in front of it (see docs/ARCHITECTURE.md), so a
+  server trusts X-Semantic-User and X-Semantic-Role headers and expects an
+  authenticating proxy in front of it (see the server architecture docs), so a
   LoadBalancer here means an unauthenticated query endpoint on a public IP.
   Access it with `kubectl port-forward` instead. A deployment that really has
   an authenticating ingress in front can opt in explicitly.
 */}}
 {{- $svcType := .Values.server.service.type -}}
 {{- if and (ne $svcType "ClusterIP") (not .Values.server.service.allowExternalExposure) -}}
-{{- fail (printf "\n\nserver.service.type=%s would publish the semantic server outside the cluster.\nThe server trusts the X-Semantic-Role header, so exposing it directly means an\nunauthenticated query endpoint (on EKS, a public load balancer).\n\nUse the default ClusterIP and reach it with:\n  kubectl -n <ns> port-forward svc/%s-server %v:%v\n\nIf an authenticating proxy or ingress already fronts this service, opt in with:\n  --set server.service.allowExternalExposure=true\n" $svcType (include "semantic-operator.name" .) .Values.server.service.port .Values.server.service.port) -}}
+{{- fail (printf "\n\nserver.service.type=%s would publish the semantic server outside the cluster.\nThe server trusts X-Semantic-User and X-Semantic-Role, so exposing it directly means an\nunauthenticated query endpoint (on EKS, a public load balancer).\n\nUse the default ClusterIP and reach it with:\n  kubectl -n <ns> port-forward svc/%s-server %v:%v\n\nIf an authenticating proxy or ingress already fronts this service, opt in with:\n  --set server.service.allowExternalExposure=true\n" $svcType (include "semantic-operator.name" .) .Values.server.service.port .Values.server.service.port) -}}
 {{- end -}}
 apiVersion: v1
 kind: Service

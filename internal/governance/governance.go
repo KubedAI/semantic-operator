@@ -28,17 +28,40 @@ var ErrUnauthorized = errors.New("unauthorized")
 // than one label. Roles are evaluated one at a time and never pooled, which is
 // spelled out on Visible.
 type Identity struct {
-	Roles  []string          `json:"roles,omitempty"`
-	Claims map[string]string `json:"claims,omitempty"`
+	Principal string            `json:"principal,omitempty"`
+	Groups    []string          `json:"groups,omitempty"`
+	Roles     []string          `json:"roles,omitempty"`
+	Claims    map[string]string `json:"claims,omitempty"`
 }
 
-// Single builds an identity holding one role, which is what header mode and
-// the view materializer produce.
+// Single builds an identity holding one application role, which is what
+// header mode and the view materializer produce when no principal is needed.
 func Single(role string) Identity {
 	if role == "" {
 		return Identity{}
 	}
 	return Identity{Roles: []string{role}}
+}
+
+// PolicyRoles returns the deduplicated union used by built-in governance.
+// External providers receive Groups and Roles separately and can preserve
+// their distinct directory and application semantics.
+func (id Identity) PolicyRoles() []string {
+	seen := make(map[string]struct{}, len(id.Groups)+len(id.Roles))
+	roles := make([]string, 0, len(id.Groups)+len(id.Roles))
+	for _, values := range [][]string{id.Groups, id.Roles} {
+		for _, value := range values {
+			if value == "" {
+				continue
+			}
+			if _, exists := seen[value]; exists {
+				continue
+			}
+			seen[value] = struct{}{}
+			roles = append(roles, value)
+		}
+	}
+	return roles
 }
 
 // Decision is the successful outcome of authorization.
@@ -82,8 +105,8 @@ type Visibility struct {
 //
 // Semantics:
 //   - No governance spec: everything is visible, no row filters.
-//   - Governance spec present: the effective roles are id.Roles, or
-//     defaultRole when the identity names none.
+//   - Governance spec present: the effective policy roles are the union of
+//     id.Groups and id.Roles, or defaultRole when the identity names none.
 //   - Roles with no policy in this model are ignored, because a token's group
 //     list is not written for one model. If none of them match, the caller is
 //     denied outright.
@@ -91,11 +114,12 @@ type Visibility struct {
 //     entirely. Keeping it would let a role that cannot run any query widen
 //     the set of columns a caller may see.
 func Visible(g *v1alpha1.GovernanceSpec, id Identity) (Visibility, error) {
+	policyRoles := id.PolicyRoles()
 	if g == nil {
-		return Visibility{roles: append([]string(nil), id.Roles...), unrestricted: true}, nil
+		return Visibility{roles: policyRoles, unrestricted: true}, nil
 	}
 
-	wanted := id.Roles
+	wanted := policyRoles
 	if len(wanted) == 0 && g.DefaultRole != "" {
 		wanted = []string{g.DefaultRole}
 	}
@@ -352,50 +376,72 @@ func ExpandClaims(predicate string, claims map[string]string, literal func(any) 
 }
 
 // IdentityKey is the cache and provenance key for one caller against one
-// model. It covers the resolved role set and every claim the caller carries.
+// model. It combines the resolved built-in policy role set with a digest of
+// the complete authenticated identity.
 //
-// Claims belong in the key because a row filter can interpolate one. Two
-// callers holding the role "analyst" with different tenant claims compile to
-// different SQL, so keying on roles alone would let the second caller read a
-// plan built for the first, against the first caller's rows. That is a
-// cross-tenant read, and it is silent.
-//
-// Claim values are hashed, never included in clear. The key travels into cache
-// keys and logs, and a tenant identifier is not something to scatter through
-// either.
-//
-// The digest is not truncated. Tenant isolation depends on this value being
-// unique, and a shortened hash trades that guarantee for a few bytes that
-// nothing is short of.
+// Principal, group, role, and claim values are hashed, never included in
+// clear. The key travels into cache keys and logs, and identity data must not
+// be scattered through either. Sorting and length prefixes make the digest
+// independent of token claim order and unambiguous across field boundaries.
 //
 // Both the planner and the serving cache call this, so the hash they use
 // cannot drift apart.
 func IdentityKey(g *v1alpha1.GovernanceSpec, id Identity) string {
-	roleKey := strings.Join(sortedCopy(id.Roles), ",")
+	roleKey := strings.Join(sortedUniqueCopy(id.PolicyRoles()), ",")
 	if v, err := Visible(g, id); err == nil {
 		roleKey = v.RoleKey()
 	}
-	if len(id.Claims) == 0 {
-		return roleKey
+	return roleKey + "|" + IdentityDigest(id)
+}
+
+// IdentityDigest returns a deterministic full-width digest of all identity
+// fields. Groups and roles are separate namespaces even when built-in
+// governance treats their union as policy labels.
+func IdentityDigest(id Identity) string {
+	h := sha256.New()
+	writeIdentityValue := func(kind, value string) {
+		// hash.Hash never returns an error, so the write cannot fail.
+		_, _ = fmt.Fprintf(h, "%d:%s=%d:%s;", len(kind), kind, len(value), value)
+	}
+	writeIdentityValue("principal", id.Principal)
+	for _, group := range sortedUniqueCopy(id.Groups) {
+		writeIdentityValue("group", group)
+	}
+	for _, role := range sortedUniqueCopy(id.Roles) {
+		writeIdentityValue("role", role)
 	}
 	names := make([]string, 0, len(id.Claims))
-	for k := range id.Claims {
-		names = append(names, k)
+	for name := range id.Claims {
+		names = append(names, name)
 	}
 	sort.Strings(names)
-	h := sha256.New()
-	for _, k := range names {
-		// Length prefixes stop {"a":"bc"} and {"ab":"c"} hashing alike.
-		// hash.Hash never returns an error, so the write cannot fail.
-		_, _ = fmt.Fprintf(h, "%d:%s=%d:%s;", len(k), k, len(id.Claims[k]), id.Claims[k])
+	for _, name := range names {
+		writeIdentityValue("claim-name", name)
+		writeIdentityValue("claim-value", id.Claims[name])
 	}
-	return roleKey + "|" + hex.EncodeToString(h.Sum(nil))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func sortedCopy(in []string) []string {
 	out := append([]string(nil), in...)
 	sort.Strings(out)
 	return out
+}
+
+func sortedUniqueCopy(in []string) []string {
+	out := sortedCopy(in)
+	if len(out) < 2 {
+		return out
+	}
+	write := 1
+	for read := 1; read < len(out); read++ {
+		if out[read] == out[write-1] {
+			continue
+		}
+		out[write] = out[read]
+		write++
+	}
+	return out[:write]
 }
 
 // placeholderLiteral stands in for a claim while a predicate is being checked

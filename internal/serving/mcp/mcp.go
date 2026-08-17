@@ -7,6 +7,7 @@ package mcp
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -16,9 +17,11 @@ import (
 	"github.com/KubedAI/semantic-operator/internal/serving/auth"
 )
 
-// RoleHeader mirrors the REST adapter's identity header. It is trusted only
-// when the authenticator runs in header mode; see internal/serving/auth.
-const RoleHeader = auth.RoleHeader
+// Identity headers are trusted only in header mode; see internal/serving/auth.
+const (
+	PrincipalHeader = auth.PrincipalHeader
+	RoleHeader      = auth.RoleHeader
+)
 
 type listModelsIn struct{}
 
@@ -69,13 +72,14 @@ func (in queryIn) plannerRequest() planner.Request {
 }
 
 type queryOut struct {
-	Columns      []string `json:"columns"`
-	Rows         [][]any  `json:"rows"`
-	RowCount     int      `json:"rowCount"`
-	SQL          string   `json:"sql"`
-	Model        string   `json:"model"`
-	ModelVersion string   `json:"modelVersion"`
-	RequestHash  string   `json:"requestHash"`
+	Columns                  []string `json:"columns"`
+	Rows                     [][]any  `json:"rows"`
+	RowCount                 int      `json:"rowCount"`
+	SQL                      string   `json:"sql"`
+	Model                    string   `json:"model"`
+	ModelVersion             string   `json:"modelVersion"`
+	RequestHash              string   `json:"requestHash"`
+	AuthorizationFingerprint string   `json:"authorizationFingerprint,omitempty"`
 }
 
 type listMetricsOut struct {
@@ -161,7 +165,7 @@ func NewServer(svc *serving.Service, version string) *sdk.Server {
 		return nil, queryOut{
 			Columns: res.Columns, Rows: res.Rows, RowCount: res.RowCount,
 			SQL: res.SQL, Model: res.Model, ModelVersion: res.ModelVersion,
-			RequestHash: res.RequestHash,
+			RequestHash: res.RequestHash, AuthorizationFingerprint: res.AuthorizationFingerprint,
 		}, nil
 	})
 
@@ -182,7 +186,13 @@ func Handler(svc *serving.Service, version string, authn *auth.Authenticator) ht
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var id governance.Identity
 		if authn == nil {
+			principal := strings.TrimSpace(r.Header.Get(PrincipalHeader))
+			if principal == "" {
+				http.Error(w, "unauthenticated: no "+PrincipalHeader+" header", http.StatusUnauthorized)
+				return
+			}
 			id = governance.Single(r.Header.Get(RoleHeader))
+			id.Principal = principal
 		} else {
 			var err error
 			id, err = authn.Identity(r)

@@ -219,7 +219,7 @@ With Semantic Operator, the AI agent maps the question to the certified
 
 ```bash
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
-  -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["store_productivity"],"dimensions":["store.s_state"]}' | jq
 ```
 
@@ -253,7 +253,7 @@ Run exactly the same request again.
 
 ```bash
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
-  -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["store_productivity"],"dimensions":["store.s_state"]}' \
   | jq '{requestHash, cachedResult}'
 ```
@@ -266,7 +266,7 @@ To see the SQL without running it, use the dry run endpoint.
 
 ```bash
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/sql \
-  -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["total_sales"],"dimensions":["item.i_category"]}' | jq -r '.plan.sql'
 ```
 
@@ -279,7 +279,7 @@ An analyst asks for an email address.
 
 ```bash
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
-  -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["total_sales"],"dimensions":["customer.c_email_address"]}' | jq
 ```
 
@@ -290,7 +290,7 @@ Now a role that is restricted to one state.
 
 ```bash
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
-  -H 'X-Semantic-Role: tx_analyst' -H 'Content-Type: application/json' \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: tx_analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["total_sales"],"dimensions":["store.s_state"]}' | jq '.rows'
 ```
 

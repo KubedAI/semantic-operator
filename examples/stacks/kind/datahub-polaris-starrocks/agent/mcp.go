@@ -11,7 +11,8 @@ import (
 )
 
 // headerTransport injects fixed headers on every MCP HTTP request. The
-// operator MCP reads the caller role from X-Semantic-Role; the DataHub MCP
+// operator MCP reads the caller principal and role from X-Semantic-User and
+// X-Semantic-Role; the DataHub MCP
 // reads a bearer token from Authorization.
 type headerTransport struct {
 	base    http.RoundTripper
@@ -71,7 +72,10 @@ func connect(ctx context.Context, name, endpoint string, headers map[string]stri
 func NewMCP(ctx context.Context, operatorEndpoint, role, datahubEndpoint, datahubToken string) (*MCP, []Tool, error) {
 	m := &MCP{route: map[string]*mcpServer{}}
 
-	op, err := connect(ctx, "operator", operatorEndpoint, map[string]string{"X-Semantic-Role": role})
+	op, err := connect(ctx, "operator", operatorEndpoint, map[string]string{
+		"X-Semantic-User": "demo-agent",
+		"X-Semantic-Role": role,
+	})
 	if err != nil {
 		return nil, nil, err
 	}

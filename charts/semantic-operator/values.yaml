@@ -155,39 +155,82 @@ server:
     maxHeaderBytes: ~       # [1048576, 1Mi]
   # How the caller's identity is established.
   #
-  #   header  the X-Semantic-Role header is trusted verbatim. Only safe behind
-  #           a proxy that authenticates the caller AND overwrites that header,
-  #           because any client that reaches the port can otherwise claim any
-  #           role. The server logs a warning at startup in this mode.
+  #   header  X-Semantic-User and X-Semantic-Role are trusted verbatim. Only
+  #           safe behind a proxy that authenticates the caller AND overwrites
+  #           both headers, because any client that reaches the port can
+  #           otherwise claim any identity.
   #   jwt     a bearer token is required and validated against the issuer's
-  #           JWKS; the role comes from a claim and any inbound
-  #           X-Semantic-Role is ignored. Use this in production.
+  #           JWKS; principal, groups, and roles come from configured claims.
+  #           Inbound identity headers are ignored. Use this in production.
   auth:
     # jwt is the production profile. header mode is refused unless
     # allowInsecureHeaderAuth is also set, because it trusts whatever the
     # caller sends.
     #
     # Running header mode safely means the proxy in front must, in this order,
-    # authenticate the caller, strip any inbound X-Semantic-Role, and then set
-    # the header itself. Skipping the strip is the whole vulnerability: a
-    # client simply sends the header it wants.
+    # authenticate the caller, strip inbound X-Semantic-User and
+    # X-Semantic-Role, and then set both headers itself. Skipping the strip is
+    # the whole vulnerability: a client simply sends the identity it wants.
     mode: header
     allowInsecureHeaderAuth: false
     # jwt mode only. jwksURL is required; issuer and audience are enforced
-    # when set; roleClaim may address a nested claim with dots, e.g.
-    # "resource_access.semantic.role".
+    # when set. principalClaim identifies the user known to policy providers
+    # and defaults to the standard subject claim. roleClaim and groupsClaim may
+    # address nested claims with dots.
     #
-    # groupsClaim names a claim holding a list of roles, which is how most
-    # issuers model membership. Roles from both claims form the caller's role
-    # set, but their permissions are not pooled. Some single role must permit
-    # every metric and field in a request on its own.
+    # Groups and roles remain separate for external providers. Built-in
+    # governance uses their union as policy labels, but their permissions are
+    # not pooled. Some single policy label must permit every metric and field
+    # in a request on its own.
     jwksURL: ""
+    principalClaim: sub
     groupsClaim: ""
     issuer: ""
     audience: ""
     roleClaim: role
     # Claims copied into the identity for {{claim.name}} row-filter placeholders.
     claimsToCopy: []
+  # External query authorization providers. Helm writes this list as YAML in a
+  # Secret mounted read-only by the server. SemanticModels refer to providers
+  # by logical name through spec.governance.external.providerRef. URLs and
+  # credentials stay in deployment configuration so a model author cannot
+  # redirect authorization requests or read provider secrets. Bearer-token
+  # values remain in their referenced Secrets and are not copied into the
+  # provider configuration Secret.
+  authorization:
+    providers: []
+    # - name: corporate-opa
+    #   type: opa
+    #   url: https://opa.semantic-system.svc.cluster.local:8181
+    #   timeoutSeconds: 2
+    #   maxResponseBytes: 1048576
+    #   bearerTokenSecret:
+    #     name: ""
+    #     key: token
+    #   opa:
+    #     decisionPath: semantic/query/allow
+    #
+    # - name: corporate-ranger
+    #   type: ranger
+    #   # The Ranger URL is the complete API base. Standard PDP deployments
+    #   # use a base ending in /authz/v1.
+    #   url: https://ranger-pdp.semantic-system.svc.cluster.local:6500/authz/v1
+    #   timeoutSeconds: 2
+    #   maxResponseBytes: 1048576
+    #   bearerTokenSecret:
+    #     name: ranger-service-token
+    #     key: token
+    #   ranger:
+    #     authenticationMode: service
+    #     serviceType: semantic-operator
+    #     serviceName: semantic-prod
+    #     resource: "semantic-model:namespace={namespace},model={resource}"
+    #     permission: query
+    #     # Trusted static strings sent with every request. Do not put secrets
+    #     # here. clientType, requestData, and semantic.* are reserved.
+    #     contextAttributes:
+    #       environment: production
+    #       clusterName: analytics-prod
   listenPort: 8090
   planCacheTTL: 24h
   resultCacheTTL: 60s
@@ -233,8 +276,8 @@ server:
     targetCPUUtilizationPercentage: 75
     targetMemoryUtilizationPercentage: ~
   service:
-    # ClusterIP only. The server authorizes callers from the X-Semantic-Role
-    # header and expects an authenticating proxy in front, so publishing it
+    # ClusterIP only. The server trusts X-Semantic-User and X-Semantic-Role
+    # in header mode and expects an authenticating proxy in front, so publishing it
     # directly (LoadBalancer/NodePort) creates an unauthenticated query
     # endpoint. Reach it with `kubectl port-forward`. The chart refuses any
     # other type unless allowExternalExposure is set, which you should only
