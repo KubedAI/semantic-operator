@@ -77,7 +77,7 @@ artifact.
 
 ```bash
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
-  -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["store_productivity"],"dimensions":["store.s_state"]}' | jq
 ```
 
@@ -94,7 +94,7 @@ explicitly when tied metric values need stable selection.
 
 ```bash
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
-  -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
   -d '{
     "metrics": ["total_sales"],
     "dimensions": ["item.i_category"],

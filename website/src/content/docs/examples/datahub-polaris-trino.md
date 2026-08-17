@@ -384,7 +384,7 @@ Next steps:
 
   3. Query it. Discovery is governed, so send a role:
      kubectl port-forward -n semantic-system svc/semantic-operator-server 8090:8090
-     curl -s localhost:8090/v1/models -H 'X-Semantic-Role: analyst' | jq
+     curl -s localhost:8090/v1/models -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' | jq
 ```
 
 `STATUS: deployed` is the line that matters. On a first install it says
@@ -833,12 +833,12 @@ sleep 3
 Discovery is authenticated and governed, so pass a role here too.
 
 ```bash
-curl -s localhost:8090/v1/models -H 'X-Semantic-Role: analyst' | jq
+curl -s localhost:8090/v1/models -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' | jq
 curl -s localhost:8090/v1/models/tpcds_retail_model/metrics \
-  -H 'X-Semantic-Role: analyst' | jq -r '.metrics[].name'
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' | jq -r '.metrics[].name'
 
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
-  -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["store_productivity"],"dimensions":["store.s_state"]}' \
   | jq '{rows, requestHash, cachedResult}'
 # run it twice
@@ -894,17 +894,17 @@ produced it.
 ```bash
 # column policy: analyst may not read PII
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
-  -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["total_sales"],"dimensions":["customer.c_email_address"]}' | jq
 
 # row policy: tx_analyst is restricted to Texas
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
-  -H 'X-Semantic-Role: tx_analyst' -H 'Content-Type: application/json' \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: tx_analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["total_sales"],"dimensions":["store.s_state"]}' | jq '.rows'
 
 # the exact SQL, without executing it
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/sql \
-  -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["total_sales"],"dimensions":["item.i_category"]}' | jq -r '.plan.sql'
 ```
 

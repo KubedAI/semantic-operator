@@ -45,7 +45,7 @@ Asked to *"prepare a renewal briefing for Northstar Systems,"* the agent:
 2. Drops the deprecated `account_feature_monthly` on metadata alone, and flags the `support_ticket` freshness gap.
 3. Reads the exact semantic mapping from DataHub structured properties. Never guessed from names.
 4. Picks certified metrics by name. The operator compiles and runs the one governed SQL statement.
-5. Sends its role in `X-Semantic-Role`. The operator denies disallowed fields before any SQL exists, and adds row filters (e.g. `region = 'NA'`).
+5. Sends its principal in `X-Semantic-User` and role in `X-Semantic-Role`. The operator denies disallowed fields before any SQL exists, and adds row filters (e.g. `region = 'NA'`).
 6. Answers with certified values, DataHub context, and the operator's SQL/version/hash. No invented "health score."
 
 If DataHub is unavailable, discovery and trust questions fail rather than guess.
@@ -261,7 +261,8 @@ go run . -role platform_analyst
 
 ## Governance roles
 
-The role travels in the `X-Semantic-Role` header. The operator enforces policy
+The agent sends the fixed `demo-agent` principal in `X-Semantic-User` and the selected role in
+`X-Semantic-Role`. The operator enforces policy
 at compile time. Denied fields fail before any SQL exists. Row filters are
 injected automatically:
 

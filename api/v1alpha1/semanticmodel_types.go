@@ -34,7 +34,8 @@ type SemanticModelSpec struct {
 	// Ossie is the semantic model definition, following the Ossie core spec.
 	Ossie OssieModel `json:"ossie"`
 
-	// Governance defines compile-time row/column/metric access policies.
+	// Governance defines built-in compile-time access policy and an optional
+	// external query-time authorization gate.
 	// +optional
 	Governance *GovernanceSpec `json:"governance,omitempty"`
 
@@ -183,12 +184,28 @@ type CustomExtension struct {
 	Data       string `json:"data"`
 }
 
-// GovernanceSpec defines compile-time access policies keyed by role.
+// GovernanceSpec defines query-time access policy. Built-in role policy is
+// always enforced. External, when set, adds a second decision gate, so both
+// built-in policy and the named provider must allow a request.
 type GovernanceSpec struct {
 	// DefaultRole applies when an adapter passes no identity.
 	// +optional
 	DefaultRole string       `json:"defaultRole,omitempty"`
 	Roles       []RolePolicy `json:"roles"`
+	// External adds a fail-closed authorization decision before plan and result
+	// cache access. Provider connection details are server configuration, not
+	// model data.
+	// +optional
+	External *ExternalAuthorizationSpec `json:"external,omitempty"`
+}
+
+// ExternalAuthorizationSpec selects one server-configured authorization provider.
+type ExternalAuthorizationSpec struct {
+	// ProviderRef is the logical provider name from server.authorization.providers.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	ProviderRef string `json:"providerRef"`
 }
 
 // RolePolicy is the policy for one role.

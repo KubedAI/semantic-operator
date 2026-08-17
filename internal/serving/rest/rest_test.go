@@ -9,6 +9,7 @@ import (
 
 	"github.com/KubedAI/semantic-operator/internal/planner"
 	"github.com/KubedAI/semantic-operator/internal/serving"
+	"github.com/KubedAI/semantic-operator/internal/serving/authorization"
 )
 
 // svcWithModel publishes one model so a request reaches body decoding.
@@ -30,9 +31,20 @@ func svcWithModel(t *testing.T, limits serving.Limits) *serving.Service {
 func post(t *testing.T, h http.Handler, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	r := httptest.NewRequest(http.MethodPost, "/v1/models/retail/query", strings.NewReader(body))
+	r.Header.Set(PrincipalHeader, "test-user")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	return w
+}
+
+func TestMissingPrincipalIsRejected(t *testing.T) {
+	h := Handler(svcWithModel(t, serving.Limits{}), nil)
+	r := httptest.NewRequest(http.MethodPost, "/v1/models/retail/query", strings.NewReader(`{"metrics":["revenue"]}`))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401. body: %s", w.Code, w.Body.String())
+	}
 }
 
 // A misspelled field used to be dropped silently, so the server ran a
@@ -100,5 +112,13 @@ func TestUnknownOrderByPropertyIsRejected(t *testing.T) {
 	err := decodeJSON(httptest.NewRecorder(), r, 1<<20, &req)
 	if err == nil || !strings.Contains(err.Error(), "expression") {
 		t.Fatalf("expected unknown nested property error, got %v", err)
+	}
+}
+
+func TestExternalAuthorizationUnavailableIsServiceUnavailable(t *testing.T) {
+	w := httptest.NewRecorder()
+	writeErr(w, authorization.ErrUnavailable)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503; body: %s", w.Code, w.Body.String())
 	}
 }

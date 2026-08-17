@@ -201,3 +201,19 @@ func TestValidateRejectsMalformedClaimTemplate(t *testing.T) {
 	}
 	wantErr(t, spec, "malformed template syntax")
 }
+
+func TestValidateExternalAuthorization(t *testing.T) {
+	s := validSpec()
+	s.Governance.External = &v1alpha1.ExternalAuthorizationSpec{ProviderRef: "corp-opa"}
+	if err := ValidateSpec(s); err != nil {
+		t.Fatalf("valid external authorization rejected: %v", err)
+	}
+
+	for _, provider := range []string{"Corp-OPA", "-opa", "opa-", "opa/provider"} {
+		t.Run(provider, func(t *testing.T) {
+			s := validSpec()
+			s.Governance.External = &v1alpha1.ExternalAuthorizationSpec{ProviderRef: provider}
+			wantErr(t, s, "providerRef")
+		})
+	}
+}

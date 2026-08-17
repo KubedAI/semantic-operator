@@ -82,12 +82,29 @@ spec:
                 - database
                 type: object
               governance:
-                description: Governance defines compile-time row/column/metric access
-                  policies.
+                description: |-
+                  Governance defines built-in compile-time access policy and an optional
+                  external query-time authorization gate.
                 properties:
                   defaultRole:
                     description: DefaultRole applies when an adapter passes no identity.
                     type: string
+                  external:
+                    description: |-
+                      External adds a fail-closed authorization decision before plan and result
+                      cache access. Provider connection details are server configuration, not
+                      model data.
+                    properties:
+                      providerRef:
+                        description: ProviderRef is the logical provider name from
+                          server.authorization.providers.
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        type: string
+                    required:
+                    - providerRef
+                    type: object
                   roles:
                     items:
                       description: RolePolicy is the policy for one role.

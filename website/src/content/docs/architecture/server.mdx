@@ -15,23 +15,25 @@ optional cache, replicas are interchangeable and it scales sideways.
 
 ### Identity
 
-The caller is resolved to a set of roles before anything else happens. Two modes exist and
-the difference is a security boundary.
+The caller is resolved to a principal, groups, roles, and configured string attributes before
+anything else happens. Two modes exist and the difference is a security boundary.
 
-In `header` mode the roles are read from the `X-Semantic-Role` header, comma separated for
-more than one. This is only safe behind a proxy that authenticates the caller and
-overwrites that header, because otherwise any client that reaches the port can claim any
-role. The chart refuses to install in this mode unless you also set
-`server.auth.allowInsecureHeaderAuth`, and the server logs a warning at startup.
+In `header` mode the principal comes from `X-Semantic-User` and roles come from the
+comma-separated `X-Semantic-Role` header. This is only safe behind a proxy that authenticates
+the caller, strips both inbound headers, and sets both itself. Otherwise any client that
+reaches the port can claim any identity. The chart refuses to install in this mode unless
+you also set `server.auth.allowInsecureHeaderAuth`, and the server logs a warning at startup.
 
 In `jwt` mode a bearer token is required and validated against the issuer's JWKS. Signature,
-expiry, issuer, and audience are all checked, and only asymmetric algorithms are accepted
-because the key set is public. Roles come from a role claim, a groups claim, or both, and
-either may be nested. Any inbound `X-Semantic-Role` is ignored outright, so a caller cannot
-assert its own identity.
+expiry, issuer, and audience are checked, and only asymmetric algorithms are accepted because
+the key set is public. The principal defaults to `sub` and can use another configured claim.
+Directory groups and application roles remain separate. Built-in governance uses their union
+as policy labels, while external providers receive both namespaces. Inbound identity headers
+are ignored outright, so a caller cannot assert its own identity.
 
-An unverified caller gets 401. A verified caller that policy rejects gets 403. The
-distinction matters when you are debugging.
+An unverified caller gets 401. A verified caller that policy rejects gets 403. An external
+provider timeout, transport failure, or malformed response gets 503 and never falls back
+to allow. The distinction matters when you are debugging.
 
 ### Discovery is governed too
 
@@ -43,6 +45,10 @@ otherwise tells an unauthorised caller the shape of the warehouse.
 Raw metric expressions are not returned unless you set `EXPOSE_METRIC_EXPRESSIONS`. The
 expression is the definition itself, and an agent grounds perfectly well on the name, the
 description, and the synonyms.
+
+Discovery uses the built-in role policy. The initial external-provider integration applies
+to query and SQL-plan requests only. Do not rely on OPA alone to hide names during
+discovery.
 
 ### Resolve and authorize
 
@@ -59,6 +65,40 @@ Kubernetes RBAC is additive, but a policy carries restrictions as well as grants
 pooling, a role that grants nothing would cancel another role's denied fields and row
 filters just by being present. A caller holding both would then see more than either role
 allows.
+
+A model can also name an external authorization provider. This is an additional gate, not a
+replacement for built-in policy. The server's provider configuration selects OPA or Ranger,
+its URL, credentials, and native settings. At startup, the server reads one strict YAML
+provider list from `AUTHORIZATION_PROVIDERS` or from the file named by
+`AUTHORIZATION_PROVIDERS_FILE`. Setting both is an error. Helm writes the list to an Opaque
+Secret, mounts it read-only, and uses the file source. Provider configuration changes take
+effect after a server rollout.
+
+Every provider receives a versioned input containing the action, exact model identity,
+semantic request, principal, separate groups and roles, configured claims, access time, and
+adapter. It receives no SQL or raw metric expressions. The server evaluates the provider
+after request limits and before plan-cache access. A denial or provider failure therefore
+cannot be bypassed by a previously cached plan or result. Authorization fingerprints include
+the complete identity, provider, stable policy revision, and Ranger configuration scope.
+
+OPA uses a server credential and evaluates the structured input through its configured Data
+API decision path. It must return a boolean or an object containing only `allow` and an
+optional stable `revision`. Undefined results deny.
+
+Ranger uses service mode. The wire contract targets the dedicated PDP in the checked-in Apache
+Ranger 3.0.0-SNAPSHOT source at revision `ece62f6`. The PDP URL is the complete API base,
+normally ending in `/authz/v1`. The semantic server authenticates with its own credential and submits the end
+user's principal, groups, roles, and allowlisted string attributes. Ranger must configure the
+server principal as a delegation user for the selected service. Server-owned configuration
+maps the model to a Ranger resource, selects the permission, and supplies bounded static
+context attributes. The adapter sends full semantic request JSON as Ranger `requestData`,
+sets the adapter as `clientType`, and uses the server's current access time.
+
+Only a complete obligation-free Ranger `ALLOW` succeeds. `DENY`, `NOT_DETERMINED`, and
+`PARTIAL` deny. Missing or inconsistent decisions, transport errors, masks, row filters,
+subresource results, and additional obligations fail closed with 503. This first integration
+uses Ranger's `/authorize` operation for query and SQL-plan requests. Discovery and
+engine-native views continue to use built-in policy only.
 
 ### Plan
 
@@ -122,9 +162,9 @@ request hash. Every statement begins with a comment holding those same three val
 query in the engine's log traces back to the request that caused it.
 
 The same request, from the same identity, against the same model version, produces byte
-identical SQL every time. Identity here means the roles and the claims together, because a
-row filter can interpolate a claim. Two callers sharing a role but carrying different
-tenants compile to different SQL, and never share a cached plan.
+identical SQL every time. Identity includes the principal, separate groups and roles, and all
+configured claims. A row filter can interpolate a claim. Two callers sharing a policy label
+but carrying different tenants compile to different SQL and never share a cached plan.
 
 ### What bounds a request
 
@@ -169,10 +209,13 @@ An optional Valkey cache stores compiled plans and query results. Caching is an
 optimisation and never a correctness dependency, so a cache miss or an unreachable cache
 degrades to recompute and rerun.
 
-The plan cache key includes the dialect, the model name, the model version, and a hash of
-the request that already covers the effective role. Results are keyed on the emitted SQL,
-which already contains any row filters. Both properties mean a cached entry cannot leak
-across roles, versions, or engines.
+The plan cache key includes the dialect, model identity, semantic request, and a full-width
+digest of principal, separate groups and roles, and configured claims. Results are keyed on
+the emitted SQL plus the external authorization fingerprint. When external authorization is
+configured, that fingerprint covers the logical provider, complete identity, allow result,
+and stable policy or configuration revision. The provider is evaluated before either lookup.
+These properties prevent a cached entry from bypassing a changed or revoked decision and
+prevent one authorized principal from inheriting another principal's cache scope.
 
 ## Access it needs
 
@@ -182,6 +225,7 @@ across roles, versions, or engines.
 | `configmaps` | get, list, watch | An informer keeps compiled models in memory |
 | Valkey | Optional | Plan and result caches |
 | JWKS endpoint | Read, in jwt mode | Validate bearer tokens |
+| OPA or Ranger PDP endpoint | Read, when a model names that provider | Authorize query and SQL-plan requests |
 
 It needs **no DDL of any kind**, no access to `SemanticModel` resources, and no catalog or
 cloud credentials.

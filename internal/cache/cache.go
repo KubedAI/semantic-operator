@@ -55,16 +55,28 @@ func New(opts Options, log *slog.Logger) *Cache {
 // includes the effective role, so plans cannot leak across identities. The
 // dialect segment keeps plans engine-specific: without it, switching
 // SQL_DIALECT on a live install would serve cached SQL from the previous
-// engine until the TTL expired.
-func PlanKey(dialect, model, modelVersion, requestHash string) string {
-	return "sl:plan:" + dialect + ":" + model + ":" + modelVersion + ":" + requestHash
+// engine until the TTL expired. An external authorization fingerprint, when
+// present, isolates plans evaluated under different provider decisions.
+func PlanKey(dialect, model, modelVersion, requestHash string, authorizationFingerprint ...string) string {
+	key := "sl:plan:" + dialect + ":" + model + ":" + modelVersion + ":" + requestHash
+	if len(authorizationFingerprint) > 0 && authorizationFingerprint[0] != "" {
+		key += ":authz:" + authorizationFingerprint[0]
+	}
+	return key
 }
 
 // ResultKey derives the result cache key from the emitted SQL, which embeds
-// governance row filters, so results are role-safe by construction.
-func ResultKey(model, modelVersion, sql string) string {
-	h := sha256.Sum256([]byte(sql))
-	return "sl:result:" + model + ":" + modelVersion + ":" + hex.EncodeToString(h[:])[:24]
+// governance row filters, so results are role-safe by construction. External
+// authorization is checked before every lookup; its fingerprint additionally
+// isolates entries for future decision types that affect result scope.
+func ResultKey(model, modelVersion, sql string, authorizationFingerprint ...string) string {
+	h := sha256.New()
+	_, _ = h.Write([]byte(sql))
+	if len(authorizationFingerprint) > 0 && authorizationFingerprint[0] != "" {
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(authorizationFingerprint[0]))
+	}
+	return "sl:result:" + model + ":" + modelVersion + ":" + hex.EncodeToString(h.Sum(nil))[:24]
 }
 
 func (c *Cache) get(ctx context.Context, key string) ([]byte, bool) {

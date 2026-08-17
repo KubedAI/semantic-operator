@@ -2,16 +2,16 @@
 //
 // Two modes exist, and the difference is who is trusted.
 //
-// Header mode reads the role straight from the X-Semantic-Role header. It is
-// the historical default and is only safe when something in front of the
-// server authenticates the caller and overwrites that header, because any
-// client that can reach the port may otherwise claim any role, including one
-// with unrestricted access.
+// Header mode reads the principal and roles from X-Semantic-User and
+// X-Semantic-Role. It is the historical default and is only safe when
+// something in front of the server authenticates the caller, strips both
+// inbound headers, and sets both itself. Any client that can reach the port
+// could otherwise claim an arbitrary identity.
 //
 // JWT mode requires a bearer token signed by the configured issuer, validates
-// it against the issuer's JWKS, and takes the role from a claim. In this mode
-// any inbound X-Semantic-Role is ignored outright, so a client cannot assert
-// its own identity. This is the mode to run in production.
+// it against the issuer's JWKS, and resolves principal, groups, and roles from
+// configured claims. In this mode inbound identity headers are ignored
+// outright. This is the mode to run in production.
 package auth
 
 import (
@@ -40,8 +40,12 @@ const (
 	ModeJWT Mode = "jwt"
 )
 
-// RoleHeader is the identity header, trusted only in header mode.
+// RoleHeader carries application roles, trusted only in header mode.
 const RoleHeader = "X-Semantic-Role"
+
+// PrincipalHeader identifies the authenticated caller, trusted only in header
+// mode. A front proxy must strip and replace both identity headers.
+const PrincipalHeader = "X-Semantic-User"
 
 // ErrUnauthenticated marks a missing or invalid token. Adapters map it to 401,
 // which is distinct from governance.ErrUnauthorized (403): the caller is
@@ -58,12 +62,16 @@ type Options struct {
 	Issuer string
 	// Audience, when set, must appear in the token's aud claim.
 	Audience string
-	// RoleClaim names the claim holding the role. Dots address nested
-	// objects, e.g. "resource_access.semantic.role". Default "role".
+	// PrincipalClaim identifies the authenticated principal presented to policy
+	// providers. Dots address nested objects. Default "sub".
+	PrincipalClaim string
+	// RoleClaim names a claim holding one or more application roles. Dots
+	// address nested objects, e.g. "resource_access.semantic.roles". Default
+	// "role".
 	RoleClaim string
-	// GroupsClaim names a claim holding a list of roles, which is how most
-	// issuers model membership. Its entries are added to the role set
-	// alongside RoleClaim, and either one alone is enough to authenticate.
+	// GroupsClaim names a claim holding directory-group membership. Groups are
+	// kept separate from roles for external providers; built-in governance uses
+	// their union as policy labels.
 	GroupsClaim string
 	// ClaimsToCopy are claim names carried into Identity.Claims, so row
 	// filters can reference caller attributes (tenant, region).
@@ -75,12 +83,13 @@ type Options struct {
 
 // Authenticator resolves an identity from a request.
 type Authenticator struct {
-	mode        Mode
-	keyfunc     jwt.Keyfunc
-	roleClaim   []string
-	groupsClaim []string
-	copy        []string
-	parser      *jwt.Parser
+	mode           Mode
+	keyfunc        jwt.Keyfunc
+	principalClaim []string
+	roleClaim      []string
+	groupsClaim    []string
+	copy           []string
+	parser         *jwt.Parser
 }
 
 // New builds an Authenticator. In JWT mode it fetches the JWKS immediately,
@@ -99,9 +108,13 @@ func New(ctx context.Context, opts Options) (*Authenticator, error) {
 	if opts.RefreshInterval == 0 {
 		opts.RefreshInterval = time.Hour
 	}
-	claim := opts.RoleClaim
-	if claim == "" {
-		claim = "role"
+	principalClaim := opts.PrincipalClaim
+	if principalClaim == "" {
+		principalClaim = "sub"
+	}
+	roleClaim := opts.RoleClaim
+	if roleClaim == "" {
+		roleClaim = "role"
 	}
 
 	// keyfunc refreshes in the background and does not report an unreachable
@@ -129,11 +142,12 @@ func New(ctx context.Context, opts Options) (*Authenticator, error) {
 	}
 
 	a := &Authenticator{
-		mode:      ModeJWT,
-		keyfunc:   k.Keyfunc,
-		roleClaim: strings.Split(claim, "."),
-		copy:      opts.ClaimsToCopy,
-		parser:    jwt.NewParser(parserOpts...),
+		mode:           ModeJWT,
+		keyfunc:        k.Keyfunc,
+		principalClaim: strings.Split(principalClaim, "."),
+		roleClaim:      strings.Split(roleClaim, "."),
+		copy:           opts.ClaimsToCopy,
+		parser:         jwt.NewParser(parserOpts...),
 	}
 	if opts.GroupsClaim != "" {
 		a.groupsClaim = strings.Split(opts.GroupsClaim, ".")
@@ -144,12 +158,16 @@ func New(ctx context.Context, opts Options) (*Authenticator, error) {
 // Mode reports the configured mode, for logging and readiness reporting.
 func (a *Authenticator) Mode() Mode { return a.mode }
 
-// Identity resolves the caller. In header mode it returns the header value
-// verbatim. In JWT mode it validates the bearer token and reads the role
-// claim, ignoring any client-supplied role header.
+// Identity resolves the caller. Header mode trusts the principal and role
+// headers. JWT mode validates a bearer token and ignores both inbound identity
+// headers.
 func (a *Authenticator) Identity(r *http.Request) (governance.Identity, error) {
 	if a.mode == ModeHeader {
-		return headerIdentity(r), nil
+		id := headerIdentity(r)
+		if id.Principal == "" {
+			return governance.Identity{}, fmt.Errorf("%w: no %s header", ErrUnauthenticated, PrincipalHeader)
+		}
+		return id, nil
 	}
 
 	raw, err := bearerToken(r)
@@ -161,20 +179,22 @@ func (a *Authenticator) Identity(r *http.Request) (governance.Identity, error) {
 		return governance.Identity{}, fmt.Errorf("%w: %v", ErrUnauthenticated, err)
 	}
 
-	// A role set can come from a single role claim, a groups list, or both.
-	var roles []string
-	if role, ok := stringClaim(claims, a.roleClaim); ok && role != "" {
-		roles = append(roles, role)
+	principal, ok := stringClaim(claims, a.principalClaim)
+	if !ok || strings.TrimSpace(principal) == "" {
+		return governance.Identity{}, fmt.Errorf("%w: token carries no non-empty %q principal claim",
+			ErrUnauthenticated, strings.Join(a.principalClaim, "."))
 	}
+	roles := listClaim(claims, a.roleClaim)
+	var groups []string
 	if len(a.groupsClaim) > 0 {
-		roles = append(roles, listClaim(claims, a.groupsClaim)...)
+		groups = listClaim(claims, a.groupsClaim)
 	}
-	if len(roles) == 0 {
-		return governance.Identity{}, fmt.Errorf("%w: token carries neither a %q claim nor any group",
+	if len(roles) == 0 && len(groups) == 0 {
+		return governance.Identity{}, fmt.Errorf("%w: token carries neither a %q role claim nor any group",
 			ErrUnauthenticated, strings.Join(a.roleClaim, "."))
 	}
 
-	id := governance.Identity{Roles: dedupe(roles)}
+	id := governance.Identity{Principal: principal, Groups: dedupe(groups), Roles: dedupe(roles)}
 	for _, name := range a.copy {
 		if v, ok := stringClaim(claims, strings.Split(name, ".")); ok {
 			if id.Claims == nil {
@@ -189,9 +209,10 @@ func (a *Authenticator) Identity(r *http.Request) (governance.Identity, error) {
 // headerIdentity reads the trusted role header. Several roles may be given as
 // a comma-separated list, matching the multi-role model of JWT mode.
 func headerIdentity(r *http.Request) governance.Identity {
+	principal := strings.TrimSpace(r.Header.Get(PrincipalHeader))
 	raw := r.Header.Get(RoleHeader)
 	if raw == "" {
-		return governance.Identity{}
+		return governance.Identity{Principal: principal}
 	}
 	var roles []string
 	for _, part := range strings.Split(raw, ",") {
@@ -199,7 +220,7 @@ func headerIdentity(r *http.Request) governance.Identity {
 			roles = append(roles, p)
 		}
 	}
-	return governance.Identity{Roles: dedupe(roles)}
+	return governance.Identity{Principal: principal, Roles: dedupe(roles)}
 }
 
 // listClaim reads a claim holding an array of strings, which is how issuers

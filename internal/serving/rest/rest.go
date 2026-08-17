@@ -7,16 +7,21 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/KubedAI/semantic-operator/internal/governance"
 	"github.com/KubedAI/semantic-operator/internal/planner"
 	"github.com/KubedAI/semantic-operator/internal/serving"
 	"github.com/KubedAI/semantic-operator/internal/serving/auth"
+	"github.com/KubedAI/semantic-operator/internal/serving/authorization"
 )
 
-// RoleHeader names the identity header. It is trusted only when the
-// authenticator runs in header mode; see internal/serving/auth.
-const RoleHeader = auth.RoleHeader
+// Identity headers are trusted only when the authenticator runs in header
+// mode; see internal/serving/auth.
+const (
+	PrincipalHeader = auth.PrincipalHeader
+	RoleHeader      = auth.RoleHeader
+)
 
 // Handler mounts the REST API onto a mux. The authenticator resolves the
 // caller for every request; a nil authenticator falls back to header mode so
@@ -96,7 +101,7 @@ func handleQuery(svc *serving.Service, authn *auth.Authenticator, w http.Respons
 		return
 	}
 	if !execute {
-		plan, cached, err := svc.Plan(r.Context(), m, req, id)
+		plan, cached, err := svc.Plan(r.Context(), "rest", m, req, id)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -149,7 +154,13 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, maxBytes int64, dst any)
 // authenticator was supplied.
 func identity(authn *auth.Authenticator, r *http.Request) (governance.Identity, error) {
 	if authn == nil {
-		return governance.Single(r.Header.Get(RoleHeader)), nil
+		principal := strings.TrimSpace(r.Header.Get(PrincipalHeader))
+		if principal == "" {
+			return governance.Identity{}, fmt.Errorf("%w: no %s header", auth.ErrUnauthenticated, PrincipalHeader)
+		}
+		id := governance.Single(r.Header.Get(RoleHeader))
+		id.Principal = principal
+		return id, nil
 	}
 	return authn.Identity(r)
 }
@@ -160,6 +171,8 @@ func writeErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, auth.ErrUnauthenticated):
 		status = http.StatusUnauthorized
+	case errors.Is(err, authorization.ErrUnavailable):
+		status = http.StatusServiceUnavailable
 	case errors.Is(err, governance.ErrUnauthorized):
 		status = http.StatusForbidden
 	case errors.As(err, &unknown):

@@ -185,6 +185,99 @@ Roles are never combined. A caller holding several roles must have one role that
 their whole request, every metric and every field together. Write each role so it is
 usable on its own rather than expecting two of them to add up.
 
+### Add an external decision gate
+
+OPA or Ranger can add a second authorization decision to a model. Built-in roles remain
+mandatory. Both the built-in policy and the external provider must allow the request.
+
+```yaml
+governance:
+  defaultRole: analyst
+  roles:
+    - name: analyst
+      allowMetrics: ["*"]
+  external:
+    providerRef: corporate-opa
+```
+
+The model stores only a logical provider name. The server administrator owns the provider
+type, URL, credentials, resource mapping, and other native settings. A provider with a
+bearer token must use HTTPS. A local sidecar can use HTTP when no credential is configured.
+
+```yaml
+server:
+  authorization:
+    providers:
+      - name: corporate-opa
+        type: opa
+        url: https://opa.semantic-system.svc.cluster.local:8181
+        timeoutSeconds: 2
+        bearerTokenSecret:
+          name: opa-client
+          key: token
+        opa:
+          decisionPath: semantic/query/allow
+```
+
+Ranger uses the dedicated PDP, not Ranger Admin. Its URL is the complete API base. Standard
+PDP deployments use a base ending in `/authz/v1`. The semantic server authenticates with a
+service credential and submits the end user's identity, so Ranger must list the server
+principal as a delegation user for `serviceName`.
+
+```yaml
+server:
+  authorization:
+    providers:
+      - name: corporate-ranger
+        type: ranger
+        url: https://ranger-pdp.semantic-system.svc.cluster.local:6500/authz/v1
+        timeoutSeconds: 2
+        bearerTokenSecret:
+          name: ranger-service-token
+          key: token
+        ranger:
+          authenticationMode: service
+          serviceType: semantic-operator
+          serviceName: semantic-prod
+          resource: "semantic-model:namespace={namespace},model={resource}"
+          permission: query
+          contextAttributes:
+            environment: production
+            clusterName: analytics-prod
+```
+
+Static context attributes are administrator-defined strings sent with every decision. They
+must not contain secrets. `clientType`, `requestData`, and the `semantic.*` namespace are
+managed by the server and cannot be overridden.
+
+Helm writes this provider list as strict YAML in an Opaque Secret. The server mounts
+`providers.yaml` read-only and loads it through `AUTHORIZATION_PROVIDERS_FILE`. Bearer-token
+values remain in their separately referenced Secrets. They are not copied into the provider
+configuration Secret.
+
+A deployment outside this chart can instead set `AUTHORIZATION_PROVIDERS` to inline YAML or
+set `AUTHORIZATION_PROVIDERS_FILE` to a YAML file path. The two variables are mutually
+exclusive. Any `bearerTokenEnv` must use the dedicated
+`AUTHORIZATION_PROVIDER_TOKEN_*` namespace, so provider configuration cannot reference engine,
+cache, or other process secrets. Configuration is loaded once during startup, so a changed
+file requires a server rollout.
+
+Every provider receives the versioned action, exact model identity, semantic request,
+principal, separate groups and roles, configured JWT claims, current access time, and adapter.
+It receives no SQL or raw metric expressions. OPA evaluates this input at its configured Data
+API path and may return a boolean or `{"allow": true, "revision": "bundle-42"}`. A missing
+result denies.
+
+The Ranger adapter sends the configured permission to `/authorize`. It also sends copied
+claims as subject attributes, the semantic request as `requestData`, static context
+attributes, and model provenance. Only a correlated, obligation-free `ALLOW` succeeds.
+`DENY`, `NOT_DETERMINED`, and `PARTIAL` deny. Timeouts, unavailable providers, malformed or
+inconsistent results, row filters, masks, and other unsupported obligations fail closed with
+503. An explicit policy denial returns 403.
+
+This first integration is an allow or deny gate for query and SQL-plan requests. Discovery
+and engine-native views continue to use the built-in policy only.
+
 ## Step 6. Governed BI views (optional)
 
 Materialize certified metrics as engine-native views that BI tools can read through StarRocks

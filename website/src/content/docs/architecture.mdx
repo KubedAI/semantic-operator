@@ -61,16 +61,18 @@ request then flows through five stages.
 
 1. **Identity.** The caller is resolved to a role, either from a verified bearer token or
    from a trusted header. An unverified caller is rejected with 401.
-2. **Resolve.** Metric and dimension names are looked up in the compiled model. Unknown
-   names fail here with a helpful message.
-3. **Authorize.** The role's policy is checked before any SQL exists. This covers requested
-   metrics, requested dimensions, filters, and every field inside every metric expression,
-   so a forbidden column cannot be read through an aggregate. A violation is 403.
+2. **External authorization.** After the model is selected and request limits are applied,
+   an optional OPA or Ranger policy receives the versioned semantic request and trusted
+   identity context. It runs before cache access. A denial is 403. A timeout, unavailable
+   provider, malformed result, or unsupported obligation is 503.
+3. **Resolve and built-in authorization.** Metric and dimension names are looked up in the
+   compiled model. The role policy checks requested metrics, dimensions, filters, and every
+   field inside every metric expression. A violation is 403.
 4. **Plan.** The planner picks the smallest join tree that connects the required datasets,
    handles ratio metrics that would otherwise be distorted by fan out, applies the role's
    row filters, and renders everything through the engine's dialect.
 5. **Execute.** One statement runs. The response carries the rows, the SQL, the model
-   version, and a request hash.
+   version, a request hash, and an external decision fingerprint when a provider applies.
 
 The same request, from the same role, against the same model version, always produces
 byte identical SQL. That is what makes plans and results cacheable and what lets you trace
@@ -95,10 +97,15 @@ columns the role may never read, including through a metric expression. `rowFilt
 predicates conjoined into the WHERE clause during planning, so they participate in join
 resolution and appear in the emitted SQL.
 
-Because the policy is applied while the statement is built, an unauthorized request fails
-to compile. There is no filtered result set and no post processing step that could be
-skipped. The effective role is also part of the cache key, so a cached plan cannot leak
-across identities.
+Because the built-in policy is applied while the statement is built, an unauthorized
+request fails to compile. There is no filtered result set and no post processing step that
+could be skipped. The effective role is also part of the cache key, so a cached plan cannot
+leak across identities.
+
+External PDP evaluation stays in the serving layer because the compiler performs no I/O. It
+runs before cache lookup and produces only an allow or deny decision plus an optional stable
+revision. The deterministic compiler still performs the built-in metric, field, and row-policy
+checks after the external provider allows the request.
 
 ## Bounded grammars
 

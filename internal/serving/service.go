@@ -16,6 +16,7 @@ import (
 	"github.com/KubedAI/semantic-operator/internal/governance"
 	"github.com/KubedAI/semantic-operator/internal/observability"
 	"github.com/KubedAI/semantic-operator/internal/planner"
+	"github.com/KubedAI/semantic-operator/internal/serving/authorization"
 )
 
 // QueryExecutor is the read-only engine surface the service needs.
@@ -33,6 +34,9 @@ type Service struct {
 	Metrics *observability.Metrics
 	Log     *slog.Logger
 	Tracer  trace.Tracer
+	// Authorization resolves optional model-owned external provider references.
+	// A model that requests one fails closed when this dependency is absent.
+	Authorization authorization.Authorizer
 	// ExposeExpressions includes each metric's raw SQL expression in listings.
 	// Off by default: the expression is the definition itself, and an agent
 	// grounds perfectly well on the name, description, and synonyms. Turn it
@@ -77,17 +81,18 @@ type ModelInfo struct {
 // QueryResult is the adapter-facing result envelope. SQL is always included:
 // provenance is part of the product.
 type QueryResult struct {
-	Columns      []string `json:"columns"`
-	Rows         [][]any  `json:"rows"`
-	RowCount     int      `json:"rowCount"`
-	SQL          string   `json:"sql"`
-	Model        string   `json:"model"`
-	ModelVersion string   `json:"modelVersion"`
-	RequestHash  string   `json:"requestHash"`
-	Role         string   `json:"role,omitempty"`
-	CachedPlan   bool     `json:"cachedPlan"`
-	CachedResult bool     `json:"cachedResult"`
-	ElapsedMs    int64    `json:"elapsedMs"`
+	Columns                  []string `json:"columns"`
+	Rows                     [][]any  `json:"rows"`
+	RowCount                 int      `json:"rowCount"`
+	SQL                      string   `json:"sql"`
+	Model                    string   `json:"model"`
+	ModelVersion             string   `json:"modelVersion"`
+	RequestHash              string   `json:"requestHash"`
+	Role                     string   `json:"role,omitempty"`
+	AuthorizationFingerprint string   `json:"authorizationFingerprint,omitempty"`
+	CachedPlan               bool     `json:"cachedPlan"`
+	CachedResult             bool     `json:"cachedResult"`
+	ElapsedMs                int64    `json:"elapsedMs"`
 }
 
 // ErrUnknownModel distinguishes 404 from 400 in adapters.
@@ -210,19 +215,39 @@ func (s *Service) MaxRequestBytes() int64 {
 }
 
 // Plan compiles a request without executing it (dry run and first half of
-// Query). The plan cache key includes model version and effective role.
-func (s *Service) Plan(ctx context.Context, m *planner.CompiledModel, req planner.Request, id governance.Identity) (*planner.Plan, bool, error) {
+// Query). External authorization runs before any cache lookup. The plan cache
+// key includes model version, effective identity, and external decision scope.
+func (s *Service) Plan(ctx context.Context, adapter string, m *planner.CompiledModel, req planner.Request, id governance.Identity) (*planner.Plan, bool, error) {
 	req, err := s.Limits.apply(req)
 	if err != nil {
 		return nil, false, err
 	}
+
+	authorizationFingerprint := ""
+	if m.Governance != nil && m.Governance.External != nil {
+		ext := m.Governance.External
+		if s.Authorization == nil {
+			return nil, false, fmt.Errorf("%w: provider %q is required by model %q but no external authorizer is configured",
+				authorization.ErrUnavailable, ext.ProviderRef, m.Name)
+		}
+		input := authorization.NewQueryInput(m, req, id, authorization.Environment{
+			AccessTimeUnixMilli: time.Now().UTC().UnixMilli(),
+			Adapter:             adapter,
+		})
+		decision, err := s.Authorization.Authorize(ctx, ext.ProviderRef, input)
+		if err != nil {
+			return nil, false, err
+		}
+		authorizationFingerprint = authorization.Fingerprint(ext.ProviderRef, input.Identity, decision)
+	}
+
 	// Keyed on the whole identity, roles and claims both. Roles alone would
 	// let two tenants sharing a role collide on one compiled plan.
 	key := cache.PlanKey(s.Dialect.Name(), m.Name, m.Version,
-		planner.RequestHash(req, governance.IdentityKey(m.Governance, id)))
+		planner.RequestHash(req, governance.IdentityKey(m.Governance, id)), authorizationFingerprint)
 	if blob, ok := s.Cache.GetPlan(ctx, key); ok {
 		var p planner.Plan
-		if err := json.Unmarshal(blob, &p); err == nil {
+		if err := json.Unmarshal(blob, &p); err == nil && p.AuthorizationFingerprint == authorizationFingerprint {
 			s.Metrics.PlanCacheHits.Inc()
 			return &p, true, nil
 		}
@@ -231,6 +256,7 @@ func (s *Service) Plan(ctx context.Context, m *planner.CompiledModel, req planne
 	if err != nil {
 		return nil, false, err
 	}
+	p.AuthorizationFingerprint = authorizationFingerprint
 	if blob, err := json.Marshal(p); err == nil {
 		s.Cache.SetPlan(ctx, key, blob)
 	}
@@ -248,7 +274,7 @@ func (s *Service) Query(ctx context.Context, adapter string, m *planner.Compiled
 	))
 	defer span.End()
 
-	plan, cachedPlan, err := s.Plan(ctx, m, req, id)
+	plan, cachedPlan, err := s.Plan(ctx, adapter, m, req, id)
 	if err != nil {
 		s.Metrics.Requests.WithLabelValues(adapter, m.Name, "plan_error").Inc()
 		return nil, err
@@ -257,9 +283,10 @@ func (s *Service) Query(ctx context.Context, adapter string, m *planner.Compiled
 
 	res := &QueryResult{
 		SQL: plan.SQL, Model: plan.Model, ModelVersion: plan.ModelVersion,
-		RequestHash: plan.RequestHash, Role: plan.Role, CachedPlan: cachedPlan,
+		RequestHash: plan.RequestHash, Role: plan.Role,
+		AuthorizationFingerprint: plan.AuthorizationFingerprint, CachedPlan: cachedPlan,
 	}
-	rkey := cache.ResultKey(m.Name, m.Version, plan.SQL)
+	rkey := cache.ResultKey(m.Name, m.Version, plan.SQL, plan.AuthorizationFingerprint)
 	if blob, ok := s.Cache.GetResult(ctx, rkey); ok {
 		var cached struct {
 			Columns []string `json:"columns"`

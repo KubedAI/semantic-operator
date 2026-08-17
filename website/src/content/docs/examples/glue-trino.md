@@ -157,7 +157,7 @@ and the `store.s_state` dimension.
 
 ```bash
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
-  -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["store_productivity"],"dimensions":["store.s_state"]}' | jq -c '.rows'
 ```
 
@@ -176,7 +176,7 @@ Now look at the SQL.
 
 ```bash
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/sql \
-  -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["store_productivity"],"dimensions":["store.s_state"]}' | jq -r '.plan.sql'
 ```
 
@@ -222,11 +222,11 @@ aggregated separately over `store` alone.
 
 ```bash
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
-  -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["total_sales"],"dimensions":["customer.c_email_address"]}' | jq -r '.error'
 
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
-  -H 'X-Semantic-Role: tx_analyst' -H 'Content-Type: application/json' \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: tx_analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["total_sales"],"dimensions":["store.s_state"]}' | jq -c '.rows'
 
 kubectl -n trino exec deploy/trino-coordinator -c trino-coordinator -- \

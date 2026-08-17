@@ -102,9 +102,10 @@ leading `/* semantic-layer model=... version=... request=... */` comment for aud
 
 **Trust model:** the CR author is trusted (field expressions are raw SQL scalars by design).
 Governance protects **query-time callers**, not against the model author. Identity is resolved
-by `internal/serving/auth`: `AUTH_MODE=header` (default) trusts `X-Semantic-Role` and therefore
+by `internal/serving/auth`: `AUTH_MODE=header` (default) trusts `X-Semantic-User` and
+`X-Semantic-Role` and therefore
 requires an authenticating proxy in front, while `AUTH_MODE=jwt` validates a bearer token against
-the issuer's JWKS and **ignores that header entirely**. 401 means unverified caller, 403 means
+the issuer's JWKS and **ignores both headers entirely**. 401 means unverified caller, 403 means
 verified but disallowed. Row-filter predicates are grammar-bounded so a policy typo can't smuggle
 arbitrary SQL through the control plane.
 
@@ -143,7 +144,8 @@ mocked/faked); prefer running all of it.
 - **Never publish a Service outside the cluster.** `ClusterIP` only, reached with
   `kubectl port-forward`; no `LoadBalancer`, no `NodePort`, in the chart, in any
   example, or in any deploy instruction. The server authorizes callers from the
-  `X-Semantic-Role` header and expects an authenticating proxy in front, so an
+  `X-Semantic-User` and `X-Semantic-Role` headers and expects an authenticating
+  proxy in front, so an
   exposed Service is an unauthenticated query endpoint (on EKS, a public IP —
   this has already caused one security incident). The chart hard-fails on any
   other Service type, `hack/check-no-public-services.sh` enforces it repo-wide

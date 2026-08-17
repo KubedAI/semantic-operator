@@ -49,6 +49,9 @@ func newJWKS(t *testing.T) *jwksServer {
 
 func (s *jwksServer) sign(t *testing.T, claims jwt.MapClaims) string {
 	t.Helper()
+	if _, exists := claims["sub"]; !exists {
+		claims["sub"] = "test-user"
+	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	tok.Header["kid"] = s.kid
 	signed, err := tok.SignedString(s.key)
@@ -85,9 +88,14 @@ func TestHeaderModeTrustsHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id, err := a.Identity(req("", "analyst"))
+	r := req("", "analyst")
+	r.Header.Set(PrincipalHeader, "alice")
+	id, err := a.Identity(r)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if id.Principal != "alice" {
+		t.Errorf("principal = %q, want alice", id.Principal)
 	}
 	if got := strings.Join(id.Roles, ","); got != "analyst" {
 		t.Errorf("roles = %q, want analyst", got)
@@ -100,6 +108,16 @@ func TestHeaderModeTrustsHeader(t *testing.T) {
 	}
 	if def.Mode() != ModeHeader {
 		t.Errorf("default mode = %q, want header", def.Mode())
+	}
+}
+
+func TestHeaderModeRequiresPrincipal(t *testing.T) {
+	a, err := New(context.Background(), Options{Mode: ModeHeader})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Identity(req("", "analyst")); !errors.Is(err, ErrUnauthenticated) {
+		t.Fatalf("error = %v, want ErrUnauthenticated", err)
 	}
 }
 
@@ -149,18 +167,22 @@ func TestJWTModeRejectsBadTokens(t *testing.T) {
 	noRole := base()
 	delete(noRole, "role")
 
+	noPrincipal := base()
+	noPrincipal["sub"] = ""
+
 	noExp := jwt.MapClaims{"role": "analyst", "iss": "https://issuer.example", "aud": "semantic"}
 
 	cases := map[string]*http.Request{
-		"no header":      req("", ""),
-		"not bearer":     req("Basic abc", ""),
-		"garbage token":  req("Bearer not-a-jwt", ""),
-		"wrong key":      req("Bearer "+wrongKey, ""),
-		"expired":        req("Bearer "+s.sign(t, expired), ""),
-		"wrong issuer":   req("Bearer "+s.sign(t, wrongIssuer), ""),
-		"wrong audience": req("Bearer "+s.sign(t, wrongAudience), ""),
-		"missing role":   req("Bearer "+s.sign(t, noRole), ""),
-		"no expiry":      req("Bearer "+s.sign(t, noExp), ""),
+		"no header":         req("", ""),
+		"not bearer":        req("Basic abc", ""),
+		"garbage token":     req("Bearer not-a-jwt", ""),
+		"wrong key":         req("Bearer "+wrongKey, ""),
+		"expired":           req("Bearer "+s.sign(t, expired), ""),
+		"wrong issuer":      req("Bearer "+s.sign(t, wrongIssuer), ""),
+		"wrong audience":    req("Bearer "+s.sign(t, wrongAudience), ""),
+		"missing role":      req("Bearer "+s.sign(t, noRole), ""),
+		"missing principal": req("Bearer "+s.sign(t, noPrincipal), ""),
+		"no expiry":         req("Bearer "+s.sign(t, noExp), ""),
 	}
 	for name, r := range cases {
 		if _, err := a.Identity(r); !errors.Is(err, ErrUnauthenticated) {
@@ -204,11 +226,36 @@ func TestNestedRoleClaimAndCopiedClaims(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if id.Principal != "agent-7" {
+		t.Errorf("principal = %q, want agent-7", id.Principal)
+	}
 	if got := strings.Join(id.Roles, ","); got != "tx_analyst" {
 		t.Errorf("nested single-element role claim = %q", got)
 	}
 	if id.Claims["tenant"] != "acme" || id.Claims["sub"] != "agent-7" {
 		t.Errorf("claims = %v", id.Claims)
+	}
+}
+
+func TestJWTKeepsPrincipalGroupsAndRolesSeparate(t *testing.T) {
+	s := newJWKS(t)
+	a := jwtAuth(t, s, Options{
+		PrincipalClaim: "preferred_username",
+		RoleClaim:      "roles",
+		GroupsClaim:    "groups",
+	})
+	token := s.sign(t, jwt.MapClaims{
+		"preferred_username": "alice",
+		"roles":              []any{"report-reader", "approver"},
+		"groups":             []any{"analysts", "finance"},
+		"exp":                time.Now().Add(time.Hour).Unix(),
+	})
+	id, err := a.Identity(req("Bearer "+token, "admin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id.Principal != "alice" || strings.Join(id.Groups, ",") != "analysts,finance" || strings.Join(id.Roles, ",") != "report-reader,approver" {
+		t.Fatalf("identity = %+v", id)
 	}
 }
 

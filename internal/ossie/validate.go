@@ -134,6 +134,11 @@ func ValidateSpec(spec *v1alpha1.SemanticModelSpec) error {
 
 	// Governance.
 	if g := spec.Governance; g != nil {
+		if ext := g.External; ext != nil {
+			if !validProviderRef(ext.ProviderRef) {
+				add("governance.external.providerRef %q must be a lowercase DNS label", ext.ProviderRef)
+			}
+		}
 		roleNames := map[string]bool{}
 		for i := range g.Roles {
 			r := &g.Roles[i]
@@ -288,4 +293,18 @@ func findCycle(edges map[string][]string) string {
 		}
 	}
 	return ""
+}
+
+func validProviderRef(s string) bool {
+	if len(s) == 0 || len(s) > 63 ||
+		((s[0] < 'a' || s[0] > 'z') && (s[0] < '0' || s[0] > '9')) {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+			return false
+		}
+	}
+	return s[len(s)-1] != '-'
 }

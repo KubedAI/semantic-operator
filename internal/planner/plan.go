@@ -43,12 +43,13 @@ type Filter struct {
 
 // Plan is the compiled output: exactly one SQL statement plus provenance.
 type Plan struct {
-	SQL          string   `json:"sql"`
-	Model        string   `json:"model"`
-	ModelVersion string   `json:"modelVersion"`
-	RequestHash  string   `json:"requestHash"`
-	Role         string   `json:"role,omitempty"`
-	Columns      []string `json:"columns"`
+	SQL                      string   `json:"sql"`
+	Model                    string   `json:"model"`
+	ModelVersion             string   `json:"modelVersion"`
+	RequestHash              string   `json:"requestHash"`
+	Role                     string   `json:"role,omitempty"`
+	AuthorizationFingerprint string   `json:"authorizationFingerprint,omitempty"`
+	Columns                  []string `json:"columns"`
 }
 
 var validGrains = map[string]bool{"day": true, "week": true, "month": true, "quarter": true, "year": true}

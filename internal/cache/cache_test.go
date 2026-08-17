@@ -26,6 +26,20 @@ func TestKeysScopeByDialectModelVersionAndRequest(t *testing.T) {
 	if r1 == r2 {
 		t.Fatal("result keys must vary by SQL")
 	}
+	if PlanKey("starrocks", "m", "v1", "req1", "decision-a") ==
+		PlanKey("starrocks", "m", "v1", "req1", "decision-b") {
+		t.Fatal("plan keys must vary by external authorization decision")
+	}
+	if ResultKey("m", "v1", "SELECT 1", "decision-a") ==
+		ResultKey("m", "v1", "SELECT 1", "decision-b") {
+		t.Fatal("result keys must vary by external authorization decision")
+	}
+	if PlanKey("starrocks", "m", "v1", "req1", "") != a {
+		t.Fatal("empty authorization fingerprint changed the legacy plan key")
+	}
+	if ResultKey("m", "v1", "SELECT 1", "") != r1 {
+		t.Fatal("empty authorization fingerprint changed the legacy result key")
+	}
 }
 
 func TestNilCacheIsNoOp(t *testing.T) {
