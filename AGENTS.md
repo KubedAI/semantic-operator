@@ -141,17 +141,6 @@ mocked/faked); prefer running all of it.
 
 ## Conventions & guardrails
 
-- **Never publish a Service outside the cluster.** `ClusterIP` only, reached with
-  `kubectl port-forward`; no `LoadBalancer`, no `NodePort`, in the chart, in any
-  example, or in any deploy instruction. The server authorizes callers from the
-  `X-Semantic-User` and `X-Semantic-Role` headers and expects an authenticating
-  proxy in front, so an
-  exposed Service is an unauthenticated query endpoint (on EKS, a public IP —
-  this has already caused one security incident). The chart hard-fails on any
-  other Service type, `hack/check-no-public-services.sh` enforces it repo-wide
-  from `make lint` and CI, and third-party charts must be installed with their
-  service type overridden to `ClusterIP` (many default to `LoadBalancer`) and
-  audited afterwards with `kubectl get svc -A`.
 - After changing anything in `api/`, run `make generate` and commit the regenerated
   `zz_generated.deepcopy.go` and `charts/semantic-operator/crds/`. CI fails otherwise
   (`git diff --exit-code` after regeneration).

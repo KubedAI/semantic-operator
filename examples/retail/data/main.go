@@ -1,16 +1,20 @@
-// This loader creates a deterministic, demo-sized TPC-DS subset as Iceberg
-// tables in the Glue catalog by executing DDL and batched INSERTs through
-// the existing StarRocks external catalog. No Spark required.
+// This loader creates a deterministic, demo-sized TPC-DS subset by executing
+// DDL and batched INSERTs through StarRocks or Trino. No Spark required.
 //
 // Idempotent: tables whose row counts already match are skipped. -force
-// drops and reloads. A fixed seed means the data, and therefore every
-// benchmark ground-truth answer, is reproducible.
+// drops and reloads. -profile selects "full" (the default benchmark dataset)
+// or "e2e" (a compact integration dataset). A fixed seed means the data, and
+// therefore every benchmark ground-truth answer, is reproducible.
 //
-// Env (all optional except STARROCKS_HOST):
+// Env (all optional except ENGINE_HOST or its legacy STARROCKS_HOST fallback):
 //
-//	STARROCKS_HOST, STARROCKS_PORT, STARROCKS_USER, STARROCKS_PASSWORD
-//	ICEBERG_CATALOG  (default "iceberg")   existing StarRocks external catalog
-//	DEMO_DATABASE    (default "osi_demo")
+//	SQL_DIALECT   (default "starrocks")   starrocks or trino
+//	ENGINE_HOST, ENGINE_PORT, ENGINE_USER, ENGINE_PASSWORD
+//	ENGINE_CATALOG (default ICEBERG_CATALOG, then "iceberg")
+//	DEMO_DATABASE (default "osi_demo")
+//
+// The STARROCKS_* connection variables and ICEBERG_CATALOG remain supported
+// for the existing StarRocks and Glue workflow.
 package main
 
 import (
@@ -24,10 +28,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/KubedAI/semantic-operator/internal/starrocks"
+	"github.com/KubedAI/semantic-operator/internal/dbclient"
+	"github.com/KubedAI/semantic-operator/internal/emitter"
+	_ "github.com/KubedAI/semantic-operator/internal/emitter/starrocks"
+	_ "github.com/KubedAI/semantic-operator/internal/emitter/trino"
+	_ "github.com/KubedAI/semantic-operator/internal/starrocks"
+	_ "github.com/KubedAI/semantic-operator/internal/trino"
 )
 
 const seed = 20260702 // fixed: data and benchmark ground truth are reproducible
+
+type dataProfile struct {
+	dates, stores, items, customers, sales int
+}
 
 var (
 	nDates     = 1096 // 2000-01-01 .. 2002-12-31
@@ -36,6 +49,17 @@ var (
 	nCustomers = 2000
 	nSales     = 200_000
 )
+
+func selectDataProfile(name string) (dataProfile, error) {
+	switch name {
+	case "full":
+		return dataProfile{dates: 1096, stores: 12, items: 500, customers: 2000, sales: 200_000}, nil
+	case "e2e":
+		return dataProfile{dates: 1096, stores: 6, items: 25, customers: 100, sales: 2_000}, nil
+	default:
+		return dataProfile{}, fmt.Errorf("unknown data profile %q (want full or e2e)", name)
+	}
+}
 
 var categories = []string{"Books", "Electronics", "Home", "Jewelry", "Men", "Music", "Shoes", "Sports", "Children", "Women"}
 var brandWords = []string{"amalg", "edu pack", "expor tuni", "impor tocorp", "scholar", "brandcorp", "corpna", "maxi", "univ", "nameless"}
@@ -46,36 +70,53 @@ var lastNames = []string{"Smith", "Johnson", "Williams", "Brown", "Jones", "Garc
 
 func main() {
 	force := flag.Bool("force", false, "drop and reload all tables")
+	profileName := flag.String("profile", "full", "data volume profile: full or e2e")
 	flag.Parse()
 
-	host := os.Getenv("STARROCKS_HOST")
-	if host == "" {
-		log.Fatal("STARROCKS_HOST is required")
-	}
-	catalog := envOr("ICEBERG_CATALOG", "iceberg")
-	db := envOr("DEMO_DATABASE", "osi_demo")
-
-	cli, err := starrocks.Open(starrocks.Config{
-		Host: host, Port: envInt("STARROCKS_PORT", 9030),
-		User: envOr("STARROCKS_USER", "root"), Password: os.Getenv("STARROCKS_PASSWORD"),
-		QueryTimeout: 5 * time.Minute,
-	})
+	profile, err := selectDataProfile(*profileName)
 	if err != nil {
 		log.Fatal(err)
 	}
+	nDates = profile.dates
+	nStores = profile.stores
+	nItems = profile.items
+	nCustomers = profile.customers
+	nSales = profile.sales
+
+	engine := envOr("SQL_DIALECT", "starrocks")
+	db := envOr("DEMO_DATABASE", "osi_demo")
+	target, err := newSQLTarget(engine, loaderCatalog(), db)
+	if err != nil {
+		log.Fatal(err)
+	}
+	cfg, err := dbclient.EnvConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+	cfg.QueryTimeout = 5 * time.Minute
+	cli, err := dbclient.Open(engine, cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		if err := cli.Close(); err != nil {
+			log.Printf("closing %s client: %v", engine, err)
+		}
+	}()
+
 	ctx := context.Background()
 	if err := cli.Ping(ctx); err != nil {
-		log.Fatalf("cannot reach StarRocks at %s: %v", host, err)
+		log.Fatalf("cannot reach %s at %s: %v", engine, cfg.Host, err)
 	}
 
-	// The external catalog must already exist (it fronts Glue + S3 and its
-	// creation carries account-specific config; see the retail example README).
-	if _, _, err := cli.Query(ctx, fmt.Sprintf("SHOW DATABASES FROM `%s`", catalog)); err != nil {
-		log.Fatalf("external catalog %q not usable: %v\nCreate it first; see examples/retail/README.md (StarRocks external catalog setup).", catalog, err)
+	// Catalog creation carries engine-specific configuration and remains an
+	// administrator responsibility. The loader creates only its schema/tables.
+	if _, _, err := cli.Query(ctx, target.catalogProbe()); err != nil {
+		log.Fatalf("catalog %q is not usable through %s: %v", target.catalog, engine, err)
 	}
 
-	must(cli.Exec(ctx, fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`.`%s`", catalog, db)))
-	fq := func(t string) string { return fmt.Sprintf("`%s`.`%s`.`%s`", catalog, db, t) }
+	must(cli.Exec(ctx, target.createSchema()))
+	fq := target.table
 
 	tables := []struct {
 		name string
@@ -121,22 +162,26 @@ func main() {
 		}
 		// Each table gets its own deterministic stream regardless of which
 		// tables were skipped.
-		l := &loader{ctx: ctx, cli: cli, table: fq(t.name), rng: rand.New(rand.NewSource(seed + int64(len(t.name))))}
+		l := &loader{
+			ctx: ctx, cli: cli, dialect: target.dialect, table: fq(t.name),
+			rng: rand.New(rand.NewSource(seed + int64(len(t.name)))),
+		}
 		start := time.Now()
 		t.load(l)
 		l.flush()
 		log.Printf("%-12s loaded %d rows in %s", t.name, count(ctx, cli, fq(t.name)), time.Since(start).Round(time.Second))
 	}
-	log.Printf("demo data ready in %s.%s", catalog, db)
+	log.Printf("demo data ready in %s.%s (%s profile)", target.catalog, db, *profileName)
 }
 
 // loader batches multi-row INSERT statements.
 type loader struct {
-	ctx   context.Context
-	cli   *starrocks.Client
-	table string
-	rng   *rand.Rand
-	buf   []string
+	ctx     context.Context
+	cli     dbclient.Client
+	dialect emitter.Dialect
+	table   string
+	rng     *rand.Rand
+	buf     []string
 }
 
 const batchSize = 500
@@ -161,8 +206,8 @@ func (l *loader) dates() {
 	for i := 0; i < nDates; i++ {
 		sk, _ := strconv.Atoi(day.Format("20060102"))
 		q := (int(day.Month())-1)/3 + 1
-		l.add(fmt.Sprintf("%d, '%s', %d, %d, '%dQ%d', '%s', '%s'",
-			sk, day.Format("2006-01-02"), day.Year(), int(day.Month()),
+		l.add(fmt.Sprintf("%d, %s, %d, %d, '%dQ%d', '%s', '%s'",
+			sk, dateLiteral(l.dialect, day), day.Year(), int(day.Month()),
 			day.Year(), q, day.Month().String(), day.Weekday().String()))
 		day = day.AddDate(0, 0, 1)
 	}
@@ -217,7 +262,60 @@ func (l *loader) sales() {
 	}
 }
 
-func count(ctx context.Context, cli *starrocks.Client, fqTable string) int {
+type sqlTarget struct {
+	dialect           emitter.Dialect
+	catalog, database string
+}
+
+func newSQLTarget(engine, catalog, database string) (sqlTarget, error) {
+	dialect, err := emitter.Get(engine)
+	if err != nil {
+		return sqlTarget{}, err
+	}
+	if catalog == "" {
+		return sqlTarget{}, fmt.Errorf("ENGINE_CATALOG must not be empty")
+	}
+	if database == "" {
+		return sqlTarget{}, fmt.Errorf("DEMO_DATABASE must not be empty")
+	}
+	return sqlTarget{dialect: dialect, catalog: catalog, database: database}, nil
+}
+
+func (t sqlTarget) catalogProbe() string {
+	if t.dialect.Name() == "trino" {
+		return "SHOW SCHEMAS FROM " + t.dialect.QuoteIdent(t.catalog)
+	}
+	return "SHOW DATABASES FROM " + t.dialect.QuoteIdent(t.catalog)
+}
+
+func (t sqlTarget) createSchema() string {
+	qualified := t.dialect.QuoteIdent(t.catalog) + "." + t.dialect.QuoteIdent(t.database)
+	return t.dialect.CreateSchema(qualified)
+}
+
+func (t sqlTarget) table(name string) string {
+	return t.dialect.QualifyTable(t.catalog, t.database, name)
+}
+
+func dateLiteral(dialect emitter.Dialect, day time.Time) string {
+	literal, err := dialect.Literal(day.UTC().Format("2006-01-02"))
+	if err != nil {
+		panic(err) // every registered dialect supports string literals
+	}
+	if dialect.Name() == "trino" {
+		return "DATE " + literal
+	}
+	return literal
+}
+
+func loaderCatalog() string {
+	if catalog := os.Getenv("ENGINE_CATALOG"); catalog != "" {
+		return catalog
+	}
+	return envOr("ICEBERG_CATALOG", "iceberg")
+}
+
+func count(ctx context.Context, cli dbclient.Client, fqTable string) int {
 	_, rows, err := cli.Query(ctx, "SELECT COUNT(*) FROM "+fqTable)
 	if err != nil || len(rows) == 0 {
 		return -1
@@ -235,15 +333,6 @@ func must(err error) {
 func envOr(k, d string) string {
 	if v := os.Getenv(k); v != "" {
 		return v
-	}
-	return d
-}
-
-func envInt(k string, d int) int {
-	if v := os.Getenv(k); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
 	}
 	return d
 }
