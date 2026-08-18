@@ -1,0 +1,119 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opa
+  labels:
+    app.kubernetes.io/name: opa
+    app.kubernetes.io/component: authorization
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opa
+      app.kubernetes.io/component: authorization
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: opa
+        app.kubernetes.io/component: authorization
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: opa
+          image: docker.io/openpolicyagent/opa:1.19.1
+          imagePullPolicy: IfNotPresent
+          args:
+            - run
+            - --server
+            - --addr=0.0.0.0:8181
+            - /policy/retail.rego
+          ports:
+            - name: http
+              containerPort: 8181
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health?plugins
+              port: http
+            periodSeconds: 2
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: policy
+              mountPath: /policy
+              readOnly: true
+      volumes:
+        - name: policy
+          configMap:
+            name: opa-retail-policy
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opa
+  labels:
+    app.kubernetes.io/name: opa
+    app.kubernetes.io/component: authorization
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: opa
+    app.kubernetes.io/component: authorization
+  ports:
+    - name: http
+      port: 8181
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opa
+  labels:
+    app.kubernetes.io/name: opa
+    app.kubernetes.io/component: authorization
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: opa
+      app.kubernetes.io/component: authorization
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: semantic-operator
+              app.kubernetes.io/component: server
+      ports:
+        - protocol: TCP
+          port: 8181
+  egress: []

@@ -1,0 +1,8 @@
+spec:
+  connection:
+    catalog: memory
+    database: osi_demo
+    viewDatabase: memory.semantic_views
+  governance:
+    external:
+      providerRef: retail-opa

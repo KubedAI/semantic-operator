@@ -7,6 +7,20 @@ TAG        ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo d
 AWS_REGION ?= us-west-2
 PLATFORM   ?= linux/amd64
 
+# Local kind commands share one repository-local kubeconfig and always select
+# the named kind context explicitly.
+KIND_CLUSTER_NAME ?= semantic-operator-dev
+KIND_KUBECONFIG   ?= $(CURDIR)/.kube/config
+KIND_IMAGE_BASE   ?= semantic-operator-kind
+KIND_IMAGE_TAG    ?= local
+KIND_NAMESPACE    ?= semantic-system
+KIND_ENGINE_TYPE  ?= trino
+KIND_ENGINE_HOST  ?= trino.$(KIND_NAMESPACE).svc.cluster.local
+KIND_ENGINE_PORT      ?= 8080
+KIND_TRINO_LOCAL_PORT ?= 18080
+KIND_NODE_IMAGE       ?=
+KIND_RELEASE_NAME     ?= semantic-operator
+
 BIN_DIR ?= $(CURDIR)/bin
 CONTROLLER_GEN := $(BIN_DIR)/controller-gen
 GOLANGCI_LINT := $(BIN_DIR)/golangci-lint
@@ -99,6 +113,54 @@ docs-check-external: docs-build ## Also probe outbound links (needs network)
 
 ## Deployment
 
+.PHONY: kind-deploy
+kind-deploy: ## Create or reuse the kind cluster and write .kube/config
+	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
+	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
+	KIND_NODE_IMAGE="$(KIND_NODE_IMAGE)" \
+	./hack/kind-deploy.sh
+
+.PHONY: trino-deploy
+trino-deploy: kind-deploy ## Deploy pinned single-node Trino to the kind cluster
+	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
+	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
+	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
+	./hack/trino-deploy.sh
+
+.PHONY: operator-deploy
+operator-deploy: $(if $(filter trino,$(KIND_ENGINE_TYPE)),trino-deploy,kind-deploy) ## Build, load, and install the semantic operator and server
+	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
+	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
+	KIND_IMAGE_BASE="$(KIND_IMAGE_BASE)" \
+	KIND_IMAGE_TAG="$(KIND_IMAGE_TAG)" \
+	KIND_PLATFORM="$(PLATFORM)" \
+	KIND_ENGINE_TYPE="$(KIND_ENGINE_TYPE)" \
+	KIND_ENGINE_HOST="$(KIND_ENGINE_HOST)" \
+	KIND_ENGINE_PORT="$(KIND_ENGINE_PORT)" \
+	KIND_RELEASE_NAME="$(KIND_RELEASE_NAME)" \
+	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
+	./hack/operator-deploy.sh
+
+.PHONY: opa-deploy
+opa-deploy: operator-deploy ## Deploy the pinned OPA image and retail example policy to kind
+	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
+	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
+	KIND_RELEASE_NAME="$(KIND_RELEASE_NAME)" \
+	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
+	./hack/opa-deploy.sh
+
+.PHONY: models-deploy
+models-deploy: opa-deploy ## Load retail data into Trino and deploy the Trino/OPA E2E model
+	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
+	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
+	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
+	KIND_TRINO_LOCAL_PORT="$(KIND_TRINO_LOCAL_PORT)" \
+	./hack/models-deploy.sh
+
+.PHONY: e2e
+e2e: models-deploy ## Prepare kind, Trino, operator, OPA, data, and model for manual tests
+	@echo "E2E environment is ready"
+
 .PHONY: helm-lint
 helm-lint:
 	helm lint charts/semantic-operator
@@ -126,4 +188,4 @@ bench: ## Run the accuracy benchmark and write the retail example RESULTS.md
 
 .PHONY: help
 help:
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-16s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-16s %s\n", $$1, $$2}'

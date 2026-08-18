@@ -9,8 +9,8 @@ deliberate, and it is the fastest way to make progress.
 
 ## Get set up
 
-You need Go 1.26 or later. For the cluster steps you also need Docker, `kubectl`, and
-`helm`.
+You need Go 1.26 or later. For the cluster steps you also need Docker, `kind`, `kubectl`,
+and `helm`.
 
 ```bash
 git clone https://github.com/KubedAI/semantic-operator.git
@@ -84,7 +84,130 @@ make generate
 
 Commit the regenerated files. Continuous integration fails if they are stale.
 
-## Trying a change on a cluster
+## Trying changes on a dedicated kind cluster
+
+Use the repository helper when you do not have a disposable cluster. It creates or reuses a
+cluster named `semantic-operator-dev` and exports its context to the repository-local
+`.kube/config`. It does not build application images or deploy workloads.
+
+```bash
+make kind-deploy
+```
+
+Use a different cluster name when needed. Workload helpers use the matching
+`kind-<cluster-name>` context from this file.
+
+```bash
+make kind-deploy KIND_CLUSTER_NAME=semantic-operator-test
+```
+
+Deploy the local Trino engine, then build and install the semantic operator and server.
+`operator-deploy` waits for an existing Trino deployment before Helm waits for server
+readiness.
+
+```bash
+make trino-deploy
+make operator-deploy
+```
+
+Trino uses an in-memory catalog, so restarting or redeploying its pod removes loaded retail
+data. Rerun `make models-deploy` after `make trino-deploy`. To use an existing StarRocks
+service, skip `trino-deploy` and pass the engine settings to `operator-deploy`.
+
+```bash
+make operator-deploy \
+  KIND_ENGINE_TYPE=starrocks \
+  KIND_ENGINE_HOST=starrocks.default.svc.cluster.local \
+  KIND_ENGINE_PORT=9030
+```
+
+Inspect the installation or reach the `ClusterIP` server with the repository kubeconfig and
+named context.
+
+```bash
+kubectl --kubeconfig .kube/config --context kind-semantic-operator-dev \
+  -n semantic-system get pods
+kubectl --kubeconfig .kube/config --context kind-semantic-operator-dev \
+  -n semantic-system port-forward svc/semantic-operator-server 8090:8090
+```
+
+### Deploy the retail OPA policy
+
+Deploy OPA after the semantic operator is running. Kubernetes pulls
+`docker.io/openpolicyagent/opa:1.19.1`. The target installs the retail policy behind a
+`ClusterIP` Service and upgrades the existing semantic server release with the `retail-opa`
+provider. It uses the same `.kube/config` and named kind context as the other helpers.
+
+```bash
+make opa-deploy
+```
+
+The policy allows `demo-user` with the `analyst`, `tx_analyst`, or `admin` role to query the
+retail model through REST. It verifies the provider-neutral action, model identity, request,
+adapter, and server access time. The model's built-in field restrictions and row filters still
+apply independently.
+
+### Load the retail data and E2E model
+
+Load the deterministic retail dataset into `memory.osi_demo`, verify all five table counts,
+and deploy the retail model.
+
+```bash
+make models-deploy
+```
+
+The target runs the existing loader in `examples/retail/data` through a local Trino port
+forward with the compact `e2e` profile. It loads 1,096 dates, 6 stores, 25 items, 100
+customers, and 2,000 sales. The default `full` loader profile remains unchanged for demos
+and benchmarks. The target merges an E2E-only patch into a temporary copy of the shared
+retail model. The patch selects `memory.osi_demo`, writes views under
+`memory.semantic_views`, and sets `governance.external.providerRef: retail-opa`. The shared
+model file remains unchanged. The target waits for the model and its views to report ready.
+
+### Prepare the complete local environment
+
+Use the aggregate target to create or reuse the named cluster, deploy Trino and the semantic
+operator, deploy OPA, load the retail data, and publish the patched model.
+
+```bash
+make e2e
+```
+
+This target only prepares the environment. It does not send semantic queries or run E2E test
+assertions. Trino's memory data is lost whenever its pod restarts. The aggregate target reloads
+it, or you can rerun `make models-deploy` after a standalone Trino refresh.
+
+To test manually, forward the `ClusterIP` semantic server.
+
+```bash
+kubectl --kubeconfig .kube/config --context kind-semantic-operator-dev \
+  -n semantic-system port-forward svc/semantic-operator-server 8090:8090
+```
+
+An authorized query uses the OPA-approved principal and role.
+
+```bash
+curl -sS -X POST localhost:8090/v1/models/tpcds_retail_model/query \
+  -H 'X-Semantic-User: demo-user' \
+  -H 'X-Semantic-Role: analyst' \
+  -H 'Content-Type: application/json' \
+  -d '{"metrics":["total_sales"],"dimensions":["store.s_state"]}' | jq
+```
+
+The response should contain all six store states and a nonempty
+`authorizationFingerprint`. Change only the principal to inspect OPA's denial.
+
+```bash
+curl -i -X POST localhost:8090/v1/models/tpcds_retail_model/query \
+  -H 'X-Semantic-User: denied-user' \
+  -H 'X-Semantic-Role: analyst' \
+  -H 'Content-Type: application/json' \
+  -d '{"metrics":["total_sales"],"dimensions":["store.s_state"]}'
+```
+
+The denied request should return HTTP 403 and name `retail-opa`.
+
+## Trying a change on an existing cluster
 
 Build and push images to a registry your cluster can pull from, then install the chart.
 
