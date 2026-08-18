@@ -1,0 +1,30 @@
+{
+  "name": "semantic-operator",
+  "displayName": "Semantic Operator",
+  "description": "Semantic model query authorization",
+  "implClass": "",
+  "label": "Semantic Operator",
+  "resources": [
+    {
+      "itemId": 1,
+      "name": "semantic-model",
+      "type": "string",
+      "level": 1,
+      "mandatory": true,
+      "lookupSupported": false,
+      "recursiveSupported": false,
+      "excludesSupported": false
+    }
+  ],
+  "accessTypes": [
+    {
+      "itemId": 1,
+      "name": "query",
+      "label": "Query"
+    }
+  ],
+  "configs": [],
+  "policyConditions": [],
+  "contextEnrichers": [],
+  "enums": []
+}

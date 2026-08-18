@@ -1,0 +1,32 @@
+{
+  "service": "semantic-local",
+  "name": "retail-query",
+  "description": "Allow the retail demo user and roles to query semantic models",
+  "isEnabled": true,
+  "isAuditEnabled": false,
+  "resources": {
+    "semantic-model": {
+      "values": ["*"],
+      "isExcludes": false,
+      "isRecursive": false
+    }
+  },
+  "policyItems": [
+    {
+      "users": ["demo-user"],
+      "groups": [],
+      "roles": ["analyst", "tx_analyst", "admin"],
+      "accesses": [
+        {
+          "type": "query",
+          "isAllowed": true
+        }
+      ],
+      "conditions": [],
+      "delegateAdmin": false
+    }
+  ],
+  "denyPolicyItems": [],
+  "allowExceptions": [],
+  "denyExceptions": []
+}

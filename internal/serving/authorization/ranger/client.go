@@ -25,12 +25,15 @@ const (
 // API base to which authorize, authorizeMulti, and permissions are appended.
 // Standard ranger PDP deployments use a base ending in /authz/v1.
 type Options struct {
-	URL              string
-	BearerToken      string
-	Headers          map[string]string
-	Timeout          time.Duration
-	MaxResponseBytes int64
-	HTTPClient       *http.Client
+	URL         string
+	BearerToken string
+	Headers     map[string]string
+	// AllowInsecureHTTP permits credentials and trusted headers over HTTP.
+	// It is intended only for isolated development environments.
+	AllowInsecureHTTP bool
+	Timeout           time.Duration
+	MaxResponseBytes  int64
+	HTTPClient        *http.Client
 }
 
 // Client calls the three ranger PDP REST authorization endpoints.
@@ -86,8 +89,8 @@ func New(opts Options) (*Client, error) {
 	}
 
 	headers := make(map[string]string, len(opts.Headers))
-	if (opts.BearerToken != "" || len(opts.Headers) != 0) && base.Scheme != "https" {
-		return nil, errors.New("ranger PDP URL must use https when credentials or trusted headers are configured")
+	if (opts.BearerToken != "" || len(opts.Headers) != 0) && base.Scheme != "https" && !opts.AllowInsecureHTTP {
+		return nil, errors.New("ranger PDP URL must use https when credentials or trusted headers are configured; set allowInsecureHTTP only for isolated development")
 	}
 	for name, value := range opts.Headers {
 		if !validHeaderName(name) {

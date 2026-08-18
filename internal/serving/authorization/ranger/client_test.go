@@ -164,6 +164,14 @@ func TestNewNormalizesAndValidatesURLs(t *testing.T) {
 	if _, err := New(Options{URL: "http://ranger:6500", Headers: map[string]string{"X-Remote-User": "server"}}); err == nil {
 		t.Fatal("trusted header over HTTP was accepted")
 	}
+	for _, opts := range []Options{
+		{URL: "http://ranger:6500", BearerToken: "token", AllowInsecureHTTP: true},
+		{URL: "http://ranger:6500", Headers: map[string]string{"X-Remote-User": "server"}, AllowInsecureHTTP: true},
+	} {
+		if _, err := New(opts); err != nil {
+			t.Fatalf("explicit insecure HTTP configuration rejected: %v", err)
+		}
+	}
 	if _, err := New(Options{URL: "http://ranger:6500"}); err != nil {
 		t.Fatalf("credential-free HTTP URL rejected: %v", err)
 	}

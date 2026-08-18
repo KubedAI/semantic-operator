@@ -220,9 +220,12 @@ server:
 ```
 
 Ranger uses the dedicated PDP, not Ranger Admin. Its URL is the complete API base. Standard
-PDP deployments use a base ending in `/authz/v1`. The semantic server authenticates with a
-service credential and submits the end user's identity, so Ranger must list the server
-principal as a delegation user for `serviceName`.
+PDP deployments use a base ending in `/authz/v1`. In service mode, the semantic server sends
+its configured `servicePrincipal` in `X-Forwarded-User` and submits the end user's identity
+in the request body. The URL must use HTTPS by default because this is a trusted identity
+header. An isolated development environment can set `allowInsecureHTTP: true` explicitly.
+Never enable it in production. Ranger must list the service principal as a delegation user
+for `serviceName`.
 
 ```yaml
 server:
@@ -232,11 +235,10 @@ server:
         type: ranger
         url: https://ranger-pdp.semantic-system.svc.cluster.local:6500/authz/v1
         timeoutSeconds: 2
-        bearerTokenSecret:
-          name: ranger-service-token
-          key: token
         ranger:
           authenticationMode: service
+          servicePrincipal: semantic-server
+          allowInsecureHTTP: false
           serviceType: semantic-operator
           serviceName: semantic-prod
           resource: "semantic-model:namespace={namespace},model={resource}"

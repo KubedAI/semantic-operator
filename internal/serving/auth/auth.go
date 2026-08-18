@@ -76,6 +76,12 @@ type Options struct {
 	// ClaimsToCopy are claim names carried into Identity.Claims, so row
 	// filters can reference caller attributes (tenant, region).
 	ClaimsToCopy []string
+	// EngineUserClaim names the claim whose value is used as the engine
+	// session user when identity is propagated to the engine. It is kept
+	// separate from PrincipalClaim so the engine username can differ from the
+	// governance principal, and must match the engine's own principal claim.
+	// Dots address nested objects.
+	EngineUserClaim string
 	// RefreshInterval bounds how long a rotated signing key takes to be
 	// picked up. Default 1h.
 	RefreshInterval time.Duration
@@ -83,13 +89,14 @@ type Options struct {
 
 // Authenticator resolves an identity from a request.
 type Authenticator struct {
-	mode           Mode
-	keyfunc        jwt.Keyfunc
-	principalClaim []string
-	roleClaim      []string
-	groupsClaim    []string
-	copy           []string
-	parser         *jwt.Parser
+	mode            Mode
+	keyfunc         jwt.Keyfunc
+	principalClaim  []string
+	roleClaim       []string
+	groupsClaim     []string
+	engineUserClaim []string
+	copy            []string
+	parser          *jwt.Parser
 }
 
 // New builds an Authenticator. In JWT mode it fetches the JWKS immediately,
@@ -152,36 +159,54 @@ func New(ctx context.Context, opts Options) (*Authenticator, error) {
 	if opts.GroupsClaim != "" {
 		a.groupsClaim = strings.Split(opts.GroupsClaim, ".")
 	}
+	if opts.EngineUserClaim != "" {
+		a.engineUserClaim = strings.Split(opts.EngineUserClaim, ".")
+	}
 	return a, nil
 }
 
 // Mode reports the configured mode, for logging and readiness reporting.
 func (a *Authenticator) Mode() Mode { return a.mode }
 
-// Identity resolves the caller. Header mode trusts the principal and role
-// headers. JWT mode validates a bearer token and ignores both inbound identity
-// headers.
-func (a *Authenticator) Identity(r *http.Request) (governance.Identity, error) {
+// Authenticated is the result of resolving a caller. Token and Expiry are set
+// only in JWT mode. They carry the caller's validated bearer token so the
+// serving layer can optionally propagate the caller's identity to the engine.
+// They are security sensitive and must never be logged or placed in a cache
+// key.
+type Authenticated struct {
+	Identity governance.Identity
+	Token    string
+	Expiry   time.Time
+	// EngineUser is the resolved engine session user from EngineUserClaim, set
+	// only in JWT mode when that claim is configured and present. It is the
+	// value forwarded to the engine as the session user under passthrough.
+	EngineUser string
+}
+
+// Authenticate resolves the caller. Header mode trusts the principal and role
+// headers and returns no token. JWT mode validates a bearer token, ignores
+// both inbound identity headers, and returns the raw token and its expiry.
+func (a *Authenticator) Authenticate(r *http.Request) (Authenticated, error) {
 	if a.mode == ModeHeader {
 		id := headerIdentity(r)
 		if id.Principal == "" {
-			return governance.Identity{}, fmt.Errorf("%w: no %s header", ErrUnauthenticated, PrincipalHeader)
+			return Authenticated{}, fmt.Errorf("%w: no %s header", ErrUnauthenticated, PrincipalHeader)
 		}
-		return id, nil
+		return Authenticated{Identity: id}, nil
 	}
 
 	raw, err := bearerToken(r)
 	if err != nil {
-		return governance.Identity{}, err
+		return Authenticated{}, err
 	}
 	claims := jwt.MapClaims{}
 	if _, err := a.parser.ParseWithClaims(raw, claims, a.keyfunc); err != nil {
-		return governance.Identity{}, fmt.Errorf("%w: %v", ErrUnauthenticated, err)
+		return Authenticated{}, fmt.Errorf("%w: %v", ErrUnauthenticated, err)
 	}
 
 	principal, ok := stringClaim(claims, a.principalClaim)
 	if !ok || strings.TrimSpace(principal) == "" {
-		return governance.Identity{}, fmt.Errorf("%w: token carries no non-empty %q principal claim",
+		return Authenticated{}, fmt.Errorf("%w: token carries no non-empty %q principal claim",
 			ErrUnauthenticated, strings.Join(a.principalClaim, "."))
 	}
 	roles := listClaim(claims, a.roleClaim)
@@ -190,7 +215,7 @@ func (a *Authenticator) Identity(r *http.Request) (governance.Identity, error) {
 		groups = listClaim(claims, a.groupsClaim)
 	}
 	if len(roles) == 0 && len(groups) == 0 {
-		return governance.Identity{}, fmt.Errorf("%w: token carries neither a %q role claim nor any group",
+		return Authenticated{}, fmt.Errorf("%w: token carries neither a %q role claim nor any group",
 			ErrUnauthenticated, strings.Join(a.roleClaim, "."))
 	}
 
@@ -203,7 +228,17 @@ func (a *Authenticator) Identity(r *http.Request) (governance.Identity, error) {
 			id.Claims[name] = v
 		}
 	}
-	return id, nil
+
+	out := Authenticated{Identity: id, Token: raw}
+	if exp, err := claims.GetExpirationTime(); err == nil && exp != nil {
+		out.Expiry = exp.Time
+	}
+	if len(a.engineUserClaim) > 0 {
+		if v, ok := stringClaim(claims, a.engineUserClaim); ok {
+			out.EngineUser = v
+		}
+	}
+	return out, nil
 }
 
 // headerIdentity reads the trusted role header. Several roles may be given as

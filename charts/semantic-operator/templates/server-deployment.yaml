@@ -139,6 +139,27 @@ spec:
             {{- end }}
             - name: WATCH_NAMESPACE
               value: {{ .Release.Namespace | quote }}
+            - name: ENGINE_IDENTITY_MODE
+              value: {{ .Values.engine.identityMode | default "static" | quote }}
+            {{- with .Values.engine.userClaim }}
+            - name: ENGINE_USER_CLAIM
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if eq (.Values.engine.identityMode | default "static") "exchange" }}
+            {{- $ex := .Values.engine.exchange | default dict }}
+            - name: ENGINE_EXCHANGE_TOKEN_URL
+              value: {{ required "engine.exchange.tokenURL is required when engine.identityMode is exchange" $ex.tokenURL | quote }}
+            - name: ENGINE_EXCHANGE_CLIENT_ID
+              value: {{ required "engine.exchange.clientID is required when engine.identityMode is exchange" $ex.clientID | quote }}
+            {{- $exSecret := $ex.clientSecretSecret | default dict }}
+            {{- if $exSecret.name }}
+            - name: ENGINE_EXCHANGE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $exSecret.name }}
+                  key: {{ $exSecret.key | default "client-secret" }}
+            {{- end }}
+            {{- end }}
             - name: PLAN_CACHE_TTL
               value: {{ .Values.server.planCacheTTL | quote }}
             - name: RESULT_CACHE_TTL

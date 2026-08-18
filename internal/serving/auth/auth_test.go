@@ -90,9 +90,13 @@ func TestHeaderModeTrustsHeader(t *testing.T) {
 	}
 	r := req("", "analyst")
 	r.Header.Set(PrincipalHeader, "alice")
-	id, err := a.Identity(r)
+	res, err := a.Authenticate(r)
 	if err != nil {
 		t.Fatal(err)
+	}
+	id := res.Identity
+	if res.Token != "" {
+		t.Errorf("header mode must not produce a token, got %q", res.Token)
 	}
 	if id.Principal != "alice" {
 		t.Errorf("principal = %q, want alice", id.Principal)
@@ -116,7 +120,7 @@ func TestHeaderModeRequiresPrincipal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.Identity(req("", "analyst")); !errors.Is(err, ErrUnauthenticated) {
+	if _, err := a.Authenticate(req("", "analyst")); !errors.Is(err, ErrUnauthenticated) {
 		t.Fatalf("error = %v, want ErrUnauthenticated", err)
 	}
 }
@@ -130,9 +134,16 @@ func TestJWTModeIgnoresRoleHeader(t *testing.T) {
 		"role": "analyst",
 		"exp":  time.Now().Add(time.Hour).Unix(),
 	})
-	id, err := a.Identity(req("Bearer "+token, "admin"))
+	res, err := a.Authenticate(req("Bearer "+token, "admin"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	id := res.Identity
+	if res.Token != token {
+		t.Fatal("jwt mode must return the raw token for passthrough")
+	}
+	if !res.Expiry.After(time.Now()) {
+		t.Fatalf("jwt mode must return a future expiry, got %v", res.Expiry)
 	}
 	if got := strings.Join(id.Roles, ","); got != "analyst" {
 		t.Fatalf("roles = %q; the header must be ignored in jwt mode", got)
@@ -185,7 +196,7 @@ func TestJWTModeRejectsBadTokens(t *testing.T) {
 		"no expiry":         req("Bearer "+s.sign(t, noExp), ""),
 	}
 	for name, r := range cases {
-		if _, err := a.Identity(r); !errors.Is(err, ErrUnauthenticated) {
+		if _, err := a.Authenticate(r); !errors.Is(err, ErrUnauthenticated) {
 			t.Errorf("%s: err = %v, want ErrUnauthenticated", name, err)
 		}
 	}
@@ -203,7 +214,7 @@ func TestJWTModeRejectsHMACToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.Identity(req("Bearer "+signed, "")); !errors.Is(err, ErrUnauthenticated) {
+	if _, err := a.Authenticate(req("Bearer "+signed, "")); !errors.Is(err, ErrUnauthenticated) {
 		t.Fatalf("HMAC token must be rejected, got %v", err)
 	}
 }
@@ -222,10 +233,11 @@ func TestNestedRoleClaimAndCopiedClaims(t *testing.T) {
 		"sub":    "agent-7",
 		"exp":    time.Now().Add(time.Hour).Unix(),
 	})
-	id, err := a.Identity(req("Bearer "+token, ""))
+	res, err := a.Authenticate(req("Bearer "+token, ""))
 	if err != nil {
 		t.Fatal(err)
 	}
+	id := res.Identity
 	if id.Principal != "agent-7" {
 		t.Errorf("principal = %q, want agent-7", id.Principal)
 	}
@@ -240,9 +252,10 @@ func TestNestedRoleClaimAndCopiedClaims(t *testing.T) {
 func TestJWTKeepsPrincipalGroupsAndRolesSeparate(t *testing.T) {
 	s := newJWKS(t)
 	a := jwtAuth(t, s, Options{
-		PrincipalClaim: "preferred_username",
-		RoleClaim:      "roles",
-		GroupsClaim:    "groups",
+		PrincipalClaim:  "preferred_username",
+		RoleClaim:       "roles",
+		GroupsClaim:     "groups",
+		EngineUserClaim: "preferred_username",
 	})
 	token := s.sign(t, jwt.MapClaims{
 		"preferred_username": "alice",
@@ -250,9 +263,13 @@ func TestJWTKeepsPrincipalGroupsAndRolesSeparate(t *testing.T) {
 		"groups":             []any{"analysts", "finance"},
 		"exp":                time.Now().Add(time.Hour).Unix(),
 	})
-	id, err := a.Identity(req("Bearer "+token, "admin"))
+	res, err := a.Authenticate(req("Bearer "+token, "admin"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	id := res.Identity
+	if res.EngineUser != "alice" {
+		t.Fatalf("engine user = %q, want alice", res.EngineUser)
 	}
 	if id.Principal != "alice" || strings.Join(id.Groups, ",") != "analysts,finance" || strings.Join(id.Roles, ",") != "report-reader,approver" {
 		t.Fatalf("identity = %+v", id)

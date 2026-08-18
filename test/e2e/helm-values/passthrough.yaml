@@ -1,0 +1,4 @@
+# Overlay on auth.yaml that forwards the caller's validated token to the engine,
+# so the engine enforces per-user policy under the caller's own identity.
+engine:
+  identityMode: passthrough

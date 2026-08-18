@@ -20,6 +20,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
+	"github.com/KubedAI/semantic-operator/internal/dbclient"
 	"github.com/KubedAI/semantic-operator/internal/nlbench"
 	"github.com/KubedAI/semantic-operator/internal/starrocks"
 )
@@ -98,7 +99,7 @@ func main() {
 
 	for _, q := range qs {
 		gtSQL := strings.ReplaceAll(q.GroundTruthSQL, "$DB.", prefix)
-		gtCols, gtRows, err := db.Query(ctx, gtSQL)
+		gtCols, gtRows, err := db.Query(ctx, dbclient.EngineCredential{}, gtSQL)
 		if err != nil {
 			log.Fatalf("%s: ground truth SQL failed (fix the question set): %v", q.ID, err)
 		}

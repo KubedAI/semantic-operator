@@ -1,0 +1,57 @@
+image:
+  pullPolicy: IfNotPresent
+
+# The e2e runs on an isolated kind cluster and drives the server by
+# port-forward, so no NetworkPolicy is applied.
+networkPolicy:
+  enabled: false
+
+server:
+  replicas: 1
+  auth:
+    mode: header
+    allowInsecureHeaderAuth: true
+  authorization:
+    providers:
+      - name: retail-opa
+        type: opa
+        url: http://opa:8181
+        timeoutSeconds: 2
+        maxResponseBytes: 1048576
+        opa:
+          decisionPath: semantic/retail/decision
+      - name: retail-ranger
+        type: ranger
+        url: http://ranger-pdp:6500/authz/v1
+        timeoutSeconds: 2
+        maxResponseBytes: 1048576
+        ranger:
+          authenticationMode: service
+          servicePrincipal: semantic-server
+          # The kind PDP uses HTTP. Never enable this in production.
+          allowInsecureHTTP: true
+          serviceType: semantic-operator
+          serviceName: semantic-local
+          resource: "semantic-model:namespace={namespace},model={resource}"
+          permission: query
+
+# Single TLS+auth Trino engine shared by every e2e flow. The manager and server
+# authenticate with static passwords over TLS; queries run under the server's
+# own identity (static mode) while OPA governs at the semantic layer.
+engine:
+  type: trino
+  host: trino.semantic-system.svc.cluster.local
+  port: 8443
+  tls:
+    enabled: true
+    insecureSkipVerify: true
+  manager:
+    user: semantic-manager
+    passwordSecret:
+      name: engine-manager-cred
+      key: password
+  server:
+    user: semantic-server
+    passwordSecret:
+      name: engine-server-cred
+      key: password

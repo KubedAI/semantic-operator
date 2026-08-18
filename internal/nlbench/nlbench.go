@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/KubedAI/semantic-operator/internal/dbclient"
 	"github.com/KubedAI/semantic-operator/internal/starrocks"
 )
 
@@ -85,7 +86,7 @@ func (r *Runner) AnswerRaw(ctx context.Context, question string) PathResult {
 		return res
 	}
 	res.SQL = sql
-	cols, rows, err := r.DB.Query(ctx, sql)
+	cols, rows, err := r.DB.Query(ctx, dbclient.EngineCredential{}, sql)
 	if err != nil {
 		res.Err = fmt.Sprintf("execution: %v", err)
 		res.ElapsedMs = time.Since(start).Milliseconds()

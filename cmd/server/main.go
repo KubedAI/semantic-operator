@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,6 +23,7 @@ import (
 	"github.com/KubedAI/semantic-operator/internal/observability"
 	"github.com/KubedAI/semantic-operator/internal/serving"
 	"github.com/KubedAI/semantic-operator/internal/serving/auth"
+	"github.com/KubedAI/semantic-operator/internal/serving/exchange"
 	mcpadapter "github.com/KubedAI/semantic-operator/internal/serving/mcp"
 	"github.com/KubedAI/semantic-operator/internal/serving/rest"
 	_ "github.com/KubedAI/semantic-operator/internal/starrocks"
@@ -137,14 +139,15 @@ func run() error {
 	// X-Semantic-Role and therefore requires an authenticating proxy in front;
 	// jwt mode validates a bearer token and ignores both headers.
 	authn, err := auth.New(ctx, auth.Options{
-		Mode:           auth.Mode(envOr("AUTH_MODE", string(auth.ModeHeader))),
-		JWKSURL:        os.Getenv("OIDC_JWKS_URL"),
-		Issuer:         os.Getenv("OIDC_ISSUER"),
-		Audience:       os.Getenv("OIDC_AUDIENCE"),
-		PrincipalClaim: os.Getenv("OIDC_PRINCIPAL_CLAIM"),
-		RoleClaim:      os.Getenv("OIDC_ROLE_CLAIM"),
-		GroupsClaim:    os.Getenv("OIDC_GROUPS_CLAIM"),
-		ClaimsToCopy:   splitList(os.Getenv("OIDC_CLAIMS_TO_COPY")),
+		Mode:            auth.Mode(envOr("AUTH_MODE", string(auth.ModeHeader))),
+		JWKSURL:         os.Getenv("OIDC_JWKS_URL"),
+		Issuer:          os.Getenv("OIDC_ISSUER"),
+		Audience:        os.Getenv("OIDC_AUDIENCE"),
+		PrincipalClaim:  os.Getenv("OIDC_PRINCIPAL_CLAIM"),
+		RoleClaim:       os.Getenv("OIDC_ROLE_CLAIM"),
+		GroupsClaim:     os.Getenv("OIDC_GROUPS_CLAIM"),
+		ClaimsToCopy:    splitList(os.Getenv("OIDC_CLAIMS_TO_COPY")),
+		EngineUserClaim: os.Getenv("ENGINE_USER_CLAIM"),
 	})
 	if err != nil {
 		log.Error("configuring authentication", "err", err)
@@ -153,6 +156,43 @@ func run() error {
 	if authn.Mode() == auth.ModeHeader {
 		log.Warn("AUTH_MODE=header: the X-Semantic-User and X-Semantic-Role headers are trusted verbatim; " +
 			"put an authenticating proxy in front of this service or set AUTH_MODE=jwt")
+	}
+
+	// Engine identity mode selects how a query authenticates to the engine.
+	// static uses the server's own credential. passthrough forwards the
+	// caller's validated token. exchange swaps the caller's token for an
+	// engine-audience token via RFC 8693. passthrough and exchange require a
+	// real token, so they are valid only in jwt mode with an engine user claim.
+	engineIdentityMode := envOr("ENGINE_IDENTITY_MODE", "static")
+	var resolver serving.CredentialResolver
+	switch engineIdentityMode {
+	case "static":
+		resolver = serving.StaticResolver()
+	case "passthrough":
+		if err := requireEngineIdentityJWT(authn); err != nil {
+			log.Error("invalid engine identity configuration", "err", err)
+			return err
+		}
+		resolver = serving.PassthroughResolver()
+	case "exchange":
+		if err := requireEngineIdentityJWT(authn); err != nil {
+			log.Error("invalid engine identity configuration", "err", err)
+			return err
+		}
+		ex, err := exchange.New(exchange.Options{
+			TokenURL:     os.Getenv("ENGINE_EXCHANGE_TOKEN_URL"),
+			ClientID:     os.Getenv("ENGINE_EXCHANGE_CLIENT_ID"),
+			ClientSecret: os.Getenv("ENGINE_EXCHANGE_CLIENT_SECRET"),
+		})
+		if err != nil {
+			log.Error("invalid engine identity configuration", "err", err)
+			return err
+		}
+		resolver = serving.ExchangeResolver(ex, os.Getenv("ENGINE_USER_CLAIM"))
+	default:
+		err := fmt.Errorf("unknown ENGINE_IDENTITY_MODE %q: use static, passthrough, or exchange", engineIdentityMode)
+		log.Error("invalid engine identity configuration", "err", err)
+		return err
 	}
 
 	mux := http.NewServeMux()
@@ -174,8 +214,8 @@ func run() error {
 	log.Info("query concurrency bounded", "max_in_flight", limits.MaxConcurrentQueries,
 		"max_result_bytes", limits.MaxResultBytes)
 
-	mux.Handle("/mcp", limiter.Middleware(mcpadapter.Handler(svc, version, authn)))
-	mux.Handle("/v1/", limiter.Middleware(http.TimeoutHandler(rest.Handler(svc, authn), restTimeout,
+	mux.Handle("/mcp", limiter.Middleware(mcpadapter.Handler(svc, version, authn, resolver)))
+	mux.Handle("/v1/", limiter.Middleware(http.TimeoutHandler(rest.Handler(svc, authn, resolver), restTimeout,
 		`{"error":"request timed out"}`)))
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
@@ -204,6 +244,19 @@ func run() error {
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("server exited", "err", err)
 		return err
+	}
+	return nil
+}
+
+// requireEngineIdentityJWT enforces the preconditions shared by passthrough
+// and exchange: a real caller token (jwt mode) and a configured engine user
+// claim to use as the engine session user.
+func requireEngineIdentityJWT(authn *auth.Authenticator) error {
+	if authn.Mode() != auth.ModeJWT {
+		return fmt.Errorf("ENGINE_IDENTITY_MODE passthrough or exchange requires AUTH_MODE=jwt")
+	}
+	if os.Getenv("ENGINE_USER_CLAIM") == "" {
+		return fmt.Errorf("ENGINE_IDENTITY_MODE passthrough or exchange requires ENGINE_USER_CLAIM, the token claim used as the engine session user")
 	}
 	return nil
 }

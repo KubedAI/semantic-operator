@@ -1,0 +1,63 @@
+# A minimal SemanticModel over Trino's built-in tpch connector, for the
+# identity-passthrough e2e. It has no views, so the manager needs only
+# introspection, not a writable catalog. Built-in governance allows every
+# role, so per-user differences come from engine-side enforcement: trino
+# masks orders.clerk and denies customer for bob.
+apiVersion: semantic.ossie.io/v1alpha1
+kind: SemanticModel
+metadata:
+  name: tpch-orders
+  namespace: semantic-system
+spec:
+  connection:
+    catalog: tpch
+    database: tiny
+  ossie:
+    name: tpch_orders_model
+    description: TPC-H orders and customer for the identity passthrough e2e
+    datasets:
+      - name: orders
+        source: orders
+        primary_key: [orderkey]
+        fields:
+          - name: orderkey
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: orderkey }]
+          - name: custkey
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: custkey }]
+          - name: totalprice
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: totalprice }]
+          - name: clerk
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: clerk }]
+      - name: customer
+        source: customer
+        primary_key: [custkey]
+        fields:
+          - name: custkey
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: custkey }]
+          - name: mktsegment
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: mktsegment }]
+    relationships:
+      - name: orders_to_customer
+        from: orders
+        to: customer
+        from_columns: [custkey]
+        to_columns: [custkey]
+    metrics:
+      - name: total_price
+        expression:
+          dialects: [{ dialect: ANSI_SQL, expression: SUM(orders.totalprice) }]
+  governance:
+    defaultRole: analyst
+    roles:
+      - name: analyst
+        allowMetrics: ["*"]
+      - name: tx_analyst
+        allowMetrics: ["*"]
+      - name: admin
+        allowMetrics: ["*"]

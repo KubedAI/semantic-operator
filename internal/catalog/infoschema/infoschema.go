@@ -38,7 +38,7 @@ func New(db dbclient.Client, d emitter.Dialect, engineCatalog string) *Source {
 func (s *Source) ListTables(ctx context.Context, database string) ([]catalog.Table, error) {
 	var errs []error
 	for _, q := range s.columnQueries(database) {
-		cols, rows, err := s.db.Query(ctx, q)
+		cols, rows, err := s.db.Query(ctx, dbclient.EngineCredential{}, q)
 		if err != nil {
 			// The comment column name differs by engine family; try the
 			// next variant rather than guessing from the dialect name, so

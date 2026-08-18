@@ -80,6 +80,14 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
   value: {{ .Values.engine.type | quote }}
 - name: ENGINE_HOST
   value: {{ required "engine.host is required (legacy starrocks.host applies only when engine.type is starrocks)" $host | quote }}
+{{- if (($root.Values.engine.tls) | default dict).enabled }}
+- name: ENGINE_TLS_ENABLED
+  value: "true"
+{{- end }}
+{{- if (($root.Values.engine.tls) | default dict).insecureSkipVerify }}
+- name: ENGINE_TLS_INSECURE_SKIP_VERIFY
+  value: "true"
+{{- end }}
 {{- if $port }}
 - name: ENGINE_PORT
   value: {{ $port | quote }}

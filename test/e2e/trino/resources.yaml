@@ -1,3 +1,16 @@
+# Single Trino engine for the whole e2e. It serves TLS and authenticates two
+# ways (PASSWORD,JWT): the operator's manager and server use static passwords
+# (Basic auth over TLS), and end users present a Keycloak JWT for query
+# passthrough or exchange. File-based access control does double duty:
+#
+#   - memory catalog: semantic-manager owns it, so the retail data loader can
+#     create schemas/tables and the manager can publish views. Everyone else is
+#     read-only, which is all the server needs for governed SELECTs.
+#   - tpch catalog: per-user policy for the identity e2e (bob is denied on
+#     customer and sees a masked clerk on orders).
+#
+# The keystore and password file come from the trino-tls and trino-passwords
+# Secrets created by hack/trino-secrets.sh.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -12,27 +25,60 @@ data:
     http-server.http.port=8080
     discovery.uri=http://localhost:8080
     catalog.management=static
+    web-ui.enabled=false
+    internal-communication.shared-secret=semantic-e2e-shared-secret
+    http-server.https.enabled=true
+    http-server.https.port=8443
+    http-server.https.keystore.path=/etc/trino/tls/keystore.p12
+    http-server.https.keystore.key=changeit
+    http-server.authentication.type=PASSWORD,JWT
+    http-server.authentication.jwt.key-file=http://keycloak.semantic-system.svc:8080/realms/semantic/protocol/openid-connect/certs
+    http-server.authentication.jwt.required-issuer=http://keycloak.semantic-system.svc:8080/realms/semantic
+    http-server.authentication.jwt.required-audience=trino
+    http-server.authentication.jwt.principal-field=preferred_username
+  password-authenticator.properties: |
+    password-authenticator.name=file
+    file.password-file=/etc/trino/auth/password.db
+  access-control.properties: |
+    access-control.name=file
+    security.config-file=/etc/trino/rules.json
   node.properties: |
     node.environment=semantic_e2e
     node.data-dir=/data/trino
   memory.properties: |
     connector.name=memory
     memory.max-data-per-node=512MB
+  tpch.properties: |
+    connector.name=tpch
   jvm.config: |
     -server
-    -agentpath:/usr/lib/trino/bin/libjvmkill.so
     -XX:InitialRAMPercentage=25
     -XX:MaxRAMPercentage=65
-    -XX:G1HeapRegionSize=32M
-    -XX:+ExplicitGCInvokesConcurrent
-    -XX:+HeapDumpOnOutOfMemoryError
     -XX:+ExitOnOutOfMemoryError
-    -XX:-OmitStackTraceInFastThrow
-    -XX:ReservedCodeCacheSize=256M
-    -XX:PerMethodRecompilationCutoff=10000
-    -XX:PerBytecodeRecompilationCutoff=10000
     -Djdk.attach.allowAttachSelf=true
-    -Djdk.nio.maxCachedBufferSize=2000000
+  rules.json: |
+    {
+      "catalogs": [
+        { "user": "semantic-manager", "catalog": "memory", "allow": "all" },
+        { "allow": "read-only" }
+      ],
+      "schemas": [
+        { "user": "semantic-manager", "catalog": "memory", "schema": ".*", "owner": true }
+      ],
+      "tables": [
+        {
+          "user": "semantic-manager", "catalog": "memory", "schema": ".*", "table": ".*",
+          "privileges": ["SELECT", "INSERT", "DELETE", "UPDATE", "OWNERSHIP"]
+        },
+        { "user": "bob", "catalog": "tpch", "schema": ".*", "table": "customer", "privileges": [] },
+        {
+          "user": "bob", "catalog": "tpch", "schema": ".*", "table": "orders",
+          "privileges": ["SELECT"],
+          "columns": [ { "name": "clerk", "mask": "'REDACTED'" } ]
+        },
+        { "privileges": ["SELECT"] }
+      ]
+    }
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -70,69 +116,54 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+            - name: https
+              containerPort: 8443
           startupProbe:
-            httpGet:
-              path: /v1/info/state
-              port: http
+            httpGet: { path: /v1/info/state, port: https, scheme: HTTPS }
             periodSeconds: 2
             timeoutSeconds: 2
             failureThreshold: 60
           readinessProbe:
-            httpGet:
-              path: /v1/info/state
-              port: http
-            periodSeconds: 2
+            httpGet: { path: /v1/info/state, port: https, scheme: HTTPS }
+            periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 6
           livenessProbe:
-            httpGet:
-              path: /v1/info
-              port: http
+            httpGet: { path: /v1/info/state, port: https, scheme: HTTPS }
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 3
           securityContext:
             allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
+            capabilities: { drop: ["ALL"] }
             readOnlyRootFilesystem: true
           resources:
-            requests:
-              cpu: 250m
-              memory: 768Mi
-            limits:
-              memory: 2Gi
+            requests: { cpu: 250m, memory: 768Mi }
+            limits: { memory: 2Gi }
           volumeMounts:
-            - name: config
-              mountPath: /etc/trino/config.properties
-              subPath: config.properties
-              readOnly: true
-            - name: config
-              mountPath: /etc/trino/node.properties
-              subPath: node.properties
-              readOnly: true
-            - name: config
-              mountPath: /etc/trino/catalog/memory.properties
-              subPath: memory.properties
-              readOnly: true
-            - name: config
-              mountPath: /etc/trino/jvm.config
-              subPath: jvm.config
-              readOnly: true
-            - name: data
-              mountPath: /data/trino
-            - name: tmp
-              mountPath: /tmp
+            - { name: config, mountPath: /etc/trino/config.properties, subPath: config.properties, readOnly: true }
+            - { name: config, mountPath: /etc/trino/password-authenticator.properties, subPath: password-authenticator.properties, readOnly: true }
+            - { name: config, mountPath: /etc/trino/access-control.properties, subPath: access-control.properties, readOnly: true }
+            - { name: config, mountPath: /etc/trino/node.properties, subPath: node.properties, readOnly: true }
+            - { name: config, mountPath: /etc/trino/jvm.config, subPath: jvm.config, readOnly: true }
+            - { name: config, mountPath: /etc/trino/rules.json, subPath: rules.json, readOnly: true }
+            - { name: config, mountPath: /etc/trino/catalog/memory.properties, subPath: memory.properties, readOnly: true }
+            - { name: config, mountPath: /etc/trino/catalog/tpch.properties, subPath: tpch.properties, readOnly: true }
+            - { name: tls, mountPath: /etc/trino/tls, readOnly: true }
+            - { name: passwords, mountPath: /etc/trino/auth, readOnly: true }
+            - { name: data, mountPath: /data/trino }
+            - { name: tmp, mountPath: /tmp }
       volumes:
         - name: config
-          configMap:
-            name: trino
+          configMap: { name: trino }
+        - name: tls
+          secret: { secretName: trino-tls }
+        - name: passwords
+          secret: { secretName: trino-passwords }
         - name: data
-          emptyDir:
-            sizeLimit: 1Gi
+          emptyDir: { sizeLimit: 1Gi }
         - name: tmp
-          emptyDir:
-            sizeLimit: 64Mi
+          emptyDir: { sizeLimit: 64Mi }
 ---
 apiVersion: v1
 kind: Service
@@ -145,36 +176,7 @@ spec:
   type: ClusterIP
   selector:
     app.kubernetes.io/name: trino
-    app.kubernetes.io/component: query-engine
   ports:
-    - name: http
-      port: 8080
-      targetPort: http
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: trino
-  labels:
-    app.kubernetes.io/name: trino
-    app.kubernetes.io/component: query-engine
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: trino
-      app.kubernetes.io/component: query-engine
-  policyTypes:
-    - Ingress
-    - Egress
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: semantic-operator
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: retail-data-loader
-      ports:
-        - protocol: TCP
-          port: 8080
-  egress: []
+    - name: https
+      port: 8443
+      targetPort: https

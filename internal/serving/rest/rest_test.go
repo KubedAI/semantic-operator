@@ -38,7 +38,7 @@ func post(t *testing.T, h http.Handler, body string) *httptest.ResponseRecorder 
 }
 
 func TestMissingPrincipalIsRejected(t *testing.T) {
-	h := Handler(svcWithModel(t, serving.Limits{}), nil)
+	h := Handler(svcWithModel(t, serving.Limits{}), nil, serving.StaticResolver())
 	r := httptest.NewRequest(http.MethodPost, "/v1/models/retail/query", strings.NewReader(`{"metrics":["revenue"]}`))
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
@@ -51,7 +51,7 @@ func TestMissingPrincipalIsRejected(t *testing.T) {
 // different query than the caller wrote and returned a confidently wrong
 // answer. It must be an explicit error.
 func TestUnknownFieldIsRejected(t *testing.T) {
-	h := Handler(svcWithModel(t, serving.Limits{}), nil)
+	h := Handler(svcWithModel(t, serving.Limits{}), nil, serving.StaticResolver())
 	w := post(t, h, `{"metrics":["revenue"],"dimension":["store.s_state"]}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400. body: %s", w.Code, w.Body.String())
@@ -64,7 +64,7 @@ func TestUnknownFieldIsRejected(t *testing.T) {
 // Everything after the first JSON document used to be ignored, which hides a
 // malformed or smuggled second request.
 func TestTrailingJSONDocumentIsRejected(t *testing.T) {
-	h := Handler(svcWithModel(t, serving.Limits{}), nil)
+	h := Handler(svcWithModel(t, serving.Limits{}), nil, serving.StaticResolver())
 	w := post(t, h, `{"metrics":["revenue"]}{"metrics":["payroll_cost"]}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400. body: %s", w.Code, w.Body.String())
@@ -77,7 +77,7 @@ func TestTrailingJSONDocumentIsRejected(t *testing.T) {
 // The body is bounded so an unbounded upload cannot be buffered into a pod
 // with a fixed memory limit.
 func TestOversizedBodyIsRejected(t *testing.T) {
-	h := Handler(svcWithModel(t, serving.Limits{MaxRequestBytes: 64}), nil)
+	h := Handler(svcWithModel(t, serving.Limits{MaxRequestBytes: 64}), nil, serving.StaticResolver())
 	w := post(t, h, `{"metrics":["`+strings.Repeat("x", 500)+`"]}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400. body: %s", w.Code, w.Body.String())

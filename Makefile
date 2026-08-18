@@ -15,11 +15,14 @@ KIND_IMAGE_BASE   ?= semantic-operator-kind
 KIND_IMAGE_TAG    ?= local
 KIND_NAMESPACE    ?= semantic-system
 KIND_ENGINE_TYPE  ?= trino
-KIND_ENGINE_HOST  ?= trino.$(KIND_NAMESPACE).svc.cluster.local
-KIND_ENGINE_PORT      ?= 8080
+AUTH_IDENTITY_MODE ?= static
 KIND_TRINO_LOCAL_PORT ?= 18080
 KIND_NODE_IMAGE       ?=
 KIND_RELEASE_NAME     ?= semantic-operator
+KIND_RANGER_ADMIN_IMAGE      ?= apache/ranger:2.9.0
+KIND_RANGER_DB_IMAGE         ?= postgres:16
+KIND_RANGER_PDP_IMAGE        ?= semantic-ranger-pdp:2.9.0
+KIND_RANGER_ADMIN_LOCAL_PORT ?= 16080
 
 BIN_DIR ?= $(CURDIR)/bin
 CONTROLLER_GEN := $(BIN_DIR)/controller-gen
@@ -120,8 +123,22 @@ kind-deploy: ## Create or reuse the kind cluster and write .kube/config
 	KIND_NODE_IMAGE="$(KIND_NODE_IMAGE)" \
 	./hack/kind-deploy.sh
 
+.PHONY: keycloak-deploy
+keycloak-deploy: kind-deploy ## Deploy Keycloak and import the semantic realm
+	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
+	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
+	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
+	./hack/keycloak-deploy.sh
+
+.PHONY: trino-secrets
+trino-secrets: kind-deploy ## Create the Trino TLS keystore, password file, and operator engine credential Secrets
+	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
+	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
+	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
+	./hack/trino-secrets.sh
+
 .PHONY: trino-deploy
-trino-deploy: kind-deploy ## Deploy pinned single-node Trino to the kind cluster
+trino-deploy: trino-secrets keycloak-deploy ## Deploy the single TLS+auth Trino engine to the kind cluster
 	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
 	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
 	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
@@ -135,17 +152,49 @@ operator-deploy: $(if $(filter trino,$(KIND_ENGINE_TYPE)),trino-deploy,kind-depl
 	KIND_IMAGE_TAG="$(KIND_IMAGE_TAG)" \
 	KIND_PLATFORM="$(PLATFORM)" \
 	KIND_ENGINE_TYPE="$(KIND_ENGINE_TYPE)" \
-	KIND_ENGINE_HOST="$(KIND_ENGINE_HOST)" \
-	KIND_ENGINE_PORT="$(KIND_ENGINE_PORT)" \
 	KIND_RELEASE_NAME="$(KIND_RELEASE_NAME)" \
 	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
 	./hack/operator-deploy.sh
+
+.PHONY: auth-operator
+auth-operator: trino-deploy ## Deploy the operator in AUTH_IDENTITY_MODE (passthrough|static|exchange) and publish the identity model
+	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
+	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
+	KIND_IMAGE_BASE="$(KIND_IMAGE_BASE)" \
+	KIND_IMAGE_TAG="$(KIND_IMAGE_TAG)" \
+	KIND_PLATFORM="$(PLATFORM)" \
+	KIND_RELEASE_NAME="$(KIND_RELEASE_NAME)" \
+	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
+	AUTH_IDENTITY_MODE="$(AUTH_IDENTITY_MODE)" \
+	./hack/auth-operator.sh
+
+.PHONY: auth-e2e
+auth-e2e: trino-deploy ## Deploy all three identity modes as parallel releases (sem-static/passthrough/exchange) for the Go e2e
+	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
+	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
+	KIND_IMAGE_BASE="$(KIND_IMAGE_BASE)" \
+	KIND_IMAGE_TAG="$(KIND_IMAGE_TAG)" \
+	KIND_PLATFORM="$(PLATFORM)" \
+	KIND_RELEASE_NAME="$(KIND_RELEASE_NAME)" \
+	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
+	./hack/auth-e2e.sh
+
+.PHONY: ranger-deploy
+ranger-deploy: kind-deploy ## Deploy a minimal Apache Ranger Admin and PDP stack to kind
+	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
+	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
+	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
+	KIND_RANGER_ADMIN_IMAGE="$(KIND_RANGER_ADMIN_IMAGE)" \
+	KIND_RANGER_DB_IMAGE="$(KIND_RANGER_DB_IMAGE)" \
+	KIND_RANGER_PDP_IMAGE="$(KIND_RANGER_PDP_IMAGE)" \
+	KIND_RANGER_PDP_PLATFORM="$(PLATFORM)" \
+	KIND_RANGER_ADMIN_LOCAL_PORT="$(KIND_RANGER_ADMIN_LOCAL_PORT)" \
+	./hack/ranger-deploy.sh
 
 .PHONY: opa-deploy
 opa-deploy: operator-deploy ## Deploy the pinned OPA image and retail example policy to kind
 	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
 	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
-	KIND_RELEASE_NAME="$(KIND_RELEASE_NAME)" \
 	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
 	./hack/opa-deploy.sh
 

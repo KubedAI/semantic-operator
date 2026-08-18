@@ -25,27 +25,28 @@ const (
 
 // Handler mounts the REST API onto a mux. The authenticator resolves the
 // caller for every request; a nil authenticator falls back to header mode so
-// tests and embedders keep working.
-func Handler(svc *serving.Service, authn *auth.Authenticator) http.Handler {
+// tests and embedders keep working. The resolver turns the caller into the
+// engine credential used to execute queries.
+func Handler(svc *serving.Service, authn *auth.Authenticator, resolver serving.CredentialResolver) http.Handler {
 	mux := http.NewServeMux()
 	// Discovery is authenticated for the same reason querying is. The listing
 	// names every certified metric and every column, so an unauthenticated
 	// caller would learn the shape of the warehouse without running a query.
 	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, r *http.Request) {
-		id, err := identity(authn, r)
+		ac, err := authenticate(authn, r)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"models": svc.Models(id)})
+		writeJSON(w, http.StatusOK, map[string]any{"models": svc.Models(ac.Identity)})
 	})
 	mux.HandleFunc("GET /v1/models/{model}/metrics", func(w http.ResponseWriter, r *http.Request) {
-		m, id, err := resolve(svc, authn, r)
+		m, ac, err := resolve(svc, authn, r)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		metrics, err := svc.ListMetrics(m, id)
+		metrics, err := svc.ListMetrics(m, ac.Identity)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -53,12 +54,12 @@ func Handler(svc *serving.Service, authn *auth.Authenticator) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"model": m.Name, "metrics": metrics})
 	})
 	mux.HandleFunc("GET /v1/models/{model}/dimensions", func(w http.ResponseWriter, r *http.Request) {
-		m, id, err := resolve(svc, authn, r)
+		m, ac, err := resolve(svc, authn, r)
 		if err != nil {
 			writeErr(w, err)
 			return
 		}
-		dims, err := svc.ListDimensions(m, id)
+		dims, err := svc.ListDimensions(m, ac.Identity)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -66,10 +67,10 @@ func Handler(svc *serving.Service, authn *auth.Authenticator) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"model": m.Name, "dimensions": dims})
 	})
 	mux.HandleFunc("POST /v1/models/{model}/query", func(w http.ResponseWriter, r *http.Request) {
-		handleQuery(svc, authn, w, r, true)
+		handleQuery(svc, authn, resolver, w, r, true)
 	})
 	mux.HandleFunc("POST /v1/models/{model}/sql", func(w http.ResponseWriter, r *http.Request) {
-		handleQuery(svc, authn, w, r, false)
+		handleQuery(svc, authn, resolver, w, r, false)
 	})
 	return mux
 }
@@ -77,20 +78,20 @@ func Handler(svc *serving.Service, authn *auth.Authenticator) http.Handler {
 // resolve authenticates the caller and then looks up the model. The order
 // matters: resolving first would let an unauthenticated caller tell a real
 // model name from a made-up one by the difference between 404 and 401.
-func resolve(svc *serving.Service, authn *auth.Authenticator, r *http.Request) (*planner.CompiledModel, governance.Identity, error) {
-	id, err := identity(authn, r)
+func resolve(svc *serving.Service, authn *auth.Authenticator, r *http.Request) (*planner.CompiledModel, auth.Authenticated, error) {
+	ac, err := authenticate(authn, r)
 	if err != nil {
-		return nil, governance.Identity{}, err
+		return nil, auth.Authenticated{}, err
 	}
 	m, err := svc.Resolve(r.PathValue("model"))
 	if err != nil {
-		return nil, governance.Identity{}, err
+		return nil, auth.Authenticated{}, err
 	}
-	return m, id, nil
+	return m, ac, nil
 }
 
-func handleQuery(svc *serving.Service, authn *auth.Authenticator, w http.ResponseWriter, r *http.Request, execute bool) {
-	m, id, err := resolve(svc, authn, r)
+func handleQuery(svc *serving.Service, authn *auth.Authenticator, resolver serving.CredentialResolver, w http.ResponseWriter, r *http.Request, execute bool) {
+	m, ac, err := resolve(svc, authn, r)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -100,8 +101,13 @@ func handleQuery(svc *serving.Service, authn *auth.Authenticator, w http.Respons
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	cred, err := resolver(r.Context(), ac.Token, ac.EngineUser, ac.Expiry)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	if !execute {
-		plan, cached, err := svc.Plan(r.Context(), "rest", m, req, id)
+		plan, cached, err := svc.Plan(r.Context(), "rest", m, req, ac.Identity)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -109,7 +115,7 @@ func handleQuery(svc *serving.Service, authn *auth.Authenticator, w http.Respons
 		writeJSON(w, http.StatusOK, map[string]any{"plan": plan, "cachedPlan": cached})
 		return
 	}
-	res, err := svc.Query(r.Context(), "rest", m, req, id)
+	res, err := svc.Query(r.Context(), "rest", m, req, ac.Identity, cred)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -150,19 +156,19 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, maxBytes int64, dst any)
 	return nil
 }
 
-// identity resolves the caller, defaulting to header mode when no
+// authenticate resolves the caller, defaulting to header mode when no
 // authenticator was supplied.
-func identity(authn *auth.Authenticator, r *http.Request) (governance.Identity, error) {
+func authenticate(authn *auth.Authenticator, r *http.Request) (auth.Authenticated, error) {
 	if authn == nil {
 		principal := strings.TrimSpace(r.Header.Get(PrincipalHeader))
 		if principal == "" {
-			return governance.Identity{}, fmt.Errorf("%w: no %s header", auth.ErrUnauthenticated, PrincipalHeader)
+			return auth.Authenticated{}, fmt.Errorf("%w: no %s header", auth.ErrUnauthenticated, PrincipalHeader)
 		}
 		id := governance.Single(r.Header.Get(RoleHeader))
 		id.Principal = principal
-		return id, nil
+		return auth.Authenticated{Identity: id}, nil
 	}
-	return authn.Identity(r)
+	return authn.Authenticate(r)
 }
 
 func writeErr(w http.ResponseWriter, err error) {
