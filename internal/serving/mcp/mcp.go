@@ -96,8 +96,9 @@ type listModelsOut struct {
 	Models []serving.ModelInfo `json:"models"`
 }
 
-// NewServer builds the MCP server over the shared service.
-func NewServer(svc *serving.Service, version string) *sdk.Server {
+// NewServer builds the MCP server over the shared service. The resolver turns
+// the caller carried on the request context into the engine credential.
+func NewServer(svc *serving.Service, version string, resolver serving.CredentialResolver) *sdk.Server {
 	srv := sdk.NewServer(&sdk.Implementation{
 		Name:    "ossie-semantic-layer",
 		Title:   "Ossie Semantic Layer",
@@ -158,7 +159,12 @@ func NewServer(svc *serving.Service, version string) *sdk.Server {
 			return nil, queryOut{}, err
 		}
 		preq := in.plannerRequest()
-		res, err := svc.Query(ctx, "mcp", m, preq, serving.IdentityFrom(ctx))
+		caller := serving.CallerFrom(ctx)
+		cred, err := resolver(ctx, caller.Token, caller.EngineUser, caller.Expiry)
+		if err != nil {
+			return nil, queryOut{}, err
+		}
+		res, err := svc.Query(ctx, "mcp", m, preq, serving.IdentityFrom(ctx), cred)
 		if err != nil {
 			return nil, queryOut{}, err
 		}
@@ -177,30 +183,34 @@ func NewServer(svc *serving.Service, version string) *sdk.Server {
 // authenticator rejects never reaches the MCP server, so an agent cannot call
 // a tool without a verified identity. A nil authenticator falls back to header
 // mode so tests and embedders keep working.
-func Handler(svc *serving.Service, version string, authn *auth.Authenticator) http.Handler {
-	srv := NewServer(svc, version)
+func Handler(svc *serving.Service, version string, authn *auth.Authenticator, resolver serving.CredentialResolver) http.Handler {
+	srv := NewServer(svc, version, resolver)
 	h := sdk.NewStreamableHTTPHandler(
 		func(*http.Request) *sdk.Server { return srv },
 		&sdk.StreamableHTTPOptions{Stateless: true},
 	)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var id governance.Identity
+		var ac auth.Authenticated
 		if authn == nil {
 			principal := strings.TrimSpace(r.Header.Get(PrincipalHeader))
 			if principal == "" {
 				http.Error(w, "unauthenticated: no "+PrincipalHeader+" header", http.StatusUnauthorized)
 				return
 			}
-			id = governance.Single(r.Header.Get(RoleHeader))
-			id.Principal = principal
+			ac.Identity = governance.Single(r.Header.Get(RoleHeader))
+			ac.Identity.Principal = principal
 		} else {
 			var err error
-			id, err = authn.Identity(r)
+			ac, err = authn.Authenticate(r)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return
 			}
 		}
-		h.ServeHTTP(w, r.WithContext(serving.WithIdentity(r.Context(), id)))
+		ctx := serving.WithIdentity(r.Context(), ac.Identity)
+		ctx = serving.WithCaller(ctx, serving.Caller{
+			Token: ac.Token, EngineUser: ac.EngineUser, Expiry: ac.Expiry,
+		})
+		h.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

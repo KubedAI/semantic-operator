@@ -1,11 +1,25 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/KubedAI/semantic-operator/internal/governance"
+	"github.com/KubedAI/semantic-operator/internal/serving/authorization"
 )
+
+type authorizationRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f authorizationRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
 
 const validAuthorizationProvidersYAML = `
 - name: corp-opa
@@ -40,6 +54,7 @@ func TestAuthorizationRegistryFromRangerYAML(t *testing.T) {
   bearerTokenEnv: AUTHORIZATION_PROVIDER_TOKEN_RANGER
   ranger:
     authenticationMode: service
+    servicePrincipal: semantic-server
     serviceType: semantic-operator
     serviceName: semantic-prod
     resource: "semantic-model:namespace={namespace},model={resource}"
@@ -55,6 +70,99 @@ func TestAuthorizationRegistryFromRangerYAML(t *testing.T) {
 	}
 	if registry == nil {
 		t.Fatal("Ranger provider configuration returned a nil registry")
+	}
+}
+
+func TestAuthorizationRegistryAllowsExplicitInsecureRangerHTTP(t *testing.T) {
+	registry, err := authorizationRegistryFromYAML([]byte(`
+- name: local-ranger
+  type: ranger
+  url: http://ranger-pdp:6500/authz/v1
+  ranger:
+    authenticationMode: service
+    servicePrincipal: semantic-server
+    allowInsecureHTTP: true
+    serviceType: semantic-operator
+    serviceName: semantic-local
+    resource: "semantic-model:namespace={namespace},model={resource}"
+    permission: query
+`), "test providers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if registry == nil {
+		t.Fatal("insecure local Ranger provider configuration returned a nil registry")
+	}
+}
+
+func TestAuthorizationRegistryRangerServiceModeSendsPrincipalHeader(t *testing.T) {
+	var caller string
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = authorizationRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		caller = request.Header.Get(rangerServicePrincipalHeader)
+		var payload struct {
+			RequestID string `json:"requestId"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			return nil, err
+		}
+		body, err := json.Marshal(map[string]any{
+			"requestId": payload.RequestID,
+			"decision":  "ALLOW",
+			"permissions": map[string]any{
+				"query": map[string]any{
+					"permission": "query",
+					"access": map[string]any{
+						"decision": "ALLOW",
+						"policy":   map[string]any{"id": 1, "version": 1},
+					},
+				},
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(bytes.NewReader(body)),
+			Request:    request,
+		}, nil
+	})
+	t.Cleanup(func() { http.DefaultTransport = originalTransport })
+
+	registry, err := authorizationRegistryFromYAML([]byte(`
+- name: corp-ranger
+  type: ranger
+  url: https://ranger-pdp:6500/authz/v1
+  ranger:
+    authenticationMode: service
+    servicePrincipal: semantic-server
+    serviceType: semantic-operator
+    serviceName: semantic-prod
+    resource: "semantic-model:namespace={namespace},model={resource}"
+    permission: query
+`), "test providers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision, err := registry.Authorize(context.Background(), "corp-ranger", authorization.Input{
+		APIVersion: authorization.InputAPIVersion,
+		Action:     authorization.ActionQuery,
+		Identity:   governance.Identity{Principal: "alice"},
+		Model: authorization.Model{
+			Name: "retail", Namespace: "analytics", Resource: "retail-model", Version: "v1",
+		},
+		Environment: authorization.Environment{AccessTimeUnixMilli: 1, Adapter: "rest"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !decision.Allow {
+		t.Fatalf("decision = %+v", decision)
+	}
+	if caller != "semantic-server" {
+		t.Fatalf("%s = %q, want semantic-server", rangerServicePrincipalHeader, caller)
 	}
 }
 
@@ -156,8 +264,10 @@ func TestAuthorizationRegistryRejectsBadYAMLConfiguration(t *testing.T) {
 		{name: "missing Ranger block", raw: `[{name: p, type: ranger, url: "http://ranger:6500/authz/v1"}]`, want: ".ranger is required"},
 		{name: "OPA block on Ranger", raw: `[{name: p, type: ranger, url: "http://ranger:6500/authz/v1", opa: {decisionPath: p}, ranger: {authenticationMode: service}}]`, want: ".opa is not allowed"},
 		{name: "unsupported Ranger auth mode", raw: `[{name: p, type: ranger, url: "http://ranger:6500/authz/v1", ranger: {authenticationMode: passthrough}}]`, want: "authenticationMode must be service"},
-		{name: "missing Ranger service type", raw: `[{name: p, type: ranger, url: "http://ranger:6500/authz/v1", ranger: {authenticationMode: service, serviceName: s, resource: "model:{resource}", permission: query}}]`, want: "serviceType is required"},
-		{name: "managed Ranger context", raw: `[{name: p, type: ranger, url: "http://ranger:6500/authz/v1", ranger: {authenticationMode: service, serviceType: semantic, serviceName: s, resource: "model:{resource}", permission: query, contextAttributes: {requestData: forged}}}]`, want: "managed by the Ranger provider"},
+		{name: "missing Ranger service principal", raw: `[{name: p, type: ranger, url: "https://ranger:6500/authz/v1", ranger: {authenticationMode: service, serviceType: semantic, serviceName: s, resource: "model:{resource}", permission: query}}]`, want: "servicePrincipal is required"},
+		{name: "insecure Ranger service principal", raw: `[{name: p, type: ranger, url: "http://ranger:6500/authz/v1", ranger: {authenticationMode: service, servicePrincipal: semantic-server, serviceType: semantic, serviceName: s, resource: "model:{resource}", permission: query}}]`, want: "must use https"},
+		{name: "missing Ranger service type", raw: `[{name: p, type: ranger, url: "https://ranger:6500/authz/v1", ranger: {authenticationMode: service, servicePrincipal: semantic-server, serviceName: s, resource: "model:{resource}", permission: query}}]`, want: "serviceType is required"},
+		{name: "managed Ranger context", raw: `[{name: p, type: ranger, url: "https://ranger:6500/authz/v1", ranger: {authenticationMode: service, servicePrincipal: semantic-server, serviceType: semantic, serviceName: s, resource: "model:{resource}", permission: query, contextAttributes: {requestData: forged}}}]`, want: "managed by the Ranger provider"},
 		{name: "duplicate provider", raw: `[{name: p, type: opa, url: "http://opa:8181", opa: {decisionPath: p}}, {name: p, type: opa, url: "http://opa:8181", opa: {decisionPath: p}}]`, want: "more than once"},
 		{name: "missing token", raw: `[{name: p, type: opa, url: "https://opa:8181", bearerTokenEnv: AUTHORIZATION_PROVIDER_TOKEN_MISSING, opa: {decisionPath: p}}]`, want: "AUTHORIZATION_PROVIDER_TOKEN_MISSING"},
 		{name: "unrelated secret alias", raw: `[{name: p, type: opa, url: "https://attacker.example", bearerTokenEnv: ENGINE_PASSWORD, opa: {decisionPath: p}}]`, want: "must match AUTHORIZATION_PROVIDER_TOKEN_"},

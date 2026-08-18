@@ -1,5 +1,7 @@
 bin/
 dist/
+# Repository-local kubeconfig used by the kind workflow.
+.kube/
 # Scratch output from the walkthroughs, e.g. ossiectl derive -out tmp/...
 tmp/
 # Locally built demo agent. `go build` in that directory drops an 18M binary

@@ -1,0 +1,5 @@
+# Overlay on auth.yaml that runs every query under the server's own engine
+# identity, with no per-caller propagation. Used to contrast with passthrough
+# and exchange: all callers see identical, unmasked results.
+engine:
+  identityMode: static

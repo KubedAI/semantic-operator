@@ -1,0 +1,42 @@
+# Base operator values for the identity e2e. The server validates Keycloak JWTs;
+# the manager and the server's readiness ping authenticate to trino with static
+# passwords over TLS. The engine identity mode is not set here: it comes from a
+# values overlay (static.yaml, passthrough.yaml, or exchange.yaml).
+image:
+  pullPolicy: IfNotPresent
+
+server:
+  replicas: 1
+  auth:
+    mode: jwt
+    jwksURL: http://keycloak.semantic-system.svc:8080/realms/semantic/protocol/openid-connect/certs
+    issuer: http://keycloak.semantic-system.svc:8080/realms/semantic
+    audience: semantic-api
+    # preferred_username is the human-readable principal, matching the engine.
+    principalClaim: preferred_username
+    # Keycloak maps semantic-api client roles into this access-token claim.
+    roleClaim: semantic_roles
+
+engine:
+  type: trino
+  host: trino.semantic-system.svc.cluster.local
+  port: 8443
+  # preferred_username is the engine session user for passthrough and exchange,
+  # matching trino's jwt.principal-field. Ignored in static mode.
+  userClaim: preferred_username
+  tls:
+    enabled: true
+    insecureSkipVerify: true
+  # Least privilege: the manager introspects (and would create views); the
+  # server only selects. Each authenticates to trino with its own static
+  # password over TLS.
+  manager:
+    user: semantic-manager
+    passwordSecret:
+      name: engine-manager-cred
+      key: password
+  server:
+    user: semantic-server
+    passwordSecret:
+      name: engine-server-cred
+      key: password

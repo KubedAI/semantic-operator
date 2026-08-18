@@ -1,0 +1,56 @@
+# syntax=docker/dockerfile:1.7
+
+ARG RANGER_VERSION=2.9.0
+ARG RANGER_BASE_IMAGE=apache/ranger-base
+ARG RANGER_BASE_VERSION=20260123-2-8
+
+FROM ${RANGER_BASE_IMAGE}:${RANGER_BASE_VERSION} AS builder
+ARG RANGER_VERSION
+ARG RANGER_SOURCE_URL=https://archive.apache.org/dist/ranger/2.9.0/apache-ranger-2.9.0.tar.gz
+
+USER root
+RUN if grep -qi ubuntu /etc/os-release; then \
+      apt-get update && \
+      apt-get install -y --no-install-recommends ca-certificates curl maven && \
+      rm -rf /var/lib/apt/lists/*; \
+    else \
+      microdnf install -y ca-certificates curl maven && microdnf clean all; \
+    fi
+
+WORKDIR /build
+RUN curl -fsSL "${RANGER_SOURCE_URL}" -o ranger.tar.gz && \
+    tar -xzf ranger.tar.gz && \
+    mv "apache-ranger-${RANGER_VERSION}" ranger
+
+WORKDIR /build/ranger
+RUN mvn --batch-mode --no-transfer-progress \
+    -Pall -pl pdp -am install \
+    -DskipTests=true -DskipJSTests=true
+RUN rm -rf /build/pdp-runtime && mkdir -p /build/pdp-runtime/lib && \
+    mvn --batch-mode --no-transfer-progress \
+      -f pdp/pom.xml dependency:copy-dependencies \
+      -DincludeScope=runtime \
+      -DoutputDirectory=/build/pdp-runtime/lib && \
+    cp "pdp/target/ranger-pdp-${RANGER_VERSION}.jar" /build/pdp-runtime/lib/ && \
+    cp -R pdp/conf.dist /build/pdp-runtime/ && \
+    cp pdp/scripts/ranger-pdp-services.sh /build/pdp-runtime/ && \
+    cp dev-support/ranger-docker/scripts/pdp/ranger-pdp.sh /build/pdp-runtime/
+
+# Runtime layout and entrypoint follow Apache Ranger 2.9.0's
+# dev-support/ranger-docker/Dockerfile.ranger-pdp.
+FROM ${RANGER_BASE_IMAGE}:${RANGER_BASE_VERSION}
+
+USER root
+COPY --from=builder --chown=ranger:ranger /build/pdp-runtime/ ${RANGER_HOME}/pdp/
+RUN mkdir -p /var/log/ranger/pdp /var/run/ranger /var/cache/ranger/pdp \
+      /etc/ranger/cache ${RANGER_HOME}/pdp/conf && \
+    cp ${RANGER_HOME}/pdp/conf.dist/logback.xml ${RANGER_HOME}/pdp/conf/logback.xml && \
+    cp ${RANGER_HOME}/pdp/ranger-pdp.sh ${RANGER_SCRIPTS}/ranger-pdp.sh && \
+    ln -s ${RANGER_HOME}/pdp/ranger-pdp-services.sh /usr/bin/ranger-pdp-services.sh && \
+    chown -R ranger:ranger ${RANGER_HOME}/pdp ${RANGER_SCRIPTS}/ranger-pdp.sh \
+      /var/log/ranger /var/run/ranger /var/cache/ranger /etc/ranger && \
+    chmod 0755 ${RANGER_HOME}/pdp/ranger-pdp-services.sh ${RANGER_SCRIPTS}/ranger-pdp.sh
+
+USER ranger
+EXPOSE 6500
+ENTRYPOINT ["/home/ranger/scripts/ranger-pdp.sh"]

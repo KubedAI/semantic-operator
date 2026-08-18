@@ -13,10 +13,39 @@ image:
 engine:
   # starrocks | trino
   type: starrocks
+  # Query-time engine identity. static runs every query under the server's own
+  # credential. passthrough forwards the caller's validated token to the engine
+  # so the engine can enforce per-user policy, and requires server.auth.mode=jwt.
+  identityMode: static
+  # Token claim used as the engine session user under passthrough. It must match
+  # the engine's own principal claim (for example Trino's
+  # http-server.authentication.jwt.principal-field). Required when identityMode
+  # is passthrough. Kept separate from server.auth.principalClaim so the engine
+  # username can differ from the governance principal.
+  userClaim: ""
+  # RFC 8693 token exchange settings, used when identityMode is exchange. The
+  # server exchanges the caller's token for an engine-audience token, same
+  # subject, via the authorization server's token endpoint.
+  exchange:
+    tokenURL: ""            # e.g. https://idp/realms/semantic/protocol/openid-connect/token
+    clientID: ""            # confidential client permitted to exchange
+    clientSecretSecret:
+      name: ""
+      key: client-secret
   # Engine endpoint. Empty falls back to the legacy starrocks.host value.
   host: ""            # e.g. trino.trino.svc.cluster.local
   # 0 uses the engine's default port (starrocks 9030, trino 8080).
   port: 0
+  # TLS options for the engine connection.
+  tls:
+    # Force an HTTPS engine connection. Needed when the engine requires TLS but
+    # no password is set, such as token-based authentication. A password also
+    # implies HTTPS.
+    enabled: false
+    # Skip engine server certificate verification. For isolated development
+    # against a self-signed engine only. Must stay false in production.
+    # Honored by the Trino client.
+    insecureSkipVerify: false
   # Empty falls back to starrocks.user (each client also has its own default).
   user: ""
   # Reference an existing Secret holding the password; empty name falls back
@@ -217,11 +246,14 @@ server:
     #   url: https://ranger-pdp.semantic-system.svc.cluster.local:6500/authz/v1
     #   timeoutSeconds: 2
     #   maxResponseBytes: 1048576
-    #   bearerTokenSecret:
-    #     name: ranger-service-token
-    #     key: token
+    #   # Service mode sends X-Forwarded-User with servicePrincipal on every
+    #   # PDP request. Trusted headers require an HTTPS URL by default.
     #   ranger:
     #     authenticationMode: service
+    #     servicePrincipal: semantic-server
+    #     # Development only. This permits credentials and trusted headers over
+    #     # plain HTTP and must remain false in production.
+    #     allowInsecureHTTP: false
     #     serviceType: semantic-operator
     #     serviceName: semantic-prod
     #     resource: "semantic-model:namespace={namespace},model={resource}"

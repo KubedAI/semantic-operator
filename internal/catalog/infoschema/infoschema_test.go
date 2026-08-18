@@ -20,7 +20,7 @@ type fakeDB struct {
 	rows    [][]any
 }
 
-func (f *fakeDB) Query(_ context.Context, sql string) ([]string, [][]any, error) {
+func (f *fakeDB) Query(_ context.Context, _ dbclient.EngineCredential, sql string) ([]string, [][]any, error) {
 	f.queries = append(f.queries, sql)
 	if f.failOn != "" && strings.Contains(sql, f.failOn) {
 		return nil, nil, errors.New("column does not exist")

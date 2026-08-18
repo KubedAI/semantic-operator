@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/KubedAI/semantic-operator/internal/cache"
+	"github.com/KubedAI/semantic-operator/internal/dbclient"
 	"github.com/KubedAI/semantic-operator/internal/emitter"
 	"github.com/KubedAI/semantic-operator/internal/governance"
 	"github.com/KubedAI/semantic-operator/internal/observability"
@@ -19,9 +20,11 @@ import (
 	"github.com/KubedAI/semantic-operator/internal/serving/authorization"
 )
 
-// QueryExecutor is the read-only engine surface the service needs.
+// QueryExecutor is the read-only engine surface the service needs. The
+// credential selects the execution identity; a zero credential runs under the
+// engine client's own static credential.
 type QueryExecutor interface {
-	Query(ctx context.Context, sql string) ([]string, [][]any, error)
+	Query(ctx context.Context, cred dbclient.EngineCredential, sql string) ([]string, [][]any, error)
 }
 
 // Service is the one query path shared by the MCP and REST adapters:
@@ -265,7 +268,7 @@ func (s *Service) Plan(ctx context.Context, adapter string, m *planner.CompiledM
 
 // Query plans and executes. Every emitted query carries the model version
 // and request hash in its SQL comment; the same fields are logged and traced.
-func (s *Service) Query(ctx context.Context, adapter string, m *planner.CompiledModel, req planner.Request, id governance.Identity) (*QueryResult, error) {
+func (s *Service) Query(ctx context.Context, adapter string, m *planner.CompiledModel, req planner.Request, id governance.Identity, cred dbclient.EngineCredential) (*QueryResult, error) {
 	start := time.Now()
 	ctx, span := s.Tracer.Start(ctx, "semantic.query", trace.WithAttributes(
 		attribute.String("semantic.model", m.Name),
@@ -286,24 +289,39 @@ func (s *Service) Query(ctx context.Context, adapter string, m *planner.Compiled
 		RequestHash: plan.RequestHash, Role: plan.Role,
 		AuthorizationFingerprint: plan.AuthorizationFingerprint, CachedPlan: cachedPlan,
 	}
-	rkey := cache.ResultKey(m.Name, m.Version, plan.SQL, plan.AuthorizationFingerprint)
-	if blob, ok := s.Cache.GetResult(ctx, rkey); ok {
-		var cached struct {
-			Columns []string `json:"columns"`
-			Rows    [][]any  `json:"rows"`
+	// Under identity passthrough the engine enforces per-user row and column
+	// policy, so identical SQL can return different rows per caller. Partition
+	// the result cache by the engine identity, and refuse to cache when a
+	// passthrough credential carries no principal to key on.
+	resultScope := plan.AuthorizationFingerprint
+	cacheable := true
+	if !cred.IsZero() {
+		if cred.EngineUser == "" {
+			cacheable = false
+		} else {
+			resultScope += "\x00engine:" + cred.EngineUser
 		}
-		if err := json.Unmarshal(blob, &cached); err == nil {
-			s.Metrics.ResultCacheHits.Inc()
-			res.Columns, res.Rows, res.CachedResult = cached.Columns, cached.Rows, true
-			res.RowCount = len(cached.Rows)
-			res.ElapsedMs = time.Since(start).Milliseconds()
-			s.Metrics.Requests.WithLabelValues(adapter, m.Name, "ok").Inc()
-			return res, nil
+	}
+	rkey := cache.ResultKey(m.Name, m.Version, plan.SQL, resultScope)
+	if cacheable {
+		if blob, ok := s.Cache.GetResult(ctx, rkey); ok {
+			var cached struct {
+				Columns []string `json:"columns"`
+				Rows    [][]any  `json:"rows"`
+			}
+			if err := json.Unmarshal(blob, &cached); err == nil {
+				s.Metrics.ResultCacheHits.Inc()
+				res.Columns, res.Rows, res.CachedResult = cached.Columns, cached.Rows, true
+				res.RowCount = len(cached.Rows)
+				res.ElapsedMs = time.Since(start).Milliseconds()
+				s.Metrics.Requests.WithLabelValues(adapter, m.Name, "ok").Inc()
+				return res, nil
+			}
 		}
 	}
 
 	qStart := time.Now()
-	cols, rows, err := s.DB.Query(ctx, plan.SQL)
+	cols, rows, err := s.DB.Query(ctx, cred, plan.SQL)
 	s.Metrics.QueryDuration.Observe(time.Since(qStart).Seconds())
 	if err != nil {
 		s.Metrics.Requests.WithLabelValues(adapter, m.Name, "exec_error").Inc()
@@ -329,7 +347,7 @@ func (s *Service) Query(ctx context.Context, adapter string, m *planner.Compiled
 	res.Columns, res.Rows, res.RowCount = cols, rows, len(rows)
 	// Caching is an optimization, so an oversized result is served and simply
 	// not cached.
-	if marshalErr == nil && len(blob) <= lim.MaxCacheEntryBytes {
+	if cacheable && marshalErr == nil && len(blob) <= lim.MaxCacheEntryBytes {
 		s.Cache.SetResult(ctx, rkey, blob)
 	}
 	res.ElapsedMs = time.Since(start).Milliseconds()

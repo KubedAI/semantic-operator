@@ -111,7 +111,7 @@ func main() {
 
 	// Catalog creation carries engine-specific configuration and remains an
 	// administrator responsibility. The loader creates only its schema/tables.
-	if _, _, err := cli.Query(ctx, target.catalogProbe()); err != nil {
+	if _, _, err := cli.Query(ctx, dbclient.EngineCredential{}, target.catalogProbe()); err != nil {
 		log.Fatalf("catalog %q is not usable through %s: %v", target.catalog, engine, err)
 	}
 
@@ -316,7 +316,7 @@ func loaderCatalog() string {
 }
 
 func count(ctx context.Context, cli dbclient.Client, fqTable string) int {
-	_, rows, err := cli.Query(ctx, "SELECT COUNT(*) FROM "+fqTable)
+	_, rows, err := cli.Query(ctx, dbclient.EngineCredential{}, "SELECT COUNT(*) FROM "+fqTable)
 	if err != nil || len(rows) == 0 {
 		return -1
 	}

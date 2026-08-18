@@ -85,8 +85,10 @@ func (c *Client) Exec(ctx context.Context, query string) error {
 }
 
 // Query runs a statement and returns column names and JSON-friendly rows
-// ([]byte becomes string, so results marshal cleanly).
-func (c *Client) Query(ctx context.Context, query string) (cols []string, out [][]any, err error) {
+// ([]byte becomes string, so results marshal cleanly). The credential is
+// accepted for identity propagation; StarRocks passthrough is not wired yet,
+// so a non-zero credential currently behaves like static.
+func (c *Client) Query(ctx context.Context, _ dbclient.EngineCredential, query string) (cols []string, out [][]any, err error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 	rows, err := c.db.QueryContext(ctx, query)
@@ -108,7 +110,7 @@ func (c *Client) Query(ctx context.Context, query string) (cols []string, out []
 // query engine sees.
 func (c *Client) DescribeTable(ctx context.Context, catalog, database, table string) ([]Column, error) {
 	q := fmt.Sprintf("DESC `%s`.`%s`.`%s`", catalog, database, table)
-	cols, rows, err := c.Query(ctx, q)
+	cols, rows, err := c.Query(ctx, dbclient.EngineCredential{}, q)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +140,7 @@ func (c *Client) DescribeTable(ctx context.Context, catalog, database, table str
 // this as the raw-schema context for text-to-SQL.
 func (c *Client) ShowCreateTable(ctx context.Context, catalog, database, table string) (string, error) {
 	q := fmt.Sprintf("SHOW CREATE TABLE `%s`.`%s`.`%s`", catalog, database, table)
-	cols, rows, err := c.Query(ctx, q)
+	cols, rows, err := c.Query(ctx, dbclient.EngineCredential{}, q)
 	if err != nil {
 		return "", err
 	}

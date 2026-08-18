@@ -1,0 +1,137 @@
+{
+  "realm": "semantic",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 600,
+  "roles": {
+    "client": {
+      "semantic-api": [
+        { "name": "analyst" },
+        { "name": "tx_analyst" },
+        { "name": "admin" }
+      ]
+    }
+  },
+  "clients": [
+    {
+      "clientId": "semantic-api",
+      "name": "Semantic API",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "bearerOnly": true
+    },
+    {
+      "clientId": "semantic-cli",
+      "name": "Semantic CLI",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "trino audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "trino",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "semantic-api audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "semantic-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "semantic-server audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "semantic-server",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "semantic-api roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "semantic-api",
+            "claim.name": "semantic_roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "semantic-server",
+      "name": "Semantic Server (token exchange)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "semantic-server-secret",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "attributes": {
+        "standard.token.exchange.enabled": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "trino audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "trino",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "firstName": "Alice",
+      "lastName": "Analyst",
+      "email": "alice@example.com",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "clientRoles": { "semantic-api": ["analyst"] }
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "firstName": "Bob",
+      "lastName": "Analyst",
+      "email": "bob@example.com",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "clientRoles": { "semantic-api": ["tx_analyst"] }
+    },
+    {
+      "username": "carol",
+      "enabled": true,
+      "firstName": "Carol",
+      "lastName": "Admin",
+      "email": "carol@example.com",
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "password", "temporary": false }],
+      "clientRoles": { "semantic-api": ["admin"] }
+    }
+  ]
+}

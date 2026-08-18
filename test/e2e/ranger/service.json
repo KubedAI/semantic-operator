@@ -1,0 +1,10 @@
+{
+  "name": "semantic-local",
+  "displayName": "Semantic Local",
+  "type": "semantic-operator",
+  "configs": {
+    "policy.download.auth.users": "admin",
+    "tag.download.auth.users": "admin",
+    "userstore.download.auth.users": "admin"
+  }
+}

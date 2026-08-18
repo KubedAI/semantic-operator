@@ -18,6 +18,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -31,8 +32,10 @@ type Column struct {
 // must be safe for concurrent use.
 type Client interface {
 	// Query runs a statement and returns column names plus JSON-friendly rows
-	// ([]byte values are converted to string so results marshal cleanly).
-	Query(ctx context.Context, sql string) ([]string, [][]any, error)
+	// ([]byte values are converted to string so results marshal cleanly). The
+	// credential selects the execution identity; a zero credential uses the
+	// client's own static credential.
+	Query(ctx context.Context, cred EngineCredential, sql string) ([]string, [][]any, error)
 	// Exec runs DDL or other statements without results.
 	Exec(ctx context.Context, sql string) error
 	// Ping verifies connectivity for readiness probes.
@@ -57,6 +60,15 @@ type Config struct {
 	// MaxResultBytes bounds what one result may allocate while it is being
 	// read. Zero means DefaultMaxResultBytes, never unbounded.
 	MaxResultBytes int
+	// TLSEnabled forces an HTTPS engine connection. It is needed when the
+	// engine requires TLS but no password is set, for example token-based
+	// authentication. A password also implies HTTPS.
+	TLSEnabled bool
+	// TLSInsecureSkipVerify disables server certificate verification for the
+	// engine connection. It is for isolated development against a self-signed
+	// engine only, and must stay false in production. Honored by the Trino
+	// client; the StarRocks client does not yet consume it.
+	TLSInsecureSkipVerify bool
 }
 
 // Factory builds a client for one engine.
@@ -109,6 +121,14 @@ func EnvConfig() (Config, error) {
 			return Config{}, fmt.Errorf("ENGINE_PORT %q: %w", v, err)
 		}
 		cfg.Port = n
+	}
+	switch strings.ToLower(os.Getenv("ENGINE_TLS_ENABLED")) {
+	case "true", "1", "yes":
+		cfg.TLSEnabled = true
+	}
+	switch strings.ToLower(os.Getenv("ENGINE_TLS_INSECURE_SKIP_VERIFY")) {
+	case "true", "1", "yes":
+		cfg.TLSInsecureSkipVerify = true
 	}
 	return cfg, nil
 }

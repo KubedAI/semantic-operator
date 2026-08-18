@@ -12,31 +12,18 @@ PATCH="$ROOT_DIR/test/e2e/models/trino-opa-patch.yaml"
 
 KUBECTL=(kubectl --kubeconfig "$KUBECONFIG_PATH" --context "kind-$CLUSTER_NAME" --namespace "$NAMESPACE")
 
-tmp_dir="$(mktemp -d)"
-port_forward_pid=""
-cleanup() {
-  if [[ -n "$port_forward_pid" ]]; then
-    kill "$port_forward_pid" >/dev/null 2>&1 || true
-    wait "$port_forward_pid" 2>/dev/null || true
-  fi
-  rm -rf "$tmp_dir"
-}
-trap cleanup EXIT
-
 "${KUBECTL[@]}" rollout status deployment/trino --timeout=5m
 "${KUBECTL[@]}" rollout status deployment/opa --timeout=2m
 
-"${KUBECTL[@]}" port-forward service/trino "$LOCAL_PORT:8080" --address 127.0.0.1 \
-  >"$tmp_dir/port-forward.log" 2>&1 &
+# Load the data through a local port-forward to the TLS engine.
+"${KUBECTL[@]}" port-forward service/trino "$LOCAL_PORT:8443" --address 127.0.0.1 &
 port_forward_pid=$!
+trap 'kill "$port_forward_pid" 2>/dev/null || true' EXIT
 
-for _ in {1..30}; do
-  if curl -fsS "http://127.0.0.1:$LOCAL_PORT/v1/info/state" 2>/dev/null | grep -q ACTIVE; then
-    break
-  fi
+for _ in $(seq 30); do
+  curl -fsk "https://127.0.0.1:$LOCAL_PORT/v1/info/state" | grep -q ACTIVE && break
   sleep 1
 done
-curl -fsS "http://127.0.0.1:$LOCAL_PORT/v1/info/state" | grep -q ACTIVE
 
 (
   cd "$ROOT_DIR"
@@ -44,19 +31,20 @@ curl -fsS "http://127.0.0.1:$LOCAL_PORT/v1/info/state" | grep -q ACTIVE
   SQL_DIALECT=trino \
   ENGINE_HOST=127.0.0.1 \
   ENGINE_PORT="$LOCAL_PORT" \
+  ENGINE_TLS_ENABLED=true \
+  ENGINE_TLS_INSECURE_SKIP_VERIFY=true \
+  ENGINE_USER=semantic-manager \
+  ENGINE_PASSWORD=manager \
   ENGINE_CATALOG=memory \
   DEMO_DATABASE=osi_demo \
     go run ./examples/retail/data -profile e2e
 )
 
 # Merge the E2E connection/provider settings without changing the shared model.
-"${KUBECTL[@]}" patch --local -f "$MODEL" --type merge --patch-file "$PATCH" \
-  -o yaml >"$tmp_dir/model-base.yaml"
-"${KUBECTL[@]}" patch --local -f "$tmp_dir/model-base.yaml" --type merge \
-  --patch "{\"metadata\":{\"namespace\":\"$NAMESPACE\"}}" \
-  -o yaml >"$tmp_dir/model.yaml"
-
-"${KUBECTL[@]}" apply -f "$tmp_dir/model.yaml"
+"${KUBECTL[@]}" patch --local -f "$MODEL" --type merge --patch-file "$PATCH" -o yaml | \
+  "${KUBECTL[@]}" patch --local -f - --type merge \
+    --patch "{\"metadata\":{\"namespace\":\"$NAMESPACE\"}}" -o yaml | \
+  "${KUBECTL[@]}" apply -f -
 "${KUBECTL[@]}" wait --for=condition=Published semanticmodel/tpcds-retail --timeout=5m
 "${KUBECTL[@]}" wait --for=condition=ViewsReady semanticmodel/tpcds-retail --timeout=5m
 "${KUBECTL[@]}" get semanticmodel/tpcds-retail

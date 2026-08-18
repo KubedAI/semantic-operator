@@ -85,14 +85,17 @@ OPA uses a server credential and evaluates the structured input through its conf
 API decision path. It must return a boolean or an object containing only `allow` and an
 optional stable `revision`. Undefined results deny.
 
-Ranger uses service mode. The wire contract targets the dedicated PDP in the checked-in Apache
-Ranger 3.0.0-SNAPSHOT source at revision `ece62f6`. The PDP URL is the complete API base,
-normally ending in `/authz/v1`. The semantic server authenticates with its own credential and submits the end
-user's principal, groups, roles, and allowlisted string attributes. Ranger must configure the
-server principal as a delegation user for the selected service. Server-owned configuration
-maps the model to a Ranger resource, selects the permission, and supplies bounded static
-context attributes. The adapter sends full semantic request JSON as Ranger `requestData`,
-sets the adapter as `clientType`, and uses the server's current access time.
+Ranger uses service mode. The wire contract targets the dedicated Apache Ranger 2.9.0 PDP.
+The PDP URL is the complete API base, normally ending in `/authz/v1`. The semantic server
+sends its configured `servicePrincipal` in `X-Forwarded-User` and submits the end user's
+principal, groups, roles, and allowlisted string attributes in the request body. Trusted
+headers require HTTPS by default. `allowInsecureHTTP: true` explicitly permits credentials
+and trusted headers over plain HTTP for isolated development environments. It must remain
+false in production. Ranger must configure the service principal as a delegation user for
+the selected service. Server-owned configuration maps the model to a Ranger resource,
+selects the permission, and supplies bounded static context attributes. The adapter sends
+full semantic request JSON as Ranger `requestData`, sets the adapter as `clientType`, and
+uses the server's current access time.
 
 Only a complete obligation-free Ranger `ALLOW` succeeds. `DENY`, `NOT_DETERMINED`, and
 `PARTIAL` deny. Missing or inconsistent decisions, transport errors, masks, row filters,

@@ -21,6 +21,7 @@ const (
 	authorizationProvidersEnv     = "AUTHORIZATION_PROVIDERS"
 	authorizationProvidersFileEnv = "AUTHORIZATION_PROVIDERS_FILE"
 	authorizationTokenEnvPrefix   = "AUTHORIZATION_PROVIDER_TOKEN_"
+	rangerServicePrincipalHeader  = "X-Forwarded-User"
 )
 
 var authorizationTokenEnvPattern = regexp.MustCompile(`^AUTHORIZATION_PROVIDER_TOKEN_[A-Z0-9_]+$`)
@@ -42,6 +43,8 @@ type opaAuthorizationProviderConfig struct {
 
 type rangerAuthorizationProviderConfig struct {
 	AuthenticationMode string            `json:"authenticationMode"`
+	ServicePrincipal   string            `json:"servicePrincipal"`
+	AllowInsecureHTTP  bool              `json:"allowInsecureHTTP,omitempty"`
 	ServiceType        string            `json:"serviceType"`
 	ServiceName        string            `json:"serviceName"`
 	Resource           string            `json:"resource"`
@@ -152,9 +155,15 @@ func authorizationRegistryFromYAML(raw []byte, source string) (*authorization.Re
 			if cfg.Ranger.AuthenticationMode != "service" {
 				return nil, fmt.Errorf("%s[%d].ranger.authenticationMode must be service", source, i)
 			}
+			if strings.TrimSpace(cfg.Ranger.ServicePrincipal) == "" {
+				return nil, fmt.Errorf("%s[%d].ranger.servicePrincipal is required", source, i)
+			}
 			client, clientErr := ranger.New(ranger.Options{
-				URL: cfg.URL, BearerToken: token, Timeout: timeout,
-				MaxResponseBytes: cfg.MaxResponseBytes,
+				URL: cfg.URL, BearerToken: token,
+				Headers:           map[string]string{rangerServicePrincipalHeader: cfg.Ranger.ServicePrincipal},
+				AllowInsecureHTTP: cfg.Ranger.AllowInsecureHTTP,
+				Timeout:           timeout,
+				MaxResponseBytes:  cfg.MaxResponseBytes,
 			})
 			if clientErr != nil {
 				err = clientErr

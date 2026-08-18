@@ -5,13 +5,15 @@ package trino
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
-	_ "github.com/trinodb/trino-go-client/trino" // registers the "trino" driver
+	trinodriver "github.com/trinodb/trino-go-client/trino" // registers the "trino" driver
 
 	"github.com/KubedAI/semantic-operator/internal/dbclient"
 )
@@ -28,7 +30,13 @@ func init() {
 // Client wraps database/sql for Trino.
 type Client struct {
 	db      *sql.DB
+	host    string
+	port    int
+	scheme  string
 	timeout time.Duration
+	// customClient is the registered driver client key used for TLS, empty
+	// unless certificate verification is skipped.
+	customClient string
 	// maxBytes bounds one result while it is being read. Never zero after
 	// Open, so a client cannot exist without a ceiling.
 	maxBytes int
@@ -46,24 +54,9 @@ func Open(cfg dbclient.Config) (*Client, error) {
 		cfg.User = "semantic-operator"
 	}
 	scheme := "http"
-	user := url.User(cfg.User)
-	if cfg.Password != "" {
+	if cfg.TLSEnabled || cfg.Password != "" {
 		scheme = "https"
-		user = url.UserPassword(cfg.User, cfg.Password)
 	}
-	dsn := (&url.URL{
-		Scheme:   scheme,
-		User:     user,
-		Host:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
-		RawQuery: url.Values{"source": []string{"semantic-operator"}}.Encode(),
-	}).String()
-	db, err := sql.Open("trino", dsn)
-	if err != nil {
-		return nil, err
-	}
-	db.SetMaxOpenConns(16)
-	db.SetMaxIdleConns(4)
-	db.SetConnMaxIdleTime(5 * time.Minute)
 	t := cfg.QueryTimeout
 	if t == 0 {
 		t = 60 * time.Second
@@ -72,7 +65,54 @@ func Open(cfg dbclient.Config) (*Client, error) {
 	if maxBytes <= 0 {
 		maxBytes = dbclient.DefaultMaxResultBytes
 	}
-	return &Client{db: db, timeout: t, maxBytes: maxBytes}, nil
+	c := &Client{host: cfg.Host, port: cfg.Port, scheme: scheme, timeout: t, maxBytes: maxBytes}
+
+	// Skip-verify is opt-in for a self-signed engine in isolated development.
+	// It is wired through a registered custom client, because the driver only
+	// exposes certificate trust through a provided CA or a custom client.
+	if scheme == "https" && cfg.TLSInsecureSkipVerify {
+		key := fmt.Sprintf("semantic-insecure-%s-%d", cfg.Host, cfg.Port)
+		if err := trinodriver.RegisterCustomClient(key, &http.Client{
+			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
+		}); err != nil {
+			return nil, err
+		}
+		c.customClient = key
+	}
+
+	// The static pool runs under the server's own credential and serves both
+	// schema introspection and static (non-passthrough) query execution.
+	var user *url.Userinfo
+	if scheme == "https" && cfg.Password != "" {
+		user = url.UserPassword(cfg.User, cfg.Password)
+	} else {
+		user = url.User(cfg.User)
+	}
+	dsn, err := c.dsn(user, "")
+	if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("trino", dsn)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(16)
+	db.SetMaxIdleConns(4)
+	db.SetConnMaxIdleTime(5 * time.Minute)
+	c.db = db
+	return c, nil
+}
+
+// dsn builds a Trino DSN. A nil user omits the session user so the coordinator
+// derives it from the access token's principal, which is the passthrough case.
+// A non-empty token adds the Authorization: Bearer header.
+func (c *Client) dsn(user *url.Userinfo, token string) (string, error) {
+	u := url.URL{Scheme: c.scheme, Host: fmt.Sprintf("%s:%d", c.host, c.port)}
+	if user != nil {
+		u.User = user
+	}
+	conf := trinodriver.Config{ServerURI: u.String(), Source: "semantic-operator", AccessToken: token, CustomClientName: c.customClient}
+	return conf.FormatDSN()
 }
 
 // Ping verifies connectivity by running a trivial query. The driver's own
@@ -95,11 +135,41 @@ func (c *Client) Exec(ctx context.Context, query string) error {
 }
 
 // Query runs a statement and returns column names and JSON-friendly rows
-// ([]byte becomes string, so results marshal cleanly).
-func (c *Client) Query(ctx context.Context, query string) (cols []string, out [][]any, err error) {
+// ([]byte becomes string, so results marshal cleanly). A zero credential runs
+// on the static pool. A non-zero credential forwards the caller's token on a
+// per-request connection, so the coordinator authenticates and authorizes the
+// query as the caller.
+func (c *Client) Query(ctx context.Context, cred dbclient.EngineCredential, query string) (cols []string, out [][]any, err error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
-	rows, err := c.db.QueryContext(ctx, query)
+
+	if cred.IsZero() {
+		return runQuery(ctx, c.db, c.maxBytes, query)
+	}
+	if !cred.Expiry.IsZero() && time.Now().After(cred.Expiry) {
+		return nil, nil, fmt.Errorf("trino: caller token has expired")
+	}
+	if cred.EngineUser == "" {
+		return nil, nil, fmt.Errorf("trino: passthrough requires an engine user for the session user")
+	}
+	// The session user is the caller's resolved engine user, which matches the
+	// token's principal field, so the coordinator authorizes the query as the
+	// caller without treating it as impersonation.
+	dsn, err := c.dsn(url.User(cred.EngineUser), cred.Token)
+	if err != nil {
+		return nil, nil, err
+	}
+	db, err := sql.Open("trino", dsn)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer db.Close()
+	return runQuery(ctx, db, c.maxBytes, query)
+}
+
+// runQuery executes one statement and scans bounded rows.
+func runQuery(ctx context.Context, db *sql.DB, maxBytes int, query string) (cols []string, out [][]any, err error) {
+	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -110,14 +180,14 @@ func (c *Client) Query(ctx context.Context, query string) (cols []string, out []
 	}()
 	// Bounded while scanning, so an oversized result is abandoned rather than
 	// fully allocated and then rejected.
-	return dbclient.ScanRows(rows, c.maxBytes)
+	return dbclient.ScanRows(rows, maxBytes)
 }
 
 // DescribeTable introspects a table through information_schema, which every
 // Trino connector serves. A table with zero matching columns is reported as
 // an error, not an empty list, so the reconciler treats it as drift.
 func (c *Client) DescribeTable(ctx context.Context, catalog, database, table string) ([]dbclient.Column, error) {
-	cols, rows, err := c.Query(ctx, describeQuery(catalog, database, table))
+	cols, rows, err := c.Query(ctx, dbclient.EngineCredential{}, describeQuery(catalog, database, table))
 	if err != nil {
 		return nil, err
 	}

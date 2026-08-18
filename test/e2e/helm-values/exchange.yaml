@@ -1,0 +1,13 @@
+# Overlay on top of auth.yaml that switches the server to RFC 8693 token
+# exchange. The server swaps each caller's token for an engine-audience token
+# via Keycloak, keeping the same subject, instead of forwarding the caller
+# token directly. Apply with:
+#   helm ... -f test/e2e/helm-values/auth.yaml -f test/e2e/helm-values/exchange.yaml
+engine:
+  identityMode: exchange
+  exchange:
+    tokenURL: http://keycloak.semantic-system.svc:8080/realms/semantic/protocol/openid-connect/token
+    clientID: semantic-server
+    clientSecretSecret:
+      name: engine-exchange-cred
+      key: client-secret

@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Deploy a single Trino coordinator that also executes worker tasks.
+# Deploy the single TLS+auth Trino engine. It mounts the trino-tls and
+# trino-passwords Secrets created by hack/trino-secrets.sh (a Make
+# prerequisite), so those must exist first. Readiness is the engine's own
+# HTTPS /v1/info/state probe, so a successful rollout means Trino is serving.
 set -euo pipefail
 
 ROOT_DIR="$(git rev-parse --show-toplevel)"
@@ -19,14 +22,4 @@ KUBECTL_NS=("${KUBECTL[@]}" --namespace "$NAMESPACE")
 "${KUBECTL_NS[@]}" rollout restart deployment/trino
 "${KUBECTL_NS[@]}" rollout status deployment/trino --timeout=5m
 
-for _ in {1..60}; do
-  if "${KUBECTL_NS[@]}" exec deployment/trino -- trino --output-format TSV \
-    --execute 'SELECT count(*) FROM memory.information_schema.schemata' >/dev/null 2>&1; then
-    echo "Trino is ready at trino.$NAMESPACE.svc.cluster.local:8080"
-    exit 0
-  fi
-  sleep 2
-done
-
-echo "Trino started, but the memory catalog is not ready" >&2
-exit 1
+echo "Trino is ready at https://trino.$NAMESPACE.svc.cluster.local:8443"
