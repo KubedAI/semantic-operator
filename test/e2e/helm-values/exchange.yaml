@@ -11,3 +11,5 @@ engine:
     clientSecretSecret:
       name: engine-exchange-cred
       key: client-secret
+    # The e2e token endpoint is reached over in-cluster http.
+    allowInsecureHTTP: true

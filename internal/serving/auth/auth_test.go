@@ -52,6 +52,12 @@ func (s *jwksServer) sign(t *testing.T, claims jwt.MapClaims) string {
 	if _, exists := claims["sub"]; !exists {
 		claims["sub"] = "test-user"
 	}
+	if _, exists := claims["iss"]; !exists {
+		claims["iss"] = "https://issuer.example"
+	}
+	if _, exists := claims["aud"]; !exists {
+		claims["aud"] = "semantic"
+	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	tok.Header["kid"] = s.kid
 	signed, err := tok.SignedString(s.key)
@@ -76,6 +82,12 @@ func jwtAuth(t *testing.T, s *jwksServer, opts Options) *Authenticator {
 	t.Helper()
 	opts.Mode = ModeJWT
 	opts.JWKSURL = s.URL
+	if opts.Issuer == "" {
+		opts.Issuer = "https://issuer.example"
+	}
+	if opts.Audience == "" {
+		opts.Audience = "semantic"
+	}
 	a, err := New(context.Background(), opts)
 	if err != nil {
 		t.Fatal(err)
@@ -283,10 +295,24 @@ func TestNewValidatesConfig(t *testing.T) {
 	if _, err := New(context.Background(), Options{Mode: Mode("wat")}); err == nil {
 		t.Error("an unknown mode must fail")
 	}
+	// Issuer and audience are required in jwt mode: without them a token minted
+	// for another issuer or audience would be accepted.
+	if _, err := New(context.Background(), Options{
+		Mode: ModeJWT, JWKSURL: "http://127.0.0.1:1/jwks",
+	}); err == nil {
+		t.Error("jwt mode without an issuer must fail at startup")
+	}
+	if _, err := New(context.Background(), Options{
+		Mode: ModeJWT, JWKSURL: "http://127.0.0.1:1/jwks", Issuer: "https://issuer.example",
+	}); err == nil {
+		t.Error("jwt mode without an audience must fail at startup")
+	}
 	// An unreachable issuer must fail fast rather than at first query.
 	if _, err := New(context.Background(), Options{
-		Mode:    ModeJWT,
-		JWKSURL: fmt.Sprintf("http://127.0.0.1:%d/jwks", 1),
+		Mode:     ModeJWT,
+		JWKSURL:  fmt.Sprintf("http://127.0.0.1:%d/jwks", 1),
+		Issuer:   "https://issuer.example",
+		Audience: "semantic",
 	}); err == nil {
 		t.Error("an unreachable JWKS must fail at startup")
 	}

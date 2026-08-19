@@ -32,6 +32,10 @@ engine:
     clientSecretSecret:
       name: ""
       key: client-secret
+    # Permit a plaintext http tokenURL. The exchange sends the caller token and
+    # the client secret, so leave this false unless the endpoint is reached only
+    # over trusted in-cluster networking.
+    allowInsecureHTTP: false
   # Engine endpoint. Empty falls back to the legacy starrocks.host value.
   host: ""            # e.g. trino.trino.svc.cluster.local
   # 0 uses the engine's default port (starrocks 9030, trino 8080).

@@ -74,6 +74,17 @@ type Config struct {
 // Factory builds a client for one engine.
 type Factory func(cfg Config) (Client, error)
 
+// PerRequestIdentityClient is implemented by engine clients that execute each
+// query under the EngineCredential passed to Query, rather than under a fixed
+// connection identity. Engines that ignore the credential must not implement
+// it, so the server can refuse passthrough and exchange for them instead of
+// silently running every caller's query under the server's own identity.
+type PerRequestIdentityClient interface {
+	// SupportsPerRequestIdentity is a marker; its presence signals the
+	// capability.
+	SupportsPerRequestIdentity()
+}
+
 var registry = map[string]Factory{}
 
 // Register adds an engine factory. Called from implementation package init().
