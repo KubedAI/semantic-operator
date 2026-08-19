@@ -46,7 +46,7 @@ spec:
             {{- include "semantic-operator.enginePasswordEnv" (dict "root" . "component" "server") | nindent 12 }}
             {{- $valkey := .Values.valkey | default dict }}
             {{- if and $valkey.addr ($valkey.passwordSecret | default dict).name }}
-            - name: SEMANTIC__CACHE__PASSWORD
+            - name: SEMANTIC__CACHE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ $valkey.passwordSecret.name }}
@@ -55,7 +55,7 @@ spec:
             {{- if eq (.Values.engine.identityMode | default "static") "exchange" }}
             {{- $exSecret := (.Values.engine.exchange | default dict).clientSecretSecret | default dict }}
             {{- if $exSecret.name }}
-            - name: SEMANTIC__ENGINE__IDENTITY__EXCHANGE__CLIENT_SECRET
+            - name: SEMANTIC__ENGINE_EXCHANGE_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ $exSecret.name }}

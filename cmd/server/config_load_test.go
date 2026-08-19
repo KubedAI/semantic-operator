@@ -127,13 +127,12 @@ store:
 		t.Fatal(err)
 	}
 
-	// Conventional uppercase env vars with underscores; matched case- and
-	// underscore-insensitively. String, nested string, int, bool, duration.
-	t.Setenv("SEMANTIC__SERVER__LISTEN_ADDR", ":7777")
-	t.Setenv("SEMANTIC__ENGINE__CONNECTION__HOST", "from-env")
-	t.Setenv("SEMANTIC__QUERY__MAX_CONCURRENT", "20")
-	t.Setenv("SEMANTIC__STORE__EXPOSE_METRIC_EXPRESSIONS", "true")
-	t.Setenv("SEMANTIC__SERVER__IDLE_TIMEOUT", "300s")
+	// Env overrides are matched by env tag, prefixed with SEMANTIC__.
+	t.Setenv("SEMANTIC__LISTEN_ADDR", ":7777")
+	t.Setenv("SEMANTIC__ENGINE_HOST", "from-env")
+	t.Setenv("SEMANTIC__QUERY_MAX_CONCURRENT", "20")
+	t.Setenv("SEMANTIC__EXPOSE_METRIC_EXPRESSIONS", "true")
+	t.Setenv("SEMANTIC__IDLE_TIMEOUT", "300s")
 
 	cfg, err := Load(path)
 	if err != nil {

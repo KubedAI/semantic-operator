@@ -116,7 +116,7 @@ identity:
 {{- $sec = $root.Values.starrocks.passwordSecret -}}
 {{- end -}}
 {{- if $sec.name }}
-- name: SEMANTIC__ENGINE__CONNECTION__PASSWORD
+- name: SEMANTIC__ENGINE_PASSWORD
   valueFrom:
     secretKeyRef:
       name: {{ $sec.name }}

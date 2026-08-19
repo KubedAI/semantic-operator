@@ -8,29 +8,14 @@ import (
 	"time"
 )
 
-func TestNormalizeKey(t *testing.T) {
-	cases := map[string]string{
-		"engine.connection.host":   "ENGINECONNECTIONHOST",
-		"ENGINE__CONNECTION__HOST": "ENGINECONNECTIONHOST",
-		"ENGINE_CONNECTION_HOST":   "ENGINECONNECTIONHOST",
-		"auth.jwksURL":             "AUTHJWKSURL",
-		"":                         "",
-	}
-	for in, want := range cases {
-		if got := normalizeKey(in); got != want {
-			t.Errorf("normalizeKey(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
-func TestLoadEnvIsCaseAndUnderscoreInsensitive(t *testing.T) {
+func TestLoadEnvOverrideByTag(t *testing.T) {
 	type inner struct {
-		JWKSURL string `yaml:"jwksURL"`
+		JWKSURL string `yaml:"jwksURL" env:"AUTH_JWKS_URL"`
 	}
 	type cfg struct {
 		Auth inner `yaml:"auth"`
 	}
-	t.Setenv(EnvPrefix+"AUTH__JWKS_URL", "https://idp/jwks")
+	t.Setenv(EnvPrefix+"AUTH_JWKS_URL", "https://idp/jwks")
 
 	got, err := Load(cfg{}, "")
 	if err != nil {
@@ -41,25 +26,25 @@ func TestLoadEnvIsCaseAndUnderscoreInsensitive(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsCollidingKeys(t *testing.T) {
+func TestLoadRejectsDuplicateEnvTag(t *testing.T) {
 	type cfg struct {
-		A string `yaml:"fooBar"`
-		B string `yaml:"foo_bar"`
+		A string `yaml:"a" env:"DUP"`
+		B string `yaml:"b" env:"DUP"`
 	}
 	_, err := Load(cfg{}, "")
 	if err == nil {
-		t.Fatal("expected an error for colliding keys, got nil")
+		t.Fatal("expected an error for a duplicate env tag, got nil")
 	}
-	if !strings.Contains(err.Error(), "normalize") {
-		t.Errorf("error = %v, want a normalization-collision message", err)
+	if !strings.Contains(err.Error(), "DUP") {
+		t.Errorf("error = %v, want it to name the duplicated tag", err)
 	}
 }
 
 func TestLoadRejectsUnknownEnvVar(t *testing.T) {
 	type cfg struct {
-		Host string `yaml:"host"`
+		Host string `yaml:"host" env:"HOST"`
 	}
-	t.Setenv(EnvPrefix+"NOPE__NOT_A_KEY", "x")
+	t.Setenv(EnvPrefix+"NOT_A_KEY", "x")
 	_, err := Load(cfg{}, "")
 	if err == nil {
 		t.Fatal("expected an error for an unknown env var, got nil")
@@ -69,9 +54,23 @@ func TestLoadRejectsUnknownEnvVar(t *testing.T) {
 	}
 }
 
+func TestLoadUntaggedFieldIsNotEnvOverridable(t *testing.T) {
+	type cfg struct {
+		// No env tag: not settable from the environment.
+		Secret string `yaml:"secret"`
+		Host   string `yaml:"host" env:"HOST"`
+	}
+	// This var matches no env tag and must be rejected, not silently applied.
+	t.Setenv(EnvPrefix+"SECRET", "x")
+	_, err := Load(cfg{}, "")
+	if err == nil || !strings.Contains(err.Error(), "SECRET") {
+		t.Fatalf("error = %v, want unknown-var error naming SECRET", err)
+	}
+}
+
 func TestLoadRejectsUnknownFileKey(t *testing.T) {
 	type cfg struct {
-		Host string `yaml:"host"`
+		Host string `yaml:"host" env:"HOST"`
 	}
 	path := filepath.Join(t.TempDir(), "c.yaml")
 	if err := os.WriteFile(path, []byte("host: h\nbogus: x\n"), 0o600); err != nil {
@@ -88,7 +87,7 @@ func TestLoadRejectsUnknownFileKey(t *testing.T) {
 
 func TestLoadSliceFromEnvIsCommaSeparated(t *testing.T) {
 	type cfg struct {
-		Claims []string `yaml:"claims"`
+		Claims []string `yaml:"claims" env:"CLAIMS"`
 	}
 	t.Setenv(EnvPrefix+"CLAIMS", "tenant, sub ,groups")
 	got, err := Load(cfg{}, "")
@@ -108,7 +107,7 @@ func TestLoadSliceFromEnvIsCommaSeparated(t *testing.T) {
 
 func TestLoadDurationRequiresUnit(t *testing.T) {
 	type cfg struct {
-		Timeout time.Duration `yaml:"timeout"`
+		Timeout time.Duration `yaml:"timeout" env:"TIMEOUT"`
 	}
 	// A bare number (no unit) must be rejected rather than read as nanoseconds.
 	path := filepath.Join(t.TempDir(), "c.yaml")
