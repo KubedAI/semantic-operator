@@ -169,20 +169,22 @@ func run() error {
 	case "static":
 		resolver = serving.StaticResolver()
 	case "passthrough":
-		if err := requireEngineIdentityJWT(authn); err != nil {
+		if err := requireEngineIdentity(authn, engineClient, engine); err != nil {
 			log.Error("invalid engine identity configuration", "err", err)
 			return err
 		}
 		resolver = serving.PassthroughResolver()
 	case "exchange":
-		if err := requireEngineIdentityJWT(authn); err != nil {
+		if err := requireEngineIdentity(authn, engineClient, engine); err != nil {
 			log.Error("invalid engine identity configuration", "err", err)
 			return err
 		}
 		ex, err := exchange.New(exchange.Options{
-			TokenURL:     os.Getenv("ENGINE_EXCHANGE_TOKEN_URL"),
-			ClientID:     os.Getenv("ENGINE_EXCHANGE_CLIENT_ID"),
-			ClientSecret: os.Getenv("ENGINE_EXCHANGE_CLIENT_SECRET"),
+			TokenURL:          os.Getenv("ENGINE_EXCHANGE_TOKEN_URL"),
+			ClientID:          os.Getenv("ENGINE_EXCHANGE_CLIENT_ID"),
+			ClientSecret:      os.Getenv("ENGINE_EXCHANGE_CLIENT_SECRET"),
+			AllowInsecureHTTP: envOr("ENGINE_EXCHANGE_ALLOW_INSECURE_HTTP", "false") == "true",
+			Logger:            log,
 		})
 		if err != nil {
 			log.Error("invalid engine identity configuration", "err", err)
@@ -248,15 +250,20 @@ func run() error {
 	return nil
 }
 
-// requireEngineIdentityJWT enforces the preconditions shared by passthrough
-// and exchange: a real caller token (jwt mode) and a configured engine user
-// claim to use as the engine session user.
-func requireEngineIdentityJWT(authn *auth.Authenticator) error {
+// requireEngineIdentity enforces the preconditions shared by passthrough and
+// exchange: a real caller token (jwt mode), a configured engine user claim, and
+// an engine that actually executes each query under the per-request credential.
+// The last check prevents a silent security downgrade on engines that ignore
+// the credential and would run every caller's query under the server identity.
+func requireEngineIdentity(authn *auth.Authenticator, engineClient dbclient.Client, engine string) error {
 	if authn.Mode() != auth.ModeJWT {
 		return fmt.Errorf("ENGINE_IDENTITY_MODE passthrough or exchange requires AUTH_MODE=jwt")
 	}
 	if os.Getenv("ENGINE_USER_CLAIM") == "" {
 		return fmt.Errorf("ENGINE_IDENTITY_MODE passthrough or exchange requires ENGINE_USER_CLAIM, the token claim used as the engine session user")
+	}
+	if _, ok := engineClient.(dbclient.PerRequestIdentityClient); !ok {
+		return fmt.Errorf("ENGINE_IDENTITY_MODE passthrough or exchange requires an engine that honors per-request identity; engine %q runs every query under the server's own credential", engine)
 	}
 	return nil
 }

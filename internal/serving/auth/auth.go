@@ -58,9 +58,9 @@ type Options struct {
 	Mode Mode
 	// JWKSURL serves the issuer's signing keys. Required in JWT mode.
 	JWKSURL string
-	// Issuer, when set, must equal the token's iss claim.
+	// Issuer must equal the token's iss claim. Required in JWT mode.
 	Issuer string
-	// Audience, when set, must appear in the token's aud claim.
+	// Audience must appear in the token's aud claim. Required in JWT mode.
 	Audience string
 	// PrincipalClaim identifies the authenticated principal presented to policy
 	// providers. Dots address nested objects. Default "sub".
@@ -112,6 +112,12 @@ func New(ctx context.Context, opts Options) (*Authenticator, error) {
 	if opts.JWKSURL == "" {
 		return nil, errors.New("auth: jwksURL is required in jwt mode")
 	}
+	if opts.Issuer == "" {
+		return nil, errors.New("auth: issuer is required in jwt mode; without it a token minted for another issuer would be accepted")
+	}
+	if opts.Audience == "" {
+		return nil, errors.New("auth: audience is required in jwt mode; without it a token minted for another audience would be accepted")
+	}
 	if opts.RefreshInterval == 0 {
 		opts.RefreshInterval = time.Hour
 	}
@@ -140,12 +146,8 @@ func New(ctx context.Context, opts Options) (*Authenticator, error) {
 	parserOpts := []jwt.ParserOption{
 		jwt.WithValidMethods([]string{"RS256", "RS384", "RS512", "ES256", "ES384", "ES512", "PS256", "PS384", "PS512"}),
 		jwt.WithExpirationRequired(),
-	}
-	if opts.Issuer != "" {
-		parserOpts = append(parserOpts, jwt.WithIssuer(opts.Issuer))
-	}
-	if opts.Audience != "" {
-		parserOpts = append(parserOpts, jwt.WithAudience(opts.Audience))
+		jwt.WithIssuer(opts.Issuer),
+		jwt.WithAudience(opts.Audience),
 	}
 
 	a := &Authenticator{

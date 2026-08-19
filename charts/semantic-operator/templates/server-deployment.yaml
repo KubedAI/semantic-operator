@@ -151,6 +151,10 @@ spec:
               value: {{ required "engine.exchange.tokenURL is required when engine.identityMode is exchange" $ex.tokenURL | quote }}
             - name: ENGINE_EXCHANGE_CLIENT_ID
               value: {{ required "engine.exchange.clientID is required when engine.identityMode is exchange" $ex.clientID | quote }}
+            {{- if $ex.allowInsecureHTTP }}
+            - name: ENGINE_EXCHANGE_ALLOW_INSECURE_HTTP
+              value: "true"
+            {{- end }}
             {{- $exSecret := $ex.clientSecretSecret | default dict }}
             {{- if $exSecret.name }}
             - name: ENGINE_EXCHANGE_CLIENT_SECRET

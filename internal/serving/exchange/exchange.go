@@ -12,7 +12,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -27,15 +29,29 @@ const (
 	refreshMargin = 30 * time.Second
 )
 
+// ErrExchangeFailed is the generic error surfaced to callers when a token
+// exchange fails. The authorization server's error body can carry sensitive
+// detail, so it is logged server-side and never returned to the caller.
+var ErrExchangeFailed = errors.New("token exchange failed")
+
 // Options configures the exchanger.
 type Options struct {
-	// TokenURL is the authorization server token endpoint. Required.
+	// TokenURL is the authorization server token endpoint. Required, and must
+	// be https unless AllowInsecureHTTP is set.
 	TokenURL string
 	// ClientID and ClientSecret authenticate the server as the exchange client.
 	ClientID     string
 	ClientSecret string
-	// HTTPClient is optional; a default client is used when nil.
+	// AllowInsecureHTTP permits a plaintext http TokenURL. The exchange request
+	// carries the caller's subject token and the client secret, so this is only
+	// acceptable for in-cluster traffic to a trusted endpoint. Off by default.
+	AllowInsecureHTTP bool
+	// HTTPClient is optional; a default client is used when nil. Its redirect
+	// policy is always overridden to refuse redirects.
 	HTTPClient *http.Client
+	// Logger receives the detailed cause of a failed exchange. Defaults to
+	// slog.Default().
+	Logger *slog.Logger
 }
 
 // Exchanger exchanges a caller access token for an engine-audience token and
@@ -43,6 +59,7 @@ type Options struct {
 type Exchanger struct {
 	cfg        *oauth2.Config
 	httpClient *http.Client
+	log        *slog.Logger
 
 	mu    sync.Mutex
 	cache map[string]entry
@@ -61,13 +78,39 @@ func New(o Options) (*Exchanger, error) {
 	if o.ClientID == "" {
 		return nil, errors.New("exchange: client id is required")
 	}
+	u, err := url.Parse(o.TokenURL)
+	if err != nil {
+		return nil, fmt.Errorf("exchange: invalid token URL: %w", err)
+	}
+	if u.Scheme != "https" && !o.AllowInsecureHTTP {
+		return nil, fmt.Errorf("exchange: token URL %q must use https; set AllowInsecureHTTP to permit plaintext http for in-cluster traffic", o.TokenURL)
+	}
+
+	// The exchange request body carries the caller's subject token and the
+	// client secret. Never follow redirects: a 3xx from the token endpoint
+	// could otherwise resend both to another host.
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	if o.HTTPClient != nil {
+		cp := *o.HTTPClient
+		httpClient = &cp
+	}
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return errors.New("refusing to follow a redirect from the token endpoint")
+	}
+
+	logger := o.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	return &Exchanger{
 		cfg: &oauth2.Config{
 			ClientID:     o.ClientID,
 			ClientSecret: o.ClientSecret,
 			Endpoint:     oauth2.Endpoint{TokenURL: o.TokenURL, AuthStyle: oauth2.AuthStyleInParams},
 		},
-		httpClient: o.HTTPClient,
+		httpClient: httpClient,
+		log:        logger,
 		cache:      map[string]entry{},
 	}, nil
 }
@@ -91,17 +134,18 @@ func (e *Exchanger) Exchange(ctx context.Context, subjectToken string) (string, 
 	}
 	e.mu.Unlock()
 
-	reqCtx := ctx
-	if e.httpClient != nil {
-		reqCtx = context.WithValue(ctx, oauth2.HTTPClient, e.httpClient)
-	}
+	reqCtx := context.WithValue(ctx, oauth2.HTTPClient, e.httpClient)
 	tok, err := e.cfg.Exchange(reqCtx, "",
 		oauth2.SetAuthURLParam("grant_type", grantTokenExchange),
 		oauth2.SetAuthURLParam("subject_token", subjectToken),
 		oauth2.SetAuthURLParam("subject_token_type", accessTokenType),
 	)
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("exchange: %w", err)
+		// The authorization server's error can include its response body, which
+		// may carry sensitive detail. Log it server-side and return a generic
+		// error to the caller.
+		e.log.Error("token exchange failed", "err", err)
+		return "", time.Time{}, ErrExchangeFailed
 	}
 	if tok.AccessToken == "" {
 		return "", time.Time{}, errors.New("exchange: authorization server returned no access token")
