@@ -107,10 +107,10 @@ controller:
 		t.Fatal(err)
 	}
 
-	t.Setenv("SEMANTIC__METRICS__BIND_ADDRESS", ":7070")
-	t.Setenv("SEMANTIC__ENGINE__CONNECTION__HOST", "from-env")
-	t.Setenv("SEMANTIC__CONTROLLER__RESYNC_PERIOD", "3m")
-	t.Setenv("SEMANTIC__LEADER_ELECTION__LEADER_ELECT", "true")
+	t.Setenv("SEMANTIC__METRICS_BIND_ADDRESS", ":7070")
+	t.Setenv("SEMANTIC__ENGINE_HOST", "from-env")
+	t.Setenv("SEMANTIC__RESYNC_PERIOD", "3m")
+	t.Setenv("SEMANTIC__LEADER_ELECT", "true")
 
 	cfg, err := Load(path)
 	if err != nil {
