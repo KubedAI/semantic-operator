@@ -20,10 +20,9 @@ spec:
         app.kubernetes.io/name: {{ include "semantic-operator.name" . }}
         app.kubernetes.io/component: server
       annotations:
-        {{- /* Changes whenever server or engine configuration changes, so a
-               rollout is attributable to a config revision rather than to
-               whatever else happened that day. */}}
-        semantic.ossie.io/config-checksum: {{ printf "%s|%s" (toYaml .Values.server) (toYaml .Values.engine) | sha256sum | trunc 16 }}
+        {{- /* Changes whenever the rendered server config changes, so a
+               rollout is attributable to a config revision. */}}
+        semantic.ossie.io/config-checksum: {{ include "semantic-operator.serverConfig" . | sha256sum | trunc 16 }}
         prometheus.io/scrape: "true"
         prometheus.io/port: {{ .Values.server.listenPort | quote }}
         prometheus.io/path: /metrics
@@ -39,93 +38,31 @@ spec:
         - name: server
           image: "{{ include "semantic-operator.image" (dict "root" . "component" "server") }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --config={{ include "semantic-operator.configPath" . }}
           env:
-            {{- include "semantic-operator.engineEnv" (dict "root" . "component" "server") | nindent 12 }}
-            - name: LISTEN_ADDR
-              value: ":{{ .Values.server.listenPort }}"
-            - name: LOG_LEVEL
-              value: {{ .Values.server.logLevel | quote }}
-            {{- /* Nil-safe for --reuse-values from a release predating limits. */ -}}
-            {{- $q := .Values.server.query | default dict }}
-            {{- if $q.exposeMetricExpressions }}
-            - name: EXPOSE_METRIC_EXPRESSIONS
-              value: "true"
+            {{- /* Non-secret configuration comes from the mounted config file.
+                   Only secrets are injected here as SEMANTIC__ env overrides. */}}
+            {{- include "semantic-operator.enginePasswordEnv" (dict "root" . "component" "server") | nindent 12 }}
+            {{- $valkey := .Values.valkey | default dict }}
+            {{- if and $valkey.addr ($valkey.passwordSecret | default dict).name }}
+            - name: SEMANTIC__CACHE__PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $valkey.passwordSecret.name }}
+                  key: {{ $valkey.passwordSecret.key }}
             {{- end }}
-            {{- /* Only overrides are emitted. An absent variable means the
-                   binary's own default, never unbounded. */ -}}
-            {{- $http := .Values.server.http | default dict }}
-            {{- range $env, $key := dict
-                  "READ_TIMEOUT_SECONDS" "readTimeoutSeconds"
-                  "IDLE_TIMEOUT_SECONDS" "idleTimeoutSeconds"
-                  "REST_TIMEOUT_SECONDS" "restTimeoutSeconds"
-                  "MAX_HEADER_BYTES" "maxHeaderBytes" }}
-            {{- with (index $http $key) }}
-            - name: {{ $env }}
-              value: {{ . | quote }}
+            {{- if eq (.Values.engine.identityMode | default "static") "exchange" }}
+            {{- $exSecret := (.Values.engine.exchange | default dict).clientSecretSecret | default dict }}
+            {{- if $exSecret.name }}
+            - name: SEMANTIC__ENGINE__IDENTITY__EXCHANGE__CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $exSecret.name }}
+                  key: {{ $exSecret.key | default "client-secret" }}
             {{- end }}
             {{- end }}
-            {{- range $env, $key := dict
-                  "QUERY_DEFAULT_ROW_LIMIT" "defaultRowLimit"
-                  "QUERY_MAX_ROW_LIMIT" "maxRowLimit"
-                  "QUERY_MAX_METRICS" "maxMetrics"
-                  "QUERY_MAX_DIMENSIONS" "maxDimensions"
-                  "QUERY_MAX_FILTERS" "maxFilters"
-                  "QUERY_MAX_FILTER_VALUES" "maxFilterValues"
-                  "QUERY_MAX_RESULT_BYTES" "maxResultBytes"
-                  "QUERY_MAX_CACHE_ENTRY_BYTES" "maxCacheEntryBytes"
-                  "QUERY_MAX_REQUEST_BYTES" "maxRequestBytes"
-                  "QUERY_MAX_CONCURRENT" "maxConcurrent"
-                  "QUERY_QUEUE_WAIT_SECONDS" "queueWaitSeconds" }}
-            {{- with (index $q $key) }}
-            - name: {{ $env }}
-              value: {{ . | quote }}
-            {{- end }}
-            {{- end }}
-            {{- /* Nil-safe for --reuse-values from a release predating auth. */ -}}
-            {{- $auth := .Values.server.auth | default dict }}
-            {{- $mode := $auth.mode | default "header" }}
-            {{- /* Header mode trusts whatever the caller sends, so any pod that
-                   can reach the port can claim any role. That is a legitimate
-                   setup behind an authenticating proxy, but it must be a
-                   decision rather than a default nobody noticed. */ -}}
-            {{- if and (eq $mode "header") (not $auth.allowInsecureHeaderAuth) }}
-            {{- fail "server.auth.mode=header trusts X-Semantic-User and X-Semantic-Role verbatim, so any client that reaches the service can assert an identity. Set server.auth.mode=jwt with a jwksURL for production, or set server.auth.allowInsecureHeaderAuth=true to confirm an authenticating proxy strips and sets both headers." }}
-            {{- end }}
-            - name: AUTH_MODE
-              value: {{ $mode | quote }}
-            {{- if eq ($auth.mode | default "header") "jwt" }}
-            - name: OIDC_JWKS_URL
-              value: {{ required "server.auth.jwksURL is required when auth.mode is jwt" $auth.jwksURL | quote }}
-            {{- with $auth.issuer }}
-            - name: OIDC_ISSUER
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with $auth.audience }}
-            - name: OIDC_AUDIENCE
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with $auth.principalClaim }}
-            - name: OIDC_PRINCIPAL_CLAIM
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with $auth.roleClaim }}
-            - name: OIDC_ROLE_CLAIM
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with $auth.groupsClaim }}
-            - name: OIDC_GROUPS_CLAIM
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with $auth.claimsToCopy }}
-            - name: OIDC_CLAIMS_TO_COPY
-              value: {{ join "," . | quote }}
-            {{- end }}
-            {{- end }}
-            {{- $authorization := .Values.server.authorization | default dict }}
-            {{- $providers := $authorization.providers | default list }}
-            {{- if $providers }}
-            - name: AUTHORIZATION_PROVIDERS_FILE
-              value: /etc/semantic-server/authorization/providers.yaml
+            {{- $providers := (.Values.server.authorization | default dict).providers | default list }}
             {{- range $i, $provider := $providers }}
             {{- $secret := $provider.bearerTokenSecret | default dict }}
             {{- if $secret.name }}
@@ -135,55 +72,6 @@ spec:
                   name: {{ $secret.name }}
                   key: {{ $secret.key | default "token" }}
             {{- end }}
-            {{- end }}
-            {{- end }}
-            - name: WATCH_NAMESPACE
-              value: {{ .Release.Namespace | quote }}
-            - name: ENGINE_IDENTITY_MODE
-              value: {{ .Values.engine.identityMode | default "static" | quote }}
-            {{- with .Values.engine.userClaim }}
-            - name: ENGINE_USER_CLAIM
-              value: {{ . | quote }}
-            {{- end }}
-            {{- if eq (.Values.engine.identityMode | default "static") "exchange" }}
-            {{- $ex := .Values.engine.exchange | default dict }}
-            - name: ENGINE_EXCHANGE_TOKEN_URL
-              value: {{ required "engine.exchange.tokenURL is required when engine.identityMode is exchange" $ex.tokenURL | quote }}
-            - name: ENGINE_EXCHANGE_CLIENT_ID
-              value: {{ required "engine.exchange.clientID is required when engine.identityMode is exchange" $ex.clientID | quote }}
-            {{- if $ex.allowInsecureHTTP }}
-            - name: ENGINE_EXCHANGE_ALLOW_INSECURE_HTTP
-              value: "true"
-            {{- end }}
-            {{- $exSecret := $ex.clientSecretSecret | default dict }}
-            {{- if $exSecret.name }}
-            - name: ENGINE_EXCHANGE_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $exSecret.name }}
-                  key: {{ $exSecret.key | default "client-secret" }}
-            {{- end }}
-            {{- end }}
-            - name: PLAN_CACHE_TTL
-              value: {{ .Values.server.planCacheTTL | quote }}
-            - name: RESULT_CACHE_TTL
-              value: {{ .Values.server.resultCacheTTL | quote }}
-            {{- if .Values.valkey.addr }}
-            - name: VALKEY_ADDR
-              value: {{ .Values.valkey.addr | quote }}
-            - name: VALKEY_DB
-              value: {{ .Values.valkey.db | quote }}
-            {{- if .Values.valkey.passwordSecret.name }}
-            - name: VALKEY_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.valkey.passwordSecret.name }}
-                  key: {{ .Values.valkey.passwordSecret.key }}
-            {{- end }}
-            {{- end }}
-            {{- if .Values.server.otelEndpoint }}
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: {{ .Values.server.otelEndpoint | quote }}
             {{- end }}
           ports:
             - containerPort: {{ .Values.server.listenPort }}
@@ -223,19 +111,15 @@ spec:
             allowPrivilegeEscalation: false
             capabilities: {drop: [ALL]}
             readOnlyRootFilesystem: true
-          {{- if $providers }}
           volumeMounts:
-            - name: authorization-providers
-              mountPath: /etc/semantic-server/authorization
+            - name: config
+              mountPath: /etc/semantic-operator
               readOnly: true
-          {{- end }}
           resources: {{- toYaml .Values.server.resources | nindent 12 }}
-      {{- if $providers }}
       volumes:
-        - name: authorization-providers
-          secret:
-            secretName: {{ include "semantic-operator.name" . }}-server-authorization
-      {{- end }}
+        - name: config
+          configMap:
+            name: {{ include "semantic-operator.name" . }}-server-config
       {{- /* Must exceed the preStop pause plus the server's own 10s shutdown
              deadline, or the kubelet kills it mid-drain. */}}
       terminationGracePeriodSeconds: {{ (.Values.server.gracefulShutdown | default dict).terminationGracePeriodSeconds | default 30 }}

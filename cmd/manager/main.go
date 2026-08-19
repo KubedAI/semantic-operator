@@ -1,21 +1,22 @@
-// The semantic-operator controller manager. Configuration comes from env
-// (set by the Helm chart); no endpoint or credential is compiled in.
+// The semantic-operator controller manager. Configuration comes from built-in
+// defaults, an optional YAML file (--config or SEMANTIC_CONFIG), SEMANTIC__
+// environment overrides, and the controller-runtime flags (highest
+// precedence). See config.go and the confload package.
 package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"strings"
-	"time"
 
+	"go.uber.org/zap/zapcore"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	semanticv1alpha1 "github.com/KubedAI/semantic-operator/api/v1alpha1"
 	"github.com/KubedAI/semantic-operator/controllers"
@@ -27,6 +28,9 @@ import (
 	_ "github.com/KubedAI/semantic-operator/internal/trino"
 )
 
+// configEnv names the config file path when --config is not given.
+const configEnv = "SEMANTIC_CONFIG"
+
 var scheme = runtime.NewScheme()
 
 func init() {
@@ -35,56 +39,62 @@ func init() {
 }
 
 func main() {
-	var metricsAddr, probeAddr string
-	var enableLeaderElection bool
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "Prometheus metrics address")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "health probe address")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false, "enable leader election")
-	opts := zap.Options{Development: false}
-	opts.BindFlags(flag.CommandLine)
+	if err := run(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	var configPath, metricsAddr, probeAddr string
+	var leaderElect bool
+	flag.StringVar(&configPath, "config", os.Getenv(configEnv), "path to the YAML config file (also "+configEnv+")")
+	flag.StringVar(&metricsAddr, "metrics-bind-address", "", "Prometheus metrics address (overrides config)")
+	flag.StringVar(&probeAddr, "health-probe-bind-address", "", "health probe address (overrides config)")
+	flag.BoolVar(&leaderElect, "leader-elect", false, "enable leader election (overrides config)")
 	flag.Parse()
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	cfg, err := Load(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "loading configuration: %v\n", err)
+		return err
+	}
+	// Explicit flags are the highest-precedence layer, above file and env.
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "metrics-bind-address":
+			cfg.Metrics.BindAddress = metricsAddr
+		case "health-probe-bind-address":
+			cfg.Health.HealthProbeBindAddress = probeAddr
+		case "leader-elect":
+			cfg.LeaderElection.LeaderElect = leaderElect
+		}
+	})
+
+	ctrl.SetLogger(zap.New(zap.UseDevMode(cfg.Logging.Development), zap.Level(zapLevel(cfg.Logging.Level))))
 	log := ctrl.Log.WithName("setup")
 
-	// SQL_DIALECT selects both halves of the engine boundary: the SQL
-	// dialect (emitter) and the connection client (dbclient). The ENGINE_*
-	// env vars configure the connection.
-	engine := envOr("SQL_DIALECT", "starrocks")
-	dialect, err := emitter.Get(engine)
+	// The dialect selects both halves of the engine boundary: the SQL dialect
+	// (emitter) and the connection client (dbclient).
+	dialect, err := emitter.Get(cfg.Engine.Dialect)
 	if err != nil {
 		log.Error(err, "resolving dialect")
-		os.Exit(1)
+		return err
 	}
-	cfg, err := dbclient.EnvConfig()
-	if err != nil {
+	engineCfg := toEngineConfig(cfg.Engine)
+	if engineCfg.Host == "" {
+		err := fmt.Errorf("engine.connection.host is required")
 		log.Error(err, "reading engine connection config")
-		os.Exit(1)
+		return err
 	}
-	db, err := dbclient.Open(engine, cfg)
+	db, err := dbclient.Open(cfg.Engine.Dialect, engineCfg)
 	if err != nil {
-		log.Error(err, "opening query engine client", "engine", engine)
-		os.Exit(1)
+		log.Error(err, "opening query engine client", "engine", cfg.Engine.Dialect)
+		return err
 	}
 
-	// WATCH_NAMESPACES narrows the cache, and therefore the RBAC the manager
-	// needs, to a fixed list. Unset means cluster-wide, which is the default
-	// and needs a ClusterRole. Narrowing it is how an operator limits the
-	// blast radius of a compromised manager to namespaces it was given.
-	options := ctrl.Options{
-		Scheme:                 scheme,
-		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
-		HealthProbeBindAddress: probeAddr,
-		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "semantic-operator.semantic.ossie.io",
-	}
-	if watched := splitList(os.Getenv("WATCH_NAMESPACES")); len(watched) > 0 {
-		byNamespace := make(map[string]cache.Config, len(watched))
-		for _, ns := range watched {
-			byNamespace[ns] = cache.Config{}
-		}
-		options.Cache = cache.Options{DefaultNamespaces: byNamespace}
-		log.Info("watching a fixed namespace list", "namespaces", watched)
+	options := toManagerOptions(cfg, scheme)
+	if len(cfg.Cache.WatchNamespaces) > 0 {
+		log.Info("watching a fixed namespace list", "namespaces", cfg.Cache.WatchNamespaces)
 	} else {
 		log.Info("watching all namespaces; the manager holds a ClusterRole")
 	}
@@ -92,18 +102,18 @@ func main() {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), options)
 	if err != nil {
 		log.Error(err, "starting manager")
-		os.Exit(1)
+		return err
 	}
 
 	if err = (&controllers.SemanticModelReconciler{
 		Client:       mgr.GetClient(),
 		DB:           db,
 		Dialect:      dialect,
-		ViewDatabase: envOr("VIEW_DATABASE", "semantic_views"),
-		ResyncPeriod: envDuration("RESYNC_PERIOD", 5*time.Minute),
+		ViewDatabase: cfg.Controller.ViewDatabase,
+		ResyncPeriod: cfg.Controller.ResyncPeriod,
 	}).SetupWithManager(mgr); err != nil {
 		log.Error(err, "creating controller", "controller", "SemanticModel")
-		os.Exit(1)
+		return err
 	}
 
 	utilruntime.Must(mgr.AddHealthzCheck("healthz", healthz.Ping))
@@ -112,34 +122,21 @@ func main() {
 	log.Info("starting semantic-operator")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		log.Error(err, "manager exited")
-		os.Exit(1)
+		return err
 	}
+	return nil
 }
 
-func envOr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+// zapLevel maps a config level string to a zap level, defaulting to info.
+func zapLevel(s string) zapcore.Level {
+	switch strings.ToLower(s) {
+	case "debug":
+		return zapcore.DebugLevel
+	case "warn":
+		return zapcore.WarnLevel
+	case "error":
+		return zapcore.ErrorLevel
+	default:
+		return zapcore.InfoLevel
 	}
-	return def
-}
-
-func envDuration(key string, def time.Duration) time.Duration {
-	if v := os.Getenv(key); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			return d
-		}
-	}
-	return def
-}
-
-// splitList parses a comma-separated env value, ignoring blanks so a trailing
-// comma or an accidental space cannot produce an empty namespace name.
-func splitList(v string) []string {
-	var out []string
-	for _, p := range strings.Split(v, ",") {
-		if p = strings.TrimSpace(p); p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
 }

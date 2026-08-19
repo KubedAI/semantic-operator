@@ -15,8 +15,10 @@ spec:
       labels:
         app.kubernetes.io/name: {{ include "semantic-operator.name" . }}
         app.kubernetes.io/component: manager
+      annotations:
+        semantic.ossie.io/config-checksum: {{ include "semantic-operator.managerConfig" . | sha256sum | trunc 16 }}
       {{- with .Values.podAnnotations }}
-      annotations: {{- toYaml . | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
       serviceAccountName: {{ include "semantic-operator.managerSA" . }}
@@ -28,20 +30,11 @@ spec:
           image: "{{ include "semantic-operator.image" (dict "root" . "component" "manager") }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
-            - --leader-elect={{ .Values.manager.leaderElect }}
+            - --config={{ include "semantic-operator.configPath" . }}
           env:
-            {{- include "semantic-operator.engineEnv" (dict "root" . "component" "manager") | nindent 12 }}
-            {{- include "semantic-operator.validateScope" . -}}
-            {{- /* Absent only in cluster-wide mode, where the manager caches
-                   every namespace and holds a ClusterRole to match. */ -}}
-            {{- with (include "semantic-operator.watchedNamespaces" . | fromYamlArray) }}
-            - name: WATCH_NAMESPACES
-              value: {{ join "," . | quote }}
-            {{- end }}
-            - name: VIEW_DATABASE
-              value: {{ .Values.manager.viewDatabase | quote }}
-            - name: RESYNC_PERIOD
-              value: {{ .Values.manager.resyncPeriod | quote }}
+            {{- /* Non-secret configuration comes from the mounted config file.
+                   Only the engine password is injected here as a Secret env. */}}
+            {{- include "semantic-operator.enginePasswordEnv" (dict "root" . "component" "manager") | nindent 12 }}
           ports:
             - {containerPort: 8080, name: metrics}
             - {containerPort: 8081, name: health}
@@ -55,7 +48,15 @@ spec:
             allowPrivilegeEscalation: false
             capabilities: {drop: [ALL]}
             readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: config
+              mountPath: /etc/semantic-operator
+              readOnly: true
           resources: {{- toYaml .Values.manager.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "semantic-operator.name" . }}-manager-config
       {{- with .Values.nodeSelector }}
       nodeSelector: {{- toYaml . | nindent 8 }}
       {{- end }}

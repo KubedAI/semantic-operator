@@ -6,19 +6,31 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/KubedAI/semantic-operator/internal/governance"
 	"github.com/KubedAI/semantic-operator/internal/serving/authorization"
+	"sigs.k8s.io/yaml"
 )
 
 type authorizationRoundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f authorizationRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return f(request)
+}
+
+// providersFromYAML decodes a provider list fixture into config structs. It is
+// non-strict on purpose: decode strictness (unknown/duplicate keys) is enforced
+// by the confload loader (ErrorUnused); this helper feeds the semantic
+// validation that buildAuthorizationRegistry performs.
+func providersFromYAML(t *testing.T, raw string) []authorizationProviderConfig {
+	t.Helper()
+	var configs []authorizationProviderConfig
+	if err := yaml.Unmarshal([]byte(raw), &configs); err != nil {
+		t.Fatalf("decoding fixture: %v", err)
+	}
+	return configs
 }
 
 const validAuthorizationProvidersYAML = `
@@ -31,71 +43,30 @@ const validAuthorizationProvidersYAML = `
     decisionPath: semantic/query/allow
 `
 
-func TestAuthorizationRegistryFromInlineYAML(t *testing.T) {
+func TestBuildAuthorizationRegistryOPA(t *testing.T) {
 	t.Setenv("AUTHORIZATION_PROVIDER_TOKEN_OPA", "secret")
-	t.Setenv(authorizationProvidersEnv, validAuthorizationProvidersYAML)
-	t.Setenv(authorizationProvidersFileEnv, "")
-
-	registry, err := authorizationRegistryFromEnv()
+	registry, err := buildAuthorizationRegistry(providersFromYAML(t, validAuthorizationProvidersYAML), "authorization.providers")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if registry == nil {
-		t.Fatal("provider configuration returned a nil registry")
+		t.Fatal("valid OPA provider returned a nil registry")
 	}
 }
 
-func TestAuthorizationRegistryFromRangerYAML(t *testing.T) {
-	t.Setenv("AUTHORIZATION_PROVIDER_TOKEN_RANGER", "service-token")
-	t.Setenv(authorizationProvidersEnv, `
-- name: corp-ranger
-  type: ranger
-  url: https://ranger-pdp:6500/authz/v1
-  bearerTokenEnv: AUTHORIZATION_PROVIDER_TOKEN_RANGER
-  ranger:
-    authenticationMode: service
-    servicePrincipal: semantic-server
-    serviceType: semantic-operator
-    serviceName: semantic-prod
-    resource: "semantic-model:namespace={namespace},model={resource}"
-    permission: query
-    contextAttributes:
-      environment: production
-      clusterName: analytics-prod
-`)
-	t.Setenv(authorizationProvidersFileEnv, "")
-	registry, err := authorizationRegistryFromEnv()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if registry == nil {
-		t.Fatal("Ranger provider configuration returned a nil registry")
+func TestBuildAuthorizationRegistryEmpty(t *testing.T) {
+	for _, providers := range [][]authorizationProviderConfig{nil, {}} {
+		registry, err := buildAuthorizationRegistry(providers, "authorization.providers")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if registry == nil {
+			t.Fatal("empty provider list returned a nil registry")
+		}
 	}
 }
 
-func TestAuthorizationRegistryAllowsExplicitInsecureRangerHTTP(t *testing.T) {
-	registry, err := authorizationRegistryFromYAML([]byte(`
-- name: local-ranger
-  type: ranger
-  url: http://ranger-pdp:6500/authz/v1
-  ranger:
-    authenticationMode: service
-    servicePrincipal: semantic-server
-    allowInsecureHTTP: true
-    serviceType: semantic-operator
-    serviceName: semantic-local
-    resource: "semantic-model:namespace={namespace},model={resource}"
-    permission: query
-`), "test providers")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if registry == nil {
-		t.Fatal("insecure local Ranger provider configuration returned a nil registry")
-	}
-}
-
-func TestAuthorizationRegistryRangerServiceModeSendsPrincipalHeader(t *testing.T) {
+func TestBuildAuthorizationRegistryRangerSendsPrincipalHeader(t *testing.T) {
 	var caller string
 	originalTransport := http.DefaultTransport
 	http.DefaultTransport = authorizationRoundTripFunc(func(request *http.Request) (*http.Response, error) {
@@ -131,7 +102,7 @@ func TestAuthorizationRegistryRangerServiceModeSendsPrincipalHeader(t *testing.T
 	})
 	t.Cleanup(func() { http.DefaultTransport = originalTransport })
 
-	registry, err := authorizationRegistryFromYAML([]byte(`
+	registry, err := buildAuthorizationRegistry(providersFromYAML(t, `
 - name: corp-ranger
   type: ranger
   url: https://ranger-pdp:6500/authz/v1
@@ -142,7 +113,7 @@ func TestAuthorizationRegistryRangerServiceModeSendsPrincipalHeader(t *testing.T
     serviceName: semantic-prod
     resource: "semantic-model:namespace={namespace},model={resource}"
     permission: query
-`), "test providers")
+`), "authorization.providers")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,96 +137,42 @@ func TestAuthorizationRegistryRangerServiceModeSendsPrincipalHeader(t *testing.T
 	}
 }
 
-func TestAuthorizationRegistryFromYAMLFile(t *testing.T) {
-	t.Setenv("AUTHORIZATION_PROVIDER_TOKEN_OPA", "secret")
-	t.Setenv(authorizationProvidersEnv, "")
-	path := filepath.Join(t.TempDir(), "providers.yaml")
-	if err := os.WriteFile(path, []byte(validAuthorizationProvidersYAML), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv(authorizationProvidersFileEnv, path)
-
-	registry, err := authorizationRegistryFromEnv()
+func TestBuildAuthorizationRegistryAllowsExplicitInsecureRangerHTTP(t *testing.T) {
+	registry, err := buildAuthorizationRegistry(providersFromYAML(t, `
+- name: local-ranger
+  type: ranger
+  url: http://ranger-pdp:6500/authz/v1
+  ranger:
+    authenticationMode: service
+    servicePrincipal: semantic-server
+    allowInsecureHTTP: true
+    serviceType: semantic-operator
+    serviceName: semantic-local
+    resource: "semantic-model:namespace={namespace},model={resource}"
+    permission: query
+`), "authorization.providers")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if registry == nil {
-		t.Fatal("provider file returned a nil registry")
+		t.Fatal("insecure local Ranger provider returned a nil registry")
 	}
 }
 
-func TestAuthorizationRegistryAllowsNoConfigurationOrEmptyArray(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		inline string
-	}{
-		{name: "no source"},
-		{name: "empty array", inline: `[]`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv(authorizationProvidersEnv, tc.inline)
-			t.Setenv(authorizationProvidersFileEnv, "")
-			registry, err := authorizationRegistryFromEnv()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if registry == nil {
-				t.Fatal("empty provider configuration returned a nil registry")
-			}
-		})
-	}
-}
-
-func TestAuthorizationRegistryRejectsSourceErrors(t *testing.T) {
-	t.Run("both sources", func(t *testing.T) {
-		t.Setenv(authorizationProvidersEnv, `[]`)
-		t.Setenv(authorizationProvidersFileEnv, "/tmp/providers.yaml")
-		_, err := authorizationRegistryFromEnv()
-		if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
-			t.Fatalf("error = %v, want mutually exclusive", err)
-		}
-	})
-
-	t.Run("missing file", func(t *testing.T) {
-		t.Setenv(authorizationProvidersEnv, "")
-		path := filepath.Join(t.TempDir(), "missing.yaml")
-		t.Setenv(authorizationProvidersFileEnv, path)
-		_, err := authorizationRegistryFromEnv()
-		if err == nil || !strings.Contains(err.Error(), authorizationProvidersFileEnv) {
-			t.Fatalf("error = %v, want file source", err)
-		}
-	})
-
-	t.Run("empty file", func(t *testing.T) {
-		t.Setenv(authorizationProvidersEnv, "")
-		path := filepath.Join(t.TempDir(), "providers.yaml")
-		if err := os.WriteFile(path, nil, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		t.Setenv(authorizationProvidersFileEnv, path)
-		_, err := authorizationRegistryFromEnv()
-		if err == nil || !strings.Contains(err.Error(), "YAML array") {
-			t.Fatalf("error = %v, want YAML array", err)
-		}
-	})
-}
-
-func TestAuthorizationRegistryRejectsBadYAMLConfiguration(t *testing.T) {
+// TestBuildAuthorizationRegistryRejectsBadConfig covers the semantic validation
+// buildAuthorizationRegistry performs. Decode-level strictness (unknown or
+// duplicate keys) is exercised through the confload loader, not here.
+func TestBuildAuthorizationRegistryRejectsBadConfig(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		raw  string
 		want string
 	}{
-		{name: "null", raw: `null`, want: "YAML array"},
 		{name: "blank-padded name", raw: `[{name: " corp-opa ", type: opa, url: "http://opa:8181", opa: {decisionPath: p}}]`, want: "lowercase DNS label"},
 		{name: "uppercase name", raw: `[{name: Corp-opa, type: opa, url: "http://opa:8181", opa: {decisionPath: p}}]`, want: "lowercase DNS label"},
 		{name: "underscore name", raw: `[{name: corp_opa, type: opa, url: "http://opa:8181", opa: {decisionPath: p}}]`, want: "lowercase DNS label"},
 		{name: "leading hyphen name", raw: `[{name: -corp-opa, type: opa, url: "http://opa:8181", opa: {decisionPath: p}}]`, want: "lowercase DNS label"},
 		{name: "trailing hyphen name", raw: `[{name: corp-opa-, type: opa, url: "http://opa:8181", opa: {decisionPath: p}}]`, want: "lowercase DNS label"},
-		{name: "unknown field", raw: `[{name: p, type: opa, url: "http://opa:8181", opa: {decisionPath: p}, extra: true}]`, want: "unknown field \"extra\""},
-		{name: "duplicate field", raw: "- name: p\n  name: q\n  type: opa\n  url: http://opa:8181\n  opa: {decisionPath: p}\n", want: "already set"},
-		{name: "unknown OPA field", raw: `[{name: p, type: opa, url: "http://opa:8181", opa: {decisionPath: p, extra: true}}]`, want: "unknown field \"extra\""},
-		{name: "legacy endpoint", raw: `[{name: p, type: opa, endpoint: "http://opa:8181", opa: {decisionPath: p}}]`, want: "unknown field \"endpoint\""},
 		{name: "unknown type", raw: `[{name: p, type: wat, url: "http://provider:6080"}]`, want: "not supported"},
 		{name: "missing url", raw: `[{name: p, type: opa, opa: {decisionPath: p}}]`, want: ".url is required"},
 		{name: "missing OPA block", raw: `[{name: p, type: opa, url: "http://opa:8181"}]`, want: ".opa is required"},
@@ -271,12 +188,9 @@ func TestAuthorizationRegistryRejectsBadYAMLConfiguration(t *testing.T) {
 		{name: "duplicate provider", raw: `[{name: p, type: opa, url: "http://opa:8181", opa: {decisionPath: p}}, {name: p, type: opa, url: "http://opa:8181", opa: {decisionPath: p}}]`, want: "more than once"},
 		{name: "missing token", raw: `[{name: p, type: opa, url: "https://opa:8181", bearerTokenEnv: AUTHORIZATION_PROVIDER_TOKEN_MISSING, opa: {decisionPath: p}}]`, want: "AUTHORIZATION_PROVIDER_TOKEN_MISSING"},
 		{name: "unrelated secret alias", raw: `[{name: p, type: opa, url: "https://attacker.example", bearerTokenEnv: ENGINE_PASSWORD, opa: {decisionPath: p}}]`, want: "must match AUTHORIZATION_PROVIDER_TOKEN_"},
-		{name: "multiple documents", raw: "[]\n---\n[]\n", want: "exactly one YAML document"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv(authorizationProvidersEnv, tc.raw)
-			t.Setenv(authorizationProvidersFileEnv, "")
-			_, err := authorizationRegistryFromEnv()
+			_, err := buildAuthorizationRegistry(providersFromYAML(t, tc.raw), "authorization.providers")
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error = %v, want substring %q", err, tc.want)
 			}
