@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -13,93 +11,48 @@ import (
 	"github.com/KubedAI/semantic-operator/internal/serving/authorization/opa"
 	"github.com/KubedAI/semantic-operator/internal/serving/authorization/ranger"
 	rangerprovider "github.com/KubedAI/semantic-operator/internal/serving/authorization/ranger/provider"
-	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
-	"sigs.k8s.io/yaml"
 )
 
 const (
-	authorizationProvidersEnv     = "AUTHORIZATION_PROVIDERS"
-	authorizationProvidersFileEnv = "AUTHORIZATION_PROVIDERS_FILE"
-	authorizationTokenEnvPrefix   = "AUTHORIZATION_PROVIDER_TOKEN_"
-	rangerServicePrincipalHeader  = "X-Forwarded-User"
+	authorizationTokenEnvPrefix  = "AUTHORIZATION_PROVIDER_TOKEN_"
+	rangerServicePrincipalHeader = "X-Forwarded-User"
 )
 
 var authorizationTokenEnvPattern = regexp.MustCompile(`^AUTHORIZATION_PROVIDER_TOKEN_[A-Z0-9_]+$`)
 
 type authorizationProviderConfig struct {
-	Name             string                             `json:"name"`
-	Type             string                             `json:"type"`
-	URL              string                             `json:"url"`
-	TimeoutSeconds   int                                `json:"timeoutSeconds,omitempty"`
-	BearerTokenEnv   string                             `json:"bearerTokenEnv,omitempty"`
-	MaxResponseBytes int64                              `json:"maxResponseBytes,omitempty"`
-	OPA              *opaAuthorizationProviderConfig    `json:"opa,omitempty"`
-	Ranger           *rangerAuthorizationProviderConfig `json:"ranger,omitempty"`
+	Name             string                             `json:"name" yaml:"name"`
+	Type             string                             `json:"type" yaml:"type"`
+	URL              string                             `json:"url" yaml:"url"`
+	TimeoutSeconds   int                                `json:"timeoutSeconds,omitempty" yaml:"timeoutSeconds,omitempty"`
+	BearerTokenEnv   string                             `json:"bearerTokenEnv,omitempty" yaml:"bearerTokenEnv,omitempty"`
+	MaxResponseBytes int64                              `json:"maxResponseBytes,omitempty" yaml:"maxResponseBytes,omitempty"`
+	OPA              *opaAuthorizationProviderConfig    `json:"opa,omitempty" yaml:"opa,omitempty"`
+	Ranger           *rangerAuthorizationProviderConfig `json:"ranger,omitempty" yaml:"ranger,omitempty"`
 }
 
 type opaAuthorizationProviderConfig struct {
-	DecisionPath string `json:"decisionPath"`
+	DecisionPath string `json:"decisionPath" yaml:"decisionPath"`
 }
 
 type rangerAuthorizationProviderConfig struct {
-	AuthenticationMode string            `json:"authenticationMode"`
-	ServicePrincipal   string            `json:"servicePrincipal"`
-	AllowInsecureHTTP  bool              `json:"allowInsecureHTTP,omitempty"`
-	ServiceType        string            `json:"serviceType"`
-	ServiceName        string            `json:"serviceName"`
-	Resource           string            `json:"resource"`
-	Permission         string            `json:"permission"`
-	ContextAttributes  map[string]string `json:"contextAttributes,omitempty"`
+	AuthenticationMode string            `json:"authenticationMode" yaml:"authenticationMode"`
+	ServicePrincipal   string            `json:"servicePrincipal" yaml:"servicePrincipal"`
+	AllowInsecureHTTP  bool              `json:"allowInsecureHTTP,omitempty" yaml:"allowInsecureHTTP,omitempty"`
+	ServiceType        string            `json:"serviceType" yaml:"serviceType"`
+	ServiceName        string            `json:"serviceName" yaml:"serviceName"`
+	Resource           string            `json:"resource" yaml:"resource"`
+	Permission         string            `json:"permission" yaml:"permission"`
+	ContextAttributes  map[string]string `json:"contextAttributes,omitempty" yaml:"contextAttributes,omitempty"`
 }
 
-func authorizationRegistryFromEnv() (*authorization.Registry, error) {
-	inline := strings.TrimSpace(os.Getenv(authorizationProvidersEnv))
-	path := strings.TrimSpace(os.Getenv(authorizationProvidersFileEnv))
-	if inline != "" && path != "" {
-		return nil, fmt.Errorf("%s and %s are mutually exclusive", authorizationProvidersEnv, authorizationProvidersFileEnv)
-	}
-	if inline == "" && path == "" {
-		return authorization.NewRegistry(), nil
-	}
-
-	raw := []byte(inline)
-	source := authorizationProvidersEnv
-	if path != "" {
-		var err error
-		raw, err = os.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("reading %s %q: %w", authorizationProvidersFileEnv, path, err)
-		}
-		source = fmt.Sprintf("%s %q", authorizationProvidersFileEnv, path)
-	}
-	return authorizationRegistryFromYAML(raw, source)
-}
-
-func authorizationRegistryFromYAML(raw []byte, source string) (*authorization.Registry, error) {
-	decoder := yamlutil.NewYAMLToJSONDecoder(bytes.NewReader(raw))
-	var document any
-	if err := decoder.Decode(&document); err != nil {
-		if err == io.EOF {
-			return nil, fmt.Errorf("%s must contain a YAML array", source)
-		}
-		return nil, fmt.Errorf("decoding %s: %w", source, err)
-	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		if err != nil {
-			return nil, fmt.Errorf("decoding %s: %w", source, err)
-		}
-		return nil, fmt.Errorf("%s must contain exactly one YAML document", source)
-	}
-
-	var configs []authorizationProviderConfig
-	if err := yaml.UnmarshalStrict(raw, &configs); err != nil {
-		return nil, fmt.Errorf("decoding %s: %w", source, err)
-	}
-	if configs == nil {
-		return nil, fmt.Errorf("%s must contain a YAML array", source)
-	}
-
+// buildAuthorizationRegistry validates the provider configs and constructs the
+// external authorization registry. The configs come from the unified config
+// (cfg.Authorization.Providers); source names them in error messages, for
+// example "authorization.providers". A nil or empty list yields an empty
+// registry. Bearer tokens are read from the environment variable named by
+// BearerTokenEnv, so the secret stays in a Secret rather than the config.
+func buildAuthorizationRegistry(configs []authorizationProviderConfig, source string) (*authorization.Registry, error) {
 	registry := authorization.NewRegistry()
 	for i, cfg := range configs {
 		if err := authorization.ValidateProviderName(cfg.Name); err != nil {

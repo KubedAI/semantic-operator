@@ -223,13 +223,14 @@ server:
     roleClaim: role
     # Claims copied into the identity for {{claim.name}} row-filter placeholders.
     claimsToCopy: []
-  # External query authorization providers. Helm writes this list as YAML in a
-  # Secret mounted read-only by the server. SemanticModels refer to providers
-  # by logical name through spec.governance.external.providerRef. URLs and
-  # credentials stay in deployment configuration so a model author cannot
-  # redirect authorization requests or read provider secrets. Bearer-token
-  # values remain in their referenced Secrets and are not copied into the
-  # provider configuration Secret.
+  # External query authorization providers. Helm renders this list into the
+  # server config file (a ConfigMap mounted read-only by the server).
+  # SemanticModels refer to providers by logical name through
+  # spec.governance.external.providerRef. URLs and credentials stay in
+  # deployment configuration so a model author cannot redirect authorization
+  # requests or read provider secrets. Bearer-token values stay in their
+  # referenced Secrets and are injected as environment variables, never written
+  # into the rendered config.
   authorization:
     providers: []
     # - name: corporate-opa
