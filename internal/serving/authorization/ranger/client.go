@@ -194,7 +194,7 @@ func (c *Client) post(ctx context.Context, endpoint string, payload, result any)
 	if err != nil {
 		return fmt.Errorf("calling ranger PDP: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	readLimit := c.maxResponseBytes
 	if readLimit < math.MaxInt64 {
 		readLimit++

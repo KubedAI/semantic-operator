@@ -119,7 +119,7 @@ func (c *Client) Decide(ctx context.Context, input authorization.Input) (authori
 	if err != nil {
 		return authorization.Decision{}, fmt.Errorf("calling OPA: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	readLimit := c.maxResponseBytes
 	if readLimit < math.MaxInt64 {
 		readLimit++

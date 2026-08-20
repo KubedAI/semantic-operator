@@ -9,4 +9,6 @@ coverage.txt
 
 # Local temporary and editor files
 .tmp/
+.cache/
 .DS_Store
+sources/

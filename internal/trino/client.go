@@ -134,16 +134,16 @@ func (c *Client) Exec(ctx context.Context, query string) error {
 	return err
 }
 
-// Query runs a statement and returns column names and JSON-friendly rows
-// ([]byte becomes string, so results marshal cleanly). A zero credential runs
-// on the static pool. A non-zero credential forwards the caller's token on a
-// per-request connection, so the coordinator authenticates and authorizes the
-// query as the caller.
 // SupportsPerRequestIdentity marks the Trino client as honoring the
 // per-request EngineCredential: each query runs under the token or user passed
 // to Query. This is what makes passthrough and exchange safe on Trino.
 func (c *Client) SupportsPerRequestIdentity() {}
 
+// Query runs a statement and returns column names and JSON-friendly rows
+// ([]byte becomes string, so results marshal cleanly). A zero credential runs
+// on the static pool. A non-zero credential forwards the caller's token on a
+// per-request connection, so the coordinator authenticates and authorizes the
+// query as the caller.
 func (c *Client) Query(ctx context.Context, cred dbclient.EngineCredential, query string) (cols []string, out [][]any, err error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
@@ -168,7 +168,7 @@ func (c *Client) Query(ctx context.Context, cred dbclient.EngineCredential, quer
 	if err != nil {
 		return nil, nil, err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	return runQuery(ctx, db, c.maxBytes, query)
 }
 

@@ -33,7 +33,7 @@ func (d AccessDecision) Valid() bool {
 func (d *AccessDecision) UnmarshalJSON(data []byte) error {
 	var value *string
 	if err := json.Unmarshal(data, &value); err != nil {
-		return fmt.Errorf("Ranger access decision must be a string or null: %w", err)
+		return fmt.Errorf("access decision from Ranger must be a string or null: %w", err)
 	}
 	if value == nil {
 		*d = ""
@@ -71,7 +71,7 @@ func (s ResourceMatchScope) Valid() bool {
 func (s *ResourceMatchScope) UnmarshalJSON(data []byte) error {
 	var value *string
 	if err := json.Unmarshal(data, &value); err != nil {
-		return fmt.Errorf("Ranger resource match scope must be a string or null: %w", err)
+		return fmt.Errorf("resource match scope from Ranger must be a string or null: %w", err)
 	}
 	if value == nil {
 		*s = ""

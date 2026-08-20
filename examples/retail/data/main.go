@@ -98,11 +98,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer func() {
-		if err := cli.Close(); err != nil {
-			log.Printf("closing %s client: %v", engine, err)
-		}
-	}()
 
 	ctx := context.Background()
 	if err := cli.Ping(ctx); err != nil {
@@ -114,6 +109,12 @@ func main() {
 	if _, _, err := cli.Query(ctx, dbclient.EngineCredential{}, target.catalogProbe()); err != nil {
 		log.Fatalf("catalog %q is not usable through %s: %v", target.catalog, engine, err)
 	}
+
+	defer func() {
+		if err := cli.Close(); err != nil {
+			log.Printf("closing %s client: %v", engine, err)
+		}
+	}()
 
 	must(cli.Exec(ctx, target.createSchema()))
 	fq := target.table

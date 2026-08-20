@@ -66,7 +66,7 @@ type Provider struct {
 // policy context before the server starts accepting requests.
 func New(client Client, opts Options) (*Provider, error) {
 	if client == nil {
-		return nil, errors.New("Ranger provider client is nil")
+		return nil, errors.New("nil ranger provider client")
 	}
 	for field, value := range map[string]string{
 		"serviceType": opts.ServiceType,
@@ -75,24 +75,24 @@ func New(client Client, opts Options) (*Provider, error) {
 		"permission":  opts.Permission,
 	} {
 		if strings.TrimSpace(value) == "" {
-			return nil, fmt.Errorf("Ranger provider %s is required", field)
+			return nil, fmt.Errorf("ranger provider %s is required", field)
 		}
 		if containsControl(value) {
-			return nil, fmt.Errorf("Ranger provider %s contains a control character", field)
+			return nil, fmt.Errorf("ranger provider %s contains a control character", field)
 		}
 	}
 	if len(opts.ServiceType) > maxPrincipalValue || len(opts.ServiceName) > maxPrincipalValue || len(opts.Permission) > maxPrincipalValue {
-		return nil, fmt.Errorf("Ranger provider serviceType, serviceName, and permission must not exceed %d characters", maxPrincipalValue)
+		return nil, fmt.Errorf("ranger provider serviceType, serviceName, and permission must not exceed %d characters", maxPrincipalValue)
 	}
 	if len(opts.ResourceTemplate) > maxResourceName {
-		return nil, fmt.Errorf("Ranger provider resource must not exceed %d characters", maxResourceName)
+		return nil, fmt.Errorf("ranger provider resource must not exceed %d characters", maxResourceName)
 	}
 	if err := validateResourceTemplate(opts.ResourceTemplate); err != nil {
 		return nil, err
 	}
 	attributes, err := copyAndValidateAttributes(opts.ContextAttributes)
 	if err != nil {
-		return nil, fmt.Errorf("Ranger provider contextAttributes: %w", err)
+		return nil, fmt.Errorf("ranger provider contextAttributes: %w", err)
 	}
 	configurationScope := digestJSON(struct {
 		ServiceType       string            `json:"serviceType"`
@@ -171,29 +171,29 @@ func (p *Provider) Decide(ctx context.Context, input authorization.Input) (autho
 
 func (p *Provider) validateResult(requestID string, result ranger.AuthorizationResult) (authorization.Decision, error) {
 	if result.RequestID != requestID {
-		return authorization.Decision{}, fmt.Errorf("Ranger response requestId %q does not match request", result.RequestID)
+		return authorization.Decision{}, fmt.Errorf("ranger response requestId %q does not match request", result.RequestID)
 	}
 	if !result.Decision.Valid() {
-		return authorization.Decision{}, errors.New("Ranger response is missing a valid aggregate decision")
+		return authorization.Decision{}, errors.New("ranger response is missing a valid aggregate decision")
 	}
 	if len(result.Permissions) != 1 {
-		return authorization.Decision{}, fmt.Errorf("Ranger response contains %d permissions, expected exactly one", len(result.Permissions))
+		return authorization.Decision{}, fmt.Errorf("ranger response contains %d permissions, expected exactly one", len(result.Permissions))
 	}
 	permission, ok := result.Permissions[p.permission]
 	if !ok || permission == nil {
-		return authorization.Decision{}, fmt.Errorf("Ranger response is missing permission %q", p.permission)
+		return authorization.Decision{}, fmt.Errorf("ranger response is missing permission %q", p.permission)
 	}
 	if permission.Permission != p.permission {
-		return authorization.Decision{}, fmt.Errorf("Ranger permission result names %q, expected %q", permission.Permission, p.permission)
+		return authorization.Decision{}, fmt.Errorf("ranger permission result names %q, expected %q", permission.Permission, p.permission)
 	}
 	if permission.Access == nil || !permission.Access.Decision.Valid() {
-		return authorization.Decision{}, fmt.Errorf("Ranger permission %q is missing a valid access decision", p.permission)
+		return authorization.Decision{}, fmt.Errorf("ranger permission %q is missing a valid access decision", p.permission)
 	}
 	if permission.Access.Decision != result.Decision {
-		return authorization.Decision{}, fmt.Errorf("Ranger aggregate decision %q disagrees with permission decision %q", result.Decision, permission.Access.Decision)
+		return authorization.Decision{}, fmt.Errorf("ranger aggregate decision %q disagrees with permission decision %q", result.Decision, permission.Access.Decision)
 	}
 	if permission.DataMask != nil || permission.RowFilter != nil || len(permission.AdditionalInfo) != 0 || len(permission.SubResources) != 0 {
-		return authorization.Decision{}, fmt.Errorf("Ranger permission %q returned unsupported obligations", p.permission)
+		return authorization.Decision{}, fmt.Errorf("ranger permission %q returned unsupported obligations", p.permission)
 	}
 	if result.Decision != ranger.DecisionAllow {
 		return authorization.Decision{Allow: false}, nil
@@ -207,7 +207,7 @@ func (p *Provider) validateResult(requestID string, result ranger.AuthorizationR
 
 func validateIdentity(identity governance.Identity) error {
 	if strings.TrimSpace(identity.Principal) == "" {
-		return errors.New("Ranger service-mode authorization requires a non-empty principal")
+		return errors.New("ranger service-mode authorization requires a non-empty principal")
 	}
 	if len(identity.Principal) > maxPrincipalValue || containsControl(identity.Principal) {
 		return fmt.Errorf("authorization principal must not exceed %d characters or contain controls", maxPrincipalValue)
@@ -252,16 +252,16 @@ func validateResourceTemplate(template string) error {
 	allowed := map[string]bool{"{namespace}": true, "{name}": true, "{resource}": true, "{version}": true}
 	matches := placeholderPattern.FindAllString(template, -1)
 	if len(matches) == 0 {
-		return errors.New("Ranger provider resource must contain at least one model placeholder")
+		return errors.New("ranger provider resource must contain at least one model placeholder")
 	}
 	for _, match := range matches {
 		if !allowed[match] {
-			return fmt.Errorf("Ranger provider resource contains unsupported placeholder %q", match)
+			return fmt.Errorf("ranger provider resource contains unsupported placeholder %q", match)
 		}
 	}
 	without := placeholderPattern.ReplaceAllString(template, "")
 	if strings.ContainsAny(without, "{}") {
-		return errors.New("Ranger provider resource contains malformed placeholder syntax")
+		return errors.New("ranger provider resource contains malformed placeholder syntax")
 	}
 	return nil
 }

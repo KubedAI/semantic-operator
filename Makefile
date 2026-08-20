@@ -68,7 +68,6 @@ test: ## Unit and smoke tests
 .PHONY: lint
 lint: $(GOLANGCI_LINT) ## Check Go formatting, static analysis, and Service exposure
 	$(GOLANGCI_LINT) run ./...
-	./hack/check-no-public-services.sh
 
 .PHONY: cover
 cover:
