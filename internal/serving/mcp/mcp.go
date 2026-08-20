@@ -118,7 +118,7 @@ func NewServer(svc *serving.Service, version string, resolver serving.Credential
 			"Always ground the user's vocabulary here before querying: a phrase like " +
 			"'revenue' or 'CLV' maps to exactly one certified metric.",
 	}, func(ctx context.Context, req *sdk.CallToolRequest, in listIn) (*sdk.CallToolResult, listMetricsOut, error) {
-		m, err := svc.Resolve(in.Model)
+		m, err := svc.Resolve(in.Model, serving.IdentityFrom(ctx))
 		if err != nil {
 			return nil, listMetricsOut{}, err
 		}
@@ -134,7 +134,7 @@ func NewServer(svc *serving.Service, version string, resolver serving.Credential
 		Description: "List groupable and filterable dimensions (dataset.field) with " +
 			"types, synonyms, and time-dimension flags.",
 	}, func(ctx context.Context, req *sdk.CallToolRequest, in listIn) (*sdk.CallToolResult, listDimensionsOut, error) {
-		m, err := svc.Resolve(in.Model)
+		m, err := svc.Resolve(in.Model, serving.IdentityFrom(ctx))
 		if err != nil {
 			return nil, listDimensionsOut{}, err
 		}
@@ -154,7 +154,7 @@ func NewServer(svc *serving.Service, version string, resolver serving.Credential
 			"the request into deterministic, governed SQL and executes it on the configured " +
 			"query engine. The response includes the SQL for provenance. Do not write SQL yourself.",
 	}, func(ctx context.Context, req *sdk.CallToolRequest, in queryIn) (*sdk.CallToolResult, queryOut, error) {
-		m, err := svc.Resolve(in.Model)
+		m, err := svc.Resolve(in.Model, serving.IdentityFrom(ctx))
 		if err != nil {
 			return nil, queryOut{}, err
 		}

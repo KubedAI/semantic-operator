@@ -83,7 +83,7 @@ func resolve(svc *serving.Service, authn *auth.Authenticator, r *http.Request) (
 	if err != nil {
 		return nil, auth.Authenticated{}, err
 	}
-	m, err := svc.Resolve(r.PathValue("model"))
+	m, err := svc.Resolve(r.PathValue("model"), ac.Identity)
 	if err != nil {
 		return nil, auth.Authenticated{}, err
 	}

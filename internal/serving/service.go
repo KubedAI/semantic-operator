@@ -105,38 +105,69 @@ func (e ErrUnknownModel) Error() string {
 	return fmt.Sprintf("unknown model %q (published models are listed at /v1/models)", e.Name)
 }
 
-// Resolve finds a model by name, or the single published model when name is
-// empty.
-func (s *Service) Resolve(name string) (*planner.CompiledModel, error) {
+// Resolve finds a model by name, or selects the only published model when name
+// is empty. When several are published and no name is given, the error lists
+// only the models the identity may use, so it discloses no inaccessible names.
+func (s *Service) Resolve(name string, id governance.Identity) (*planner.CompiledModel, error) {
 	if name != "" {
 		if m, ok := s.Store.Get(name); ok {
 			return m, nil
 		}
-		if dupes := s.Store.ByName(name); len(dupes) > 1 {
-			var refs []string
-			for _, d := range dupes {
-				refs = append(refs, d.Namespace+"/"+d.Resource)
-			}
-			return nil, fmt.Errorf("model name %q is published by more than one resource (%s); model names must be unique across SemanticModels",
-				name, strings.Join(refs, ", "))
+		if s.Store.Ambiguous(name) {
+			return nil, s.ambiguityErr(name)
 		}
 		return nil, ErrUnknownModel{name}
 	}
 	if m, ok := s.Store.Single(); ok {
 		return m, nil
 	}
-	if names := s.Store.Names(); len(names) == 1 {
-		name = names[0]
-		if dupes := s.Store.ByName(name); len(dupes) > 1 {
-			var refs []string
-			for _, d := range dupes {
-				refs = append(refs, d.Namespace+"/"+d.Resource)
-			}
-			return nil, fmt.Errorf("model name %q is published by more than one resource (%s); model names must be unique across SemanticModels",
-				name, strings.Join(refs, ", "))
+	// No name given and more than one resource has published. List only the
+	// models this identity may use, so an unauthorized caller cannot learn the
+	// names of models it has no access to. Models hides them the same way.
+	visible := s.visibleNames(id)
+	if len(visible) == 1 {
+		name = visible[0]
+		if m, ok := s.Store.Get(name); ok {
+			return m, nil
+		}
+		if s.Store.Ambiguous(name) {
+			return nil, s.ambiguityErr(name)
 		}
 	}
-	return nil, fmt.Errorf("model name required: %d models are published (%v)", len(s.Store.Names()), s.Store.Names())
+	if len(visible) == 0 {
+		return nil, fmt.Errorf("model name required: no published models are accessible to your role")
+	}
+	return nil, fmt.Errorf("model name required: %d models are accessible to your role (%v)", len(visible), visible)
+}
+
+// ambiguityErr reports a model name published by more than one resource, naming
+// the colliding resources so the collision is attributable.
+func (s *Service) ambiguityErr(name string) error {
+	var refs []string
+	for _, d := range s.Store.ByName(name) {
+		refs = append(refs, d.Namespace+"/"+d.Resource)
+	}
+	return fmt.Errorf("model name %q is published by more than one resource (%s); model names must be unique across SemanticModels",
+		name, strings.Join(refs, ", "))
+}
+
+// visibleNames returns the distinct model names this identity may use, in the
+// store's sorted order. It is the name-only counterpart to Models and the
+// filter that keeps Resolve from disclosing inaccessible model names.
+func (s *Service) visibleNames(id governance.Identity) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, m := range s.Store.All() {
+		if seen[m.Name] {
+			continue
+		}
+		if _, err := governance.Visible(m.Governance, id); err != nil {
+			continue
+		}
+		seen[m.Name] = true
+		out = append(out, m.Name)
+	}
+	return out
 }
 
 // Models lists the published models this identity may use, including any

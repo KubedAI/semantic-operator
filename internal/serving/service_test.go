@@ -39,7 +39,7 @@ func TestModelsListingCarriesResourceIdentity(t *testing.T) {
 		}
 	}
 
-	_, err := svc.Resolve("sales")
+	_, err := svc.Resolve("sales", governance.Identity{})
 	if err == nil {
 		t.Fatal("Resolve(sales): expected ambiguity error")
 	}
@@ -54,10 +54,10 @@ func TestResolveUnknownModel(t *testing.T) {
 	store := NewStore()
 	_ = store.Put("sm-a-compiled", identityBlob(t, "sales", "v1", "team-a", "retail"))
 	svc := &Service{Store: store}
-	if _, err := svc.Resolve("inventory"); err == nil {
+	if _, err := svc.Resolve("inventory", governance.Identity{}); err == nil {
 		t.Fatal("Resolve(inventory): expected unknown-model error")
 	}
-	if m, err := svc.Resolve("sales"); err != nil || m.Name != "sales" {
+	if m, err := svc.Resolve("sales", governance.Identity{}); err != nil || m.Name != "sales" {
 		t.Fatalf("Resolve(sales): want ok, got %v err=%v", m, err)
 	}
 }
@@ -68,7 +68,7 @@ func TestResolveUnnamedAmbiguousSingleName(t *testing.T) {
 	_ = store.Put("sm-b-compiled", identityBlob(t, "sales", "v2", "team-b", "retail"))
 	svc := &Service{Store: store}
 
-	_, err := svc.Resolve("")
+	_, err := svc.Resolve("", governance.Identity{})
 	if err == nil {
 		t.Fatal("Resolve(\"\"): expected ambiguity error")
 	}
@@ -206,5 +206,50 @@ func TestModelsOmitsModelsTheRoleCannotUse(t *testing.T) {
 	}
 	if _, err := svc.ListMetrics(m, governance.Single("stranger")); err == nil {
 		t.Fatal("unknown role should be refused by ListMetrics")
+	}
+}
+
+func governedBlob(t *testing.T, name string) []byte {
+	t.Helper()
+	b, err := json.Marshal(planner.CompiledModel{
+		Name: name, Version: "v1", Namespace: "ns", Resource: name,
+		Governance: &v1alpha1.GovernanceSpec{
+			DefaultRole: "analyst",
+			Roles:       []v1alpha1.RolePolicy{{Name: "analyst", AllowMetrics: []string{"*"}}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// Resolve must not disclose model names a role cannot access. Before this, the
+// "model name required" error listed every published model, so an authenticated
+// caller with a zero-grant role could enumerate names, contradicting Models.
+func TestResolveUnnamedHidesModelsFromUnauthorizedRole(t *testing.T) {
+	store := NewStore()
+	_ = store.Put("sm-a-compiled", governedBlob(t, "alpha"))
+	_ = store.Put("sm-b-compiled", governedBlob(t, "beta"))
+	svc := &Service{Store: store}
+
+	_, err := svc.Resolve("", governance.Single("stranger"))
+	if err == nil {
+		t.Fatal("Resolve(\"\") for an unauthorized role: expected an error")
+	}
+	for _, name := range []string{"alpha", "beta"} {
+		if strings.Contains(err.Error(), name) {
+			t.Fatalf("error leaked model name %q to an unauthorized role: %v", name, err)
+		}
+	}
+
+	_, err = svc.Resolve("", governance.Single("analyst"))
+	if err == nil {
+		t.Fatal("Resolve(\"\") for an authorized role: expected a model-name-required error")
+	}
+	for _, name := range []string{"alpha", "beta"} {
+		if !strings.Contains(err.Error(), name) {
+			t.Fatalf("authorized role should see model name %q, got: %v", name, err)
+		}
 	}
 }
