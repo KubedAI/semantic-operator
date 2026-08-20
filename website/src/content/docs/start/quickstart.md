@@ -1,145 +1,167 @@
 ---
 title: Quickstart
-description: Install the operator and server, apply a model, and run your first governed query.
+description: Run the whole stack locally on kind with one command, then run a governed query.
 ---
 
-The shortest path from a checkout to a governed answer. It uses StarRocks, the reference
-engine. Running on Trino changes two flags and nothing else, which is covered in
-[Retail on Glue and Trino](/examples/glue-trino).
+This runs the operator, a query engine, and a governed model on your own machine in a local
+[kind](https://kind.sigs.k8s.io/) cluster.
 
-Read [Prerequisites](/examples/prerequisites) first if you have not set up a cluster and a
-query engine yet. If you want the fuller version of this with a verification after every
-step, go straight to [Retail on Glue and StarRocks](/examples/glue-starrocks).
+## Prerequisites
 
-## 1. Get the images
+Install these and make sure Docker is running:
 
-Published multi-arch for `linux/amd64` and `linux/arm64`, so they run on
-Graviton and x86 alike. Nothing to build.
+- [Docker](https://docs.docker.com/get-docker/), [kind](https://kind.sigs.k8s.io/), `kubectl`, `helm`, `make`, `git`, and a Go toolchain matching `go.mod`.
+- `jq` is optional and only formats the output below.
+- Roughly 4 GB of memory free for the cluster.
 
-```
-public.ecr.aws/data-on-eks/semantic-operator/manager:v0.1.1
-public.ecr.aws/data-on-eks/semantic-operator/server:v0.1.1
-```
-
-To run your own build instead, see [Developing and testing](/guides/developing).
-
-## 2. Install the operator and server
-
-Service names below match the Data on EKS StarRocks stack. Adjust them for yours. Valkey is
-optional and only adds caching, so drop that line to run without it.
+Clone the repository and run every command from its root:
 
 ```bash
-helm install semantic-operator charts/semantic-operator \
-  --set server.auth.allowInsecureHeaderAuth=true \
-  --namespace semantic-system --create-namespace \
-  --set engine.type=starrocks \
-  --set engine.host=kube-starrocks-fe-service.starrocks.svc.cluster.local \
-  --set valkey.addr=valkey.valkey.svc.cluster.local:6379
+git clone https://github.com/KubedAI/semantic-operator
+cd semantic-operator
 ```
 
-Check that both workloads are up and the server can reach the engine.
+## 1. Stand up the stack
 
 ```bash
-kubectl -n semantic-system get pods
+make quickstart
+```
+
+That one command:
+
+- creates a local kind cluster,
+- deploys a plaintext Trino,
+- builds the operator and server images and installs them with header auth and no external providers,
+- loads a small retail dataset into Trino,
+- applies the retail model and waits for it to publish.
+
+The first run takes a few minutes because it builds the images. It is done when the model
+reports `VALIDATED=True PUBLISHED=True DRIFT=False`.
+
+## 2. Run a metric query
+
+The request names certified metrics and dimensions, not prose, and the server plans and runs
+it. Producing that request from a question is the agent's job, over MCP (below).
+
+Point `kubectl` at the repo-local kubeconfig, port-forward the server, and send both a user
+and a role, since header auth means you supply the identity.
+
+```bash
+export KUBECONFIG=$PWD/.kube/config
 kubectl -n semantic-system port-forward svc/semantic-operator-server 8090:8090 &
-curl -s -o /dev/null -w '%{http_code}\n' localhost:8090/readyz
-```
 
-A `200` means the model store has synced and the engine answered a ping.
-
-## 3. Load the demo data
-
-The loader creates Iceberg tables through StarRocks itself, so there is no Spark job. It is
-idempotent and skips tables that already have rows.
-
-```bash
-kubectl -n starrocks port-forward svc/kube-starrocks-fe-service 9030:9030 &
-export STARROCKS_HOST=127.0.0.1
-make demo-data
-```
-
-This step needs an Iceberg external catalog to already exist in StarRocks. Creating it is a
-one time piece of SQL, covered in
-[step 1 of the retail walkthrough](/examples/glue-starrocks).
-
-## 4. Apply a model
-
-```bash
-kubectl apply -f examples/retail/model/semanticmodel.yaml
-kubectl -n semantic-system get semanticmodels -w
-```
-
-Wait for `VALIDATED=True PUBLISHED=True DRIFT=False`. That means the model was validated,
-bound to real tables, checked against the live schema, and published as a versioned
-artifact.
-
-## 5. Ask a question
-
-```bash
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
   -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["store_productivity"],"dimensions":["store.s_state"]}' | jq
 ```
 
-New York should come back as `210176.60448413`. That is a ratio spanning a join, and the
-obvious hand written version of it returns about `12.54` because it counts each store's
-headcount once per sale. The compiler splits the ratio and deduplicates the denominator, so
-it does not make that mistake.
+You get one row per state, and the response includes the exact SQL the compiler produced:
 
-Run the same request again and the response carries the same `requestHash` with
-`cachedResult` set to true. Identical requests compile to identical SQL.
+```json
+{
+  "columns": ["store.s_state", "store_productivity"],
+  "rows": [
+    ["CA", "5170.461466"], ["GA", "5788.077143"], ["IL", "2518.138246"],
+    ["NY", "3071.262570"], ["TX", "2403.497766"], ["WA", "1916.452131"]
+  ],
+  "rowCount": 6,
+  "requestHash": "8530d598edd07c561b1cc5aecd1337b7",
+  "cachedResult": false,
+  "sql": "/* semantic-layer model=tpcds_retail_model version=8da02bd3bade request=8530d598... */ WITH ..."
+}
+```
 
-Order by a requested metric to ask a Top-N question. Add every requested dimension
-explicitly when tied metric values need stable selection.
+`store_productivity` is store sales over store headcount, a ratio across a join. A naive join
+counts each store's headcount once per sale and returns a far smaller number. This certified
+metric tells the planner to deduplicate the denominator before dividing.
+
+Run it again and the `requestHash` matches, because the same request and model version always
+compile to the same SQL. Result caching is optional and off here, covered in
+[Configuration and deployment](/reference/configuration).
+
+> **Header auth is for local use only.** It trusts the `X-Semantic-User` and
+> `X-Semantic-Role` headers, so anyone who reaches the port can claim any identity. Keep it
+> behind the `port-forward`. Production validates a JWT instead, described in
+> [Identity and the engine](/architecture/identity).
+
+## 3. See governance in action
+
+That query returned a number, which a raw warehouse connection would have done too. The
+difference is what the layer does around the number. The two roles used below come from the
+model's `governance` block:
+
+```yaml
+governance:
+  roles:
+    - name: analyst
+      allowMetrics: ["*"]
+      denyFields: ["customer.c_email_address"]
+    - name: tx_analyst
+      allowMetrics: ["*"]
+      denyFields: ["customer.c_email_address"]
+      rowFilters:
+        - dataset: store
+          predicate: "s_state = 'TX'"
+```
+
+**It refuses what a role may not read, before any SQL exists.** Ask, as an `analyst`, for a
+column that role is denied:
 
 ```bash
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
   -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
-  -d '{
-    "metrics": ["total_sales"],
-    "dimensions": ["item.i_category"],
-    "orderBy": [
-      {"field": "total_sales", "direction": "desc"},
-      {"field": "item.i_category", "direction": "asc"}
-    ],
-    "limit": 5
-  }' | jq
+  -d '{"metrics":["total_sales"],"dimensions":["customer.c_email_address"]}' | jq
 ```
 
-## What you have now
+```json
+{"error":"unauthorized: role \"analyst\" may not read field \"customer.c_email_address\""}
+```
 
-Three ways to reach the same certified definitions.
+The request is rejected with a 403 while the statement is still being compiled, so no SQL is
+generated and there is nothing that could leak the column. A broadly privileged raw
+connection could return it unless the engine enforced equivalent controls.
 
-Agents connect over MCP at `/mcp` and select metrics by name. Applications use REST, with
-`POST /v1/models/{model}/sql` available as a dry run that returns the SQL without executing
-it. BI tools read the governed views that the operator created in the engine, under
-`semantic_views`, with no server involved.
-
-Every endpoint, credential, and catalog name above is a Helm value or an environment
-variable. Nothing is compiled in. See
-[values.yaml](https://github.com/KubedAI/semantic-operator/blob/main/charts/semantic-operator/values.yaml)
-for the full set, and [Developing and testing](/guides/developing) for deploying your own
-build.
-
-## Optional. Compare against raw text to SQL
-
-With an LLM endpoint available, ask the same business question both ways and watch them
-disagree.
+**It scopes the answer to who is asking.** The `tx_analyst` role has a row filter. Run the
+same question you ran in step 2 as that role instead:
 
 ```bash
-export MCP_ENDPOINT=http://localhost:8090/mcp
-export BEDROCK_MODEL_ID=<your enabled model id>
-make demo-nl QUESTION="What is our sales per employee by state?"
-make bench
+curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: tx_analyst' -H 'Content-Type: application/json' \
+  -d '{"metrics":["store_productivity"],"dimensions":["store.s_state"]}' | jq
 ```
 
-The semantic layer never calls an LLM itself. It exposes MCP and REST, and any MCP capable
-agent can drive it, whether that is the Anthropic or OpenAI APIs, Bedrock, or a self hosted
-model behind vLLM, TGI, or Ollama. Only the demo and benchmark tools use Bedrock, so the
-published numbers are reproducible.
+Step 2 returned every state. This returns only Texas, because the role's `s_state = 'TX'`
+filter was compiled into the SQL. Nobody added a `WHERE` clause to the request.
+
+Both requests used the same certified definition, and the caller's role decided which fields
+and rows the compiler allowed. The [benchmark](/examples/benchmark-results) shows the other
+half of the story. Raw text-to-SQL was wrong in 28 of 90 trials, and every wrong query ran
+without an error.
+
+## MCP, REST, and SQL views
+
+You reached the model over REST above. The same certified definitions are open two other ways.
+
+- **AI agents** connect over [MCP](https://modelcontextprotocol.io/) at
+  `http://localhost:8090/mcp`. An agent calls `list_metrics` and `list_dimensions` to read the
+  certified vocabulary, then `query_metric` by name, so it selects a definition rather than
+  writing SQL. The governance and determinism from the previous step apply unchanged, so a
+  denied field is still refused and a role's row filter is still enforced. Any MCP host that
+  supports Streamable HTTP can connect, using a hosted or local model. The
+  [laptop example](/examples/kind) drives it with a real agent.
+- **Applications** use REST, as above. `POST /v1/models/{model}/sql` returns the SQL for a
+  request without running it, which helps in review and tests.
+- **BI tools** read the governed SQL views the operator created in the engine, with no server
+  in the path.
+
+## Tear down
+
+```bash
+kind delete cluster --name semantic-operator-dev
+```
 
 ## Next
 
-[Retail on Glue and StarRocks](/examples/glue-starrocks) is this same path with a
-verification after every step, plus governance and BI checks. [How it works](/architecture)
-explains what the compiler is actually doing.
+- [Retail on Glue and StarRocks](/examples/glue-starrocks) runs the same idea on a cloud engine, with a verification after every step.
+- [How it works](/architecture) explains what the compiler is doing.
+- [The benchmark](/examples/benchmark-results) is the raw-SQL-versus-semantic-layer comparison behind the numbers on the landing page.

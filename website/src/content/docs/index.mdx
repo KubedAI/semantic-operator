@@ -5,7 +5,7 @@ template: splash
 editUrl: false
 lastUpdated: false
 hero:
-  tagline: A Kubernetes operator for your semantic layer. Define a business metric once, and a compiler turns every request into exactly one governed SQL statement, so an agent, a dashboard, and an app always return the same number.
+  tagline: A Kubernetes operator for your semantic layer. Define a business metric once, and a compiler turns every request into exactly one governed SQL statement, so an agent, a dashboard, and an app all use the same certified definition.
   actions:
     - text: Quickstart
       link: /start/quickstart
@@ -60,19 +60,21 @@ then never letting anything compute it another way.
 
 <div class="so-cards-lg">
 <CardGrid>
-  <Card title="ossiectl writes the model" icon="laptop">
-    Point it at your catalog and it generates the model. Tables, columns, and likely joins
-    are filled in. Descriptions and PII tags can come from DataHub. You certify the metrics
+  <Card title="A local CLI scaffolds the model" icon="laptop">
+    `ossiectl`, this project's workstation CLI, reads your catalog and generates an
+    [Apache Ossie](https://ossie.apache.org/) model. Tables, columns, and likely joins are
+    filled in, and descriptions and PII tags can come from DataHub. You certify the metrics
     and the access rules.
   </Card>
   <Card title="The operator runs the lifecycle" icon="setting">
     Apply the model like any Kubernetes resource. It is validated, checked against the live
-    database, compiled into a versioned artifact, and published. A drifted version is
-    refused rather than served.
+    database, compiled into a versioned artifact, and published. If a referenced table or
+    column no longer exists, the new version is rejected and the last good one keeps serving.
   </Card>
-  <Card title="The server answers questions" icon="rocket">
-    One request becomes exactly one SQL statement, with access rules already applied. MCP
-    for agents, REST for applications, SQL views for BI. Stateless, so it scales sideways.
+  <Card title="The server plans and runs queries" icon="rocket">
+    One request becomes exactly one SQL statement, with access rules already applied. Agents
+    connect over MCP (Model Context Protocol), applications over REST, and BI tools over
+    generated SQL views. Stateless, so it scales horizontally.
   </Card>
 </CardGrid>
 </div>
@@ -124,8 +126,8 @@ your definitions stay portable because the model is plain
 
 <div class="so-band">
   <div class="so-band-cell">
-    <span class="so-band-figure">100%</span>
-    <span class="so-band-label">Vendor neutral</span>
+    <span class="so-band-figure">Ossie</span>
+    <span class="so-band-label">Open model format</span>
   </div>
   <div class="so-band-cell">
     <span class="so-band-figure">YAML</span>

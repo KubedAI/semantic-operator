@@ -38,19 +38,18 @@ so republishing is a no operation and rollbacks are exact.
 
 ### 3. Bind and drift check
 
-For every dataset the operator asks the engine what it can actually see, using `DESC` on
-StarRocks or `information_schema` on Trino. It cross checks the columns the model
-references, the join columns on both sides of every relationship, and the columns named in
-row filter predicates.
+For every dataset the operator asks the live engine what it can actually see, and
+cross-checks the columns the model depends on.
 
-A missing table or column is drift. Drift sets `DriftDetected=True` and **blocks
-publication of the new version**, while the previously published artifact keeps serving. A
-connection failure is not drift, so it retries with backoff instead of raising a false
-alarm.
+- A missing table or column is drift. It sets `DriftDetected=True` and **blocks publication
+  of the new version**, while the previously published artifact keeps serving.
+- A connection failure is not drift, so it retries with backoff instead of raising a false
+  alarm.
 
 Checking the engine rather than the catalog is deliberate. A table can exist in Glue and
-still be unreadable by Trino because of a permissions or metadata problem. What matters is
-what the engine can resolve at query time.
+still be unreadable by the engine because of a permissions or metadata problem, and what
+matters is what the engine can resolve at query time. The introspection details are in
+[Configuration and deployment](/reference/configuration).
 
 ### 4. Publish
 
@@ -59,12 +58,9 @@ name and version. Ownership means Kubernetes garbage collects it when the model 
 The write is idempotent through content comparison, so an unchanged model causes no API
 traffic.
 
-This ConfigMap is the only handoff to the server.
-
-A ConfigMap cannot exceed roughly 1 MiB, so publication is refused above 900 KiB, leaving
-room for labels and the owner reference. The condition names the byte count and suggests
-splitting the model, which is more use than the API server's own rejection. Retrying cannot
-help, so the operator reports it and waits for an edit instead of backing off forever.
+This ConfigMap is the only handoff to the server. An oversized artifact is refused rather
+than replacing the last good version. The size ceiling is in
+[Configuration and deployment](/reference/configuration).
 
 ### 5. Create governed views
 
@@ -77,8 +73,8 @@ dropped. A finalizer removes them if the resource is deleted.
 
 ## Status conditions
 
-The resource reports its state through standard conditions, so `kubectl get` and `kubectl
-describe` tell the whole story.
+The resource reports its state through standard conditions. Inspect them with `kubectl get`
+or `kubectl describe`.
 
 | Condition | Meaning |
 |---|---|
@@ -102,22 +98,13 @@ place to look when something does not line up.
 | `leases` | Namespace scoped | Leader election |
 | `events` | create, patch | Surface drift and failures to `kubectl describe` |
 
-It needs **no table data access** and **no cloud or catalog credentials**. Glue, DataHub,
-and Polaris are the authoring tool's business, not the operator's.
+It needs **no table data access** and **no cloud or catalog credentials**. Only `ossiectl`
+reads Glue, DataHub, or Polaris, and only during authoring.
 
-By default all of that is a `Role` in the release namespace, not a `ClusterRole`. The
-manager reconciles only the namespace it was installed in, which is the same namespace the
-server loads artifacts from, so the two agree out of the box.
-
-Set `manager.watchNamespaces` to reconcile a fixed list, which issues one `Role` and
-`RoleBinding` in each. Set `manager.watchAllNamespaces` for genuine cluster-wide operation,
-which is the only mode that grants a `ClusterRole`. The two values are mutually exclusive
-and setting both fails rendering.
-
-Widening the manager past the server's namespace is allowed and sometimes what you want,
-for view management or a manager-only install. Those models will validate, compile, publish
-an artifact, and get their views created, and this release's server will not answer queries
-for them. The chart prints a warning at install time saying exactly that.
+By default these permissions are a `Role` in the release namespace, the same namespace the
+server reads from, so the two agree out of the box. Watching more namespaces or the whole
+cluster widens that scope and changes the RBAC the chart issues, which is covered in
+[Configuration and deployment](/reference/configuration).
 
 ## Scaling and deployment
 

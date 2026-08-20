@@ -1,0 +1,158 @@
+---
+title: Configuration and deployment
+description: "Reference for deploying and tuning the operator and server: authentication, engine identity, request bounds, caching, RBAC scope, publication limits, service exposure, and current operational limits."
+---
+
+This page collects the configuration and deployment detail that the architecture pages
+summarize. The architecture section explains the concepts. This page is the reference for
+values, thresholds, and deployment behavior. Configuration is delivered as a file the
+binaries read with `--config`, and any value can be overridden by a `SEMANTIC__` environment
+variable. The Helm chart renders the file and injects secrets as environment variables.
+
+## Caller authentication
+
+The server resolves the caller in one of two modes.
+
+In `header` mode the principal comes from `X-Semantic-User` and roles come from the
+comma-separated `X-Semantic-Role` header. This is only safe behind a proxy that authenticates
+the caller, strips both inbound headers, and sets both itself. The chart refuses to install
+in this mode unless you also set `server.auth.allowInsecureHeaderAuth`, and the server logs a
+warning at startup.
+
+In `jwt` mode a bearer token is validated against the issuer's JWKS.
+
+- Signature, expiry, issuer, and audience are all checked, and only asymmetric algorithms are
+  accepted because the key set is public.
+- The principal defaults to the `sub` claim and can be pointed at another claim.
+- Directory groups and application roles are kept separate. Built-in governance uses their
+  union as policy labels, and an external provider receives both namespaces.
+- Inbound identity headers are ignored outright.
+
+## Engine identity and token exchange
+
+The engine identity mode is `engine.identityMode`: `static`, `passthrough`, or `exchange`.
+The concept and the exchange flow are described in
+[Identity and the engine](/architecture/identity). Exchange is configured under the `engine`
+block.
+
+```yaml
+engine:
+  identityMode: exchange
+  userClaim: preferred_username
+  exchange:
+    tokenURL: https://idp.example.com/realms/app/protocol/openid-connect/token
+    clientID: semantic-server
+    clientSecretSecret:
+      name: engine-exchange-cred
+      key: client-secret
+```
+
+The chart injects the client secret into the server as an environment variable from that
+Secret. It is never written into the configuration file.
+
+The exchange has four safeguards:
+
+- The token endpoint must use HTTPS, since the request includes the caller's token and the
+  client secret.
+- `allowInsecureHTTP: true` lifts the HTTPS requirement only for an isolated in-cluster
+  endpoint during development, and must stay false in production.
+- The exchange client does not follow redirects.
+- A failed exchange returns a generic error to the caller and logs the detail on the server,
+  so a caller cannot read the provider's response through the error text.
+
+## Request bounds
+
+Every part of a request is bounded, because the server is a fixed-size pod. A request over a
+bound is refused rather than trimmed, since a silently truncated result cannot be told apart
+from a complete one. These are Helm values under `server.query`.
+
+| Bound | Default | What happens past it |
+|---|---|---|
+| Row limit | 1000, max 10000 | Refused, not truncated |
+| Result size | 32 MiB | Abandoned while reading, before it is fully allocated |
+| Request body | 1 MiB | Refused |
+| Metrics, dimensions, filters | 25, 25, 50 | Refused |
+| Values in one `IN` list | 1000 | Refused |
+| Requests in flight | 4 | Queued briefly, then 503 with `Retry-After` |
+
+The last two rows share one budget. Each in-flight request can hold a whole result until its
+response is written, so `maxConcurrent` multiplied by `maxResultBytes` must stay comfortably
+under the pod's memory limit. Raising either one means raising the memory limit too.
+
+## Caching
+
+An optional Valkey cache stores compiled plans and query results, keyed so that no entry
+crosses an identity or an authorization decision.
+
+| Cache | Keyed on |
+|---|---|
+| Plan | dialect, model identity, semantic request, and a full-width digest of the principal, groups, roles, and claims |
+| Result | the emitted SQL, the external authorization fingerprint, and the engine identity under passthrough or exchange |
+
+The external authorization fingerprint covers the provider, the complete identity, the allow
+result, and the stable policy or configuration revision. The provider is evaluated before
+either lookup, so a cached entry cannot bypass a changed or revoked decision. A passthrough
+credential with no principal to key on is not cached at all.
+
+## RBAC and watched namespaces
+
+By default the operator's permissions are a `Role` in the release namespace, not a
+`ClusterRole`. The manager reconciles only the namespace it was installed in, which is the
+same namespace the server loads artifacts from, so the two agree out of the box.
+
+- `manager.watchNamespaces` reconciles a fixed list, issuing one `Role` and `RoleBinding` in
+  each.
+- `manager.watchAllNamespaces` grants a `ClusterRole` for genuine cluster-wide operation.
+- The two values are mutually exclusive, and setting both fails rendering.
+
+Widening the manager past the server's namespace is allowed, for view management or a
+manager-only install. Models in the extra namespaces validate, compile, publish, and get
+their views created, but this release's server does not answer queries for them. The chart
+prints a warning at install time saying exactly that.
+
+## Engine credentials
+
+The chart resolves the operator's and server's engine credentials independently, under
+`engine.manager` and `engine.server`, each falling back to the shared `engine` settings.
+Keep them as separate database users. Sharing one user would give the query path the ability
+to alter schemas, which is the boundary the split exists to hold.
+
+## Publication size
+
+The compiled artifact is an uncompressed ConfigMap, roughly 2.4 KB per dataset. A ConfigMap
+cannot exceed roughly 1 MiB, so the operator refuses to publish above 900 KiB, leaving room
+for labels and the owner reference. The condition names the byte count and suggests splitting
+the model. Retrying cannot help, so the operator reports it and waits for an edit rather than
+backing off forever. Compression, or an artifact stored outside etcd, is not built yet.
+
+## Drift checking
+
+Binding reads the live engine schema with `DESC` on StarRocks or `information_schema` on
+Trino. It cross-checks the columns the model references, the join columns on both sides of
+every relationship, and the columns named in row-filter predicates.
+
+## Service exposure and scaling
+
+The server is stateless, so it scales horizontally. The default is two replicas and you scale
+on request rate.
+
+The Service is `ClusterIP`, and the chart refuses any other type unless you explicitly
+override it, because a load balancer in front of a header-mode server is an unauthenticated
+query endpoint. Reach it with `kubectl port-forward`, or put an authenticating ingress in
+front and opt in deliberately.
+
+The operator does not scale horizontally. One active replica does the work and leader
+election lets a standby wait without a second writer. Its load comes from the resync period,
+which defaults to five minutes, not from query traffic.
+
+## Current limits
+
+| Limit | Detail |
+|---|---|
+| Engine auth | The server's own credential is a static username and password from a Kubernetes Secret. Per-caller identity to the engine is available in jwt mode through passthrough or RFC 8693 token exchange, for engines that accept a bearer token. IAM-based authentication, short-lived credentials, Snowflake key pairs, and BigQuery service accounts still need a credential-provider seam that does not exist yet. |
+| Redshift, ClickHouse, Postgres | No client implementations yet. Each is a dialect plus a connection client behind the existing interfaces. Redshift speaks the Postgres wire protocol. |
+| One engine per install | Serving two engines means two installs. Per-model engine binding is a wiring change. The compiler already accepts the dialect per call. |
+| Single-namespace serving | The server watches one namespace, so multi-team means multiple installs. The manager defaults to that same namespace so the two agree, and warns at install time if you widen it past what this server can serve. There is no tenancy model yet. |
+| Artifact size | The compiled model is an uncompressed ConfigMap, against a ~1 MiB ceiling. The operator refuses to publish past 900 KiB with an error naming the model. Compression, or an artifact stored outside etcd, is still missing. |
+| Attribute-based policy | A row filter can interpolate a caller's claim with <code>&#123;&#123;claim.name&#125;&#125;</code>. OPA or Ranger can add attribute-based allow or deny decisions. External row filters, masks, and other obligations are not supported yet. |
+| NetworkPolicy enforcement | The policies ship, but they are inert unless your CNI enforces them. The EKS VPC CNI needs <code>--enable-network-policy=true</code>. Verify that your CNI enforces NetworkPolicy. |

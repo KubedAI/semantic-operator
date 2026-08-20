@@ -1,0 +1,123 @@
+# Minimal Trino for the quickstart: plaintext HTTP, no TLS, no password, no JWT,
+# and a single in-memory catalog. Any username is accepted and there is no
+# access control, so the operator's manager can create schemas, tables, and
+# views and the server can SELECT. This is the smallest engine that lets the
+# operator work end to end. It is not secure and is for local evaluation only.
+# The TLS+auth engine used by the governance and identity examples lives in
+# resources.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trino
+  labels:
+    app.kubernetes.io/name: trino
+    app.kubernetes.io/component: query-engine
+data:
+  config.properties: |
+    coordinator=true
+    node-scheduler.include-coordinator=true
+    http-server.http.port=8080
+    discovery.uri=http://localhost:8080
+    catalog.management=static
+    web-ui.enabled=false
+  node.properties: |
+    node.environment=semantic_quickstart
+    node.data-dir=/data/trino
+  memory.properties: |
+    connector.name=memory
+    memory.max-data-per-node=512MB
+  jvm.config: |
+    -server
+    -XX:InitialRAMPercentage=25
+    -XX:MaxRAMPercentage=65
+    -XX:+ExitOnOutOfMemoryError
+    -Djdk.attach.allowAttachSelf=true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trino
+  labels:
+    app.kubernetes.io/name: trino
+    app.kubernetes.io/component: query-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: trino
+      app.kubernetes.io/component: query-engine
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: trino
+        app.kubernetes.io/component: query-engine
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: trino
+          image: docker.io/trinodb/trino:483
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet: { path: /v1/info/state, port: http, scheme: HTTP }
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /v1/info/state, port: http, scheme: HTTP }
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            httpGet: { path: /v1/info/state, port: http, scheme: HTTP }
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+            readOnlyRootFilesystem: true
+          resources:
+            requests: { cpu: 250m, memory: 768Mi }
+            limits: { memory: 2Gi }
+          volumeMounts:
+            - { name: config, mountPath: /etc/trino/config.properties, subPath: config.properties, readOnly: true }
+            - { name: config, mountPath: /etc/trino/node.properties, subPath: node.properties, readOnly: true }
+            - { name: config, mountPath: /etc/trino/jvm.config, subPath: jvm.config, readOnly: true }
+            - { name: config, mountPath: /etc/trino/catalog/memory.properties, subPath: memory.properties, readOnly: true }
+            - { name: data, mountPath: /data/trino }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: config
+          configMap: { name: trino }
+        - name: data
+          emptyDir: { sizeLimit: 1Gi }
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trino
+  labels:
+    app.kubernetes.io/name: trino
+    app.kubernetes.io/component: query-engine
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: trino
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

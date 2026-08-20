@@ -38,18 +38,20 @@ export default defineConfig({
         label: 'Start here',
         items: [
           { label: 'What a semantic layer is', slug: 'start/introduction' },
-          { label: 'Where ontology fits', slug: 'start/ontology' },
           { label: 'Quickstart', slug: 'start/quickstart' },
+          { label: 'How Semantic Operator compares', slug: 'start/how-this-compares' },
         ],
       },
       {
         label: 'Architecture',
         items: [
           { label: 'How it works', slug: 'architecture' },
-          { label: 'ossiectl, the authoring tool', slug: 'architecture/ossiectl' },
+          { label: 'The ossiectl CLI', slug: 'architecture/ossiectl' },
           { label: 'The operator', slug: 'architecture/operator' },
           { label: 'The semantic server', slug: 'architecture/server' },
+          { label: 'Identity and the engine', slug: 'architecture/identity' },
           { label: 'Access and credentials', slug: 'architecture/access' },
+          { label: 'Semantic layers and ontologies', slug: 'architecture/ontology' },
         ],
       },
       {
@@ -59,6 +61,12 @@ export default defineConfig({
           { label: 'Developing and testing', slug: 'guides/developing' },
           { label: 'Adding a query engine', slug: 'guides/adding-an-engine' },
           { label: 'Adding a catalog source', slug: 'guides/adding-a-catalog' },
+        ],
+      },
+      {
+        label: 'Reference',
+        items: [
+          { label: 'Configuration and deployment', slug: 'reference/configuration' },
         ],
       },
       {

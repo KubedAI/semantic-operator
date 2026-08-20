@@ -1,0 +1,107 @@
+---
+title: Identity and the engine
+description: How the server authenticates the caller, and how a query reaches the engine under the caller's own identity through passthrough or RFC 8693 token exchange.
+---
+
+import TokenExchangeDiagram from '../../../components/TokenExchangeDiagram.astro';
+
+Every query raises two identity questions. The server answers who the caller is when it
+authenticates the request. It answers whose identity the SQL runs under on the engine
+through the engine identity mode. This page covers both, and the OAuth token exchange that
+connects them.
+
+## Authenticating the caller
+
+The server first resolves the caller to a verified identity, described on
+[the semantic server](/architecture/server) page. Passthrough and exchange both require `jwt`
+mode, because the engine identity is derived from a validated token.
+
+## Engine identity modes
+
+The engine identity mode sets the database identity a query runs under. It is the
+deployment setting `engine.identityMode`, and it does not change how a caller authenticates
+to the server.
+
+| Mode | Engine session identity | Requires |
+|---|---|---|
+| `static` | the server's own engine credential | a username and password Secret |
+| `passthrough` | the caller, via the forwarded bearer token | `jwt` mode, an engine that accepts a bearer token, `engine.userClaim` |
+| `exchange` | the caller, via an exchanged engine-audience token | `jwt` mode, `engine.userClaim`, token exchange configuration |
+
+### static
+
+Every query connects with the server's own engine credential, read from a Kubernetes
+Secret. The engine sees one identity for all callers. Per-caller governance comes entirely
+from the semantic layer's compile-time policy and any external provider a model names. Use
+`static` when the engine holds no per-user policy, or when you want the semantic layer to be
+the single place governance is defined.
+
+### passthrough
+
+The server forwards the caller's validated bearer token to the engine as the session
+identity. The engine sees the caller and applies its own per-user policy alongside the
+semantic layer's. This mode requires `jwt` authentication and an engine that accepts a
+bearer token, such as Trino. The `engine.userClaim` setting names the token claim used as
+the engine session user, so it must match the claim the engine expects.
+
+### exchange
+
+The server does not forward the caller's token. It exchanges the token at the identity
+provider for a new token whose audience is the engine, keeping the same subject, and
+connects with that token. The engine receives a token minted for it and enforces per-user
+policy under the caller identity. This mode requires `jwt` authentication, the same
+`engine.userClaim`, and the token exchange configuration described below.
+
+Passthrough forwards a token the identity provider issued for the semantic API audience. An
+engine that checks the audience will reject it. Exchange obtains a token issued for the
+engine while preserving the subject, so per-user policy still applies. Exchange also keeps
+the caller's original token inside the server rather than sending it on to the engine.
+
+## The token exchange flow
+
+<TokenExchangeDiagram />
+
+Exchange follows RFC 8693. The numbered steps match the diagram.
+
+1. The caller sends its request with a bearer token whose audience is the semantic API.
+2. The server validates that token against the issuer JWKS, the check `jwt` mode always
+   performs.
+3. The server calls the identity provider's token endpoint with a token-exchange grant. It
+   presents the caller's token as the subject token, authenticates with its own client
+   credential, and requests a token for the engine audience.
+4. The provider returns an access token with the same subject and the engine
+   audience.
+5. The server opens the engine connection with that token as the session identity. The
+   engine validates it and applies per-user policy.
+
+Governed rows return through the server to the caller, with the emitted SQL and its
+provenance.
+
+The exchange uses HTTPS, never forwards the caller's original token to the engine, and fails
+closed if the exchange does not succeed. Configuring it, including the Helm values, the
+client-secret injection, and the development-only `allowInsecureHTTP` opt-in, is in
+[Configuration and deployment](/reference/configuration).
+
+## How identity and authorization compose
+
+Two layers of policy apply to every query. The semantic layer always governs it, before any
+SQL exists, and an external provider gates it when a model names one. The engine identity
+mode then decides whether the engine adds its own per-user layer.
+
+| Engine mode | Semantic-layer checks | Engine-side checks |
+|---|---|---|
+| `static` | always | none, since every query runs as one user |
+| `passthrough` | always | per-user policy under the caller identity |
+| `exchange` | always | per-user policy under the caller identity |
+
+So under passthrough or exchange, a column the engine masks for one caller returns redacted
+for that caller and in full for another, even when the semantic layer allowed the same query
+for both. The status codes are unchanged: 401 for an unverified caller, 403 when the semantic
+layer or a provider rejects, and any masking or filtering past those gates is the engine's
+own doing.
+
+## Next
+
+[The semantic server](/architecture/server) describes the full request pipeline. [Access and
+credentials](/architecture/access) sets out the grant matrix for every component.
+[Authoring a model](/guides/authoring) covers external authorization provider configuration.

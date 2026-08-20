@@ -1,0 +1,29 @@
+# Minimal values for the quickstart: header auth and a plaintext Trino, with no
+# external authorization providers and no engine password. The manager and
+# server connect to Trino as a bare username over plain HTTP. This is the
+# smallest configuration that lets the operator work end to end. It is not
+# secure. Header auth trusts X-Semantic-User and X-Semantic-Role, so the server
+# must never be exposed beyond a local port-forward here.
+image:
+  pullPolicy: IfNotPresent
+
+# Local single-node cluster driven by port-forward, so no NetworkPolicy.
+networkPolicy:
+  enabled: false
+
+server:
+  replicas: 1
+  auth:
+    mode: header
+    allowInsecureHeaderAuth: true
+
+engine:
+  type: trino
+  host: trino.semantic-system.svc.cluster.local
+  port: 8080
+  # Plain HTTP, no TLS and no password. The manager introspects and publishes
+  # views; the server only selects. Both connect as a bare username.
+  manager:
+    user: semantic-manager
+  server:
+    user: semantic-server

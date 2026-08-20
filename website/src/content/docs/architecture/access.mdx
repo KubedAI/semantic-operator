@@ -5,8 +5,8 @@ description: The full grant matrix for ossiectl, the operator, and the server, p
 
 import CombinedDiagram from '../../../components/CombinedDiagram.astro';
 
-Three components, three very different privilege scopes. This is the reference for scoping
-database grants, IAM roles, and network policy before you deploy.
+The three components need different privilege scopes. Use this page to scope database grants,
+IAM roles, and network policy before you deploy.
 
 Each component page covers its own access in context. This page puts them side by side,
 which is the view you want when you are writing the grants.
@@ -43,25 +43,14 @@ independent. They coordinate only through the Kubernetes API, never by calling e
         <td><span class="so-tag none">none</span></td><td><span class="so-tag none">none</span></td></tr>
     </tbody>
   </table></div>
-  <p class="so-note">The chart resolves the operator's and server's engine credentials
-  independently, under <code>{'engine.manager'}</code> and <code>{'engine.server'}</code>, each
-  falling back to the shared <code>{'engine'}</code> settings. Sharing one database user would
-  give the query path the ability to alter schemas.</p>
+  <p class="so-note">Keep the operator and server as separate database users. Sharing one
+  would give the query path the ability to alter schemas. How the chart resolves each
+  credential is in the Configuration and deployment reference.</p>
 
 ## Known limits
 
-Worth stating plainly before you scope a deployment.
-
-<p >Worth stating plainly before you scope a deployment.</p>
-  <div class="overflow-x-auto"><table>
-    <thead><tr><th>Limit</th><th>Detail</th></tr></thead>
-    <tbody>
-      <tr><td>Engine auth</td><td>Static username and password from a Kubernetes Secret is the only supported mechanism. IAM-based authentication, short-lived credentials, Snowflake key pairs, and BigQuery service accounts need a credential-provider seam that does not exist yet.</td></tr>
-      <tr><td>Redshift, ClickHouse, Postgres</td><td>No client implementations yet. Each is a dialect plus a connection client behind the existing interfaces. Redshift speaks the Postgres wire protocol.</td></tr>
-      <tr><td>One engine per install</td><td>Serving two engines means two installs. Per-model engine binding is a wiring change. The compiler already accepts the dialect per call.</td></tr>
-      <tr><td>Single-namespace serving</td><td>The server watches one namespace, so multi-team means multiple installs. The manager now defaults to that same namespace so the two agree, and warns at install time if you widen it past what this server can serve. There is no tenancy model yet.</td></tr>
-      <tr><td>Artifact size</td><td>The compiled model is an uncompressed ConfigMap. Roughly 2.4 KB per dataset, against a ~1 MiB ceiling. The operator now refuses to publish past 900 KiB with an error naming the model and what to do, rather than letting the API server reject the write. Compression, or an artifact stored outside etcd, is still missing.</td></tr>
-      <tr><td>Attribute-based policy</td><td>A row filter can interpolate a caller's claim with <code>&#123;&#123;claim.name&#125;&#125;</code>. OPA or Ranger can add attribute-based allow or deny decisions. External row filters, masks, and other obligations are not supported yet.</td></tr>
-      <tr><td>NetworkPolicy enforcement</td><td>The policies ship, but they are inert unless your CNI enforces them. The EKS VPC CNI needs <code>--enable-network-policy=true</code>. Verify rather than assume.</td></tr>
-    </tbody>
-  </table></div>
+Engine credentials are a static username and password from a Secret. Per-caller identity is
+available through passthrough or token exchange, but IAM, short-lived credentials, and
+key-pair schemes are not built yet. The full list of operational limits, including engine
+count, served namespaces, and artifact size, is in
+[Configuration and deployment](/reference/configuration).

@@ -255,7 +255,7 @@ For controller work it is often quicker to run the manager on your machine again
 cluster, so you skip the image build entirely.
 
 ```bash
-export ENGINE_HOST=127.0.0.1 SQL_DIALECT=starrocks
+export SEMANTIC__ENGINE_HOST=127.0.0.1 SEMANTIC__ENGINE_DIALECT=starrocks
 go run ./cmd/manager
 ```
 

@@ -5,7 +5,10 @@ REGISTRY   ?= 000000000000.dkr.ecr.us-west-2.amazonaws.com
 IMAGE_BASE ?= $(REGISTRY)/semantic-operator
 TAG        ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 AWS_REGION ?= us-west-2
-PLATFORM   ?= linux/amd64
+# Default to the host architecture so locally built images run on the machine
+# that built them; kind runs its node on the host arch. uname -m reports
+# x86_64 on Intel/AMD and aarch64 or arm64 on ARM. Override for cross-builds.
+PLATFORM   ?= linux/$(if $(filter aarch64 arm64,$(shell uname -m)),arm64,amd64)
 
 # Local kind commands share one repository-local kubeconfig and always select
 # the named kind context explicitly.
@@ -209,6 +212,18 @@ models-deploy: opa-deploy ## Load retail data into Trino and deploy the Trino/OP
 .PHONY: e2e
 e2e: models-deploy ## Prepare kind, Trino, operator, OPA, data, and model for manual tests
 	@echo "E2E environment is ready"
+
+.PHONY: quickstart
+quickstart: kind-deploy ## Minimal local stack for the Quickstart: plaintext Trino, operator, demo data, plain model (no auth, no OPA/Ranger)
+	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
+	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
+	KIND_IMAGE_BASE="$(KIND_IMAGE_BASE)" \
+	KIND_IMAGE_TAG="$(KIND_IMAGE_TAG)" \
+	KIND_PLATFORM="$(PLATFORM)" \
+	KIND_RELEASE_NAME="$(KIND_RELEASE_NAME)" \
+	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
+	KIND_TRINO_LOCAL_PORT="$(KIND_TRINO_LOCAL_PORT)" \
+	./hack/quickstart.sh
 
 .PHONY: helm-lint
 helm-lint:

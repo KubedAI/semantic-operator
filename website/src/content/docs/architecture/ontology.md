@@ -1,5 +1,5 @@
 ---
-title: Where ontology fits
+title: Semantic layers and ontologies
 description: What an ontology is, what the semantic model can and cannot express today, and how the two would work together.
 ---
 

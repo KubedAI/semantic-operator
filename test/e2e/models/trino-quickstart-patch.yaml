@@ -1,0 +1,8 @@
+# Point the shared retail model at the quickstart's in-memory Trino catalog.
+# Unlike the OPA and Ranger patches, this adds no external authorization
+# provider, so governance is the built-in role policy alone.
+spec:
+  connection:
+    catalog: memory
+    database: osi_demo
+    viewDatabase: memory.semantic_views

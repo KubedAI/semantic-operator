@@ -7,7 +7,7 @@ import ServerDiagram from '../../../components/ServerDiagram.astro';
 
 The server is the query path. It holds no state of its own, writes nothing, and is the only
 component that reads table data. Because all of its state lives in ConfigMaps and an
-optional cache, replicas are interchangeable and it scales sideways.
+optional cache, replicas are interchangeable and it scales horizontally.
 
 <ServerDiagram />
 
@@ -15,182 +15,111 @@ optional cache, replicas are interchangeable and it scales sideways.
 
 ### Identity
 
-The caller is resolved to a principal, groups, roles, and configured string attributes before
-anything else happens. Two modes exist and the difference is a security boundary.
+The caller is resolved to a principal, groups, and roles before anything else happens, in one
+of two modes that differ by security boundary.
 
-In `header` mode the principal comes from `X-Semantic-User` and roles come from the
-comma-separated `X-Semantic-Role` header. This is only safe behind a proxy that authenticates
-the caller, strips both inbound headers, and sets both itself. Otherwise any client that
-reaches the port can claim any identity. The chart refuses to install in this mode unless
-you also set `server.auth.allowInsecureHeaderAuth`, and the server logs a warning at startup.
+| Mode | Identity source | Trust boundary |
+|---|---|---|
+| `header` | the `X-Semantic-User` and `X-Semantic-Role` headers | safe only behind a proxy that authenticates the caller and sets the headers |
+| `jwt` | a bearer token validated against the issuer's JWKS | self-contained, ignores inbound identity headers |
 
-In `jwt` mode a bearer token is required and validated against the issuer's JWKS. Signature,
-expiry, issuer, and audience are checked, and only asymmetric algorithms are accepted because
-the key set is public. The principal defaults to `sub` and can use another configured claim.
-Directory groups and application roles remain separate. Built-in governance uses their union
-as policy labels, while external providers receive both namespaces. Inbound identity headers
-are ignored outright, so a caller cannot assert its own identity.
+An unverified caller gets 401, a verified caller that policy rejects gets 403, and an
+external provider that fails or is unavailable gets 503 without falling back to allow.
 
-An unverified caller gets 401. A verified caller that policy rejects gets 403. An external
-provider timeout, transport failure, or malformed response gets 503 and never falls back
-to allow. The distinction matters when you are debugging.
+How the query then authenticates to the engine is covered in
+[Identity and the engine](/architecture/identity). Claim mapping, accepted algorithms, and
+the header-mode install guard are in
+[Configuration and deployment](/reference/configuration).
 
 ### Discovery is governed too
 
-Listing models, metrics, and dimensions goes through the same authentication as querying,
-and through the same policy. A metric a caller could not query is left out of the listing
-rather than shown and refused later, and so is a column their roles may not read. A listing
-otherwise tells an unauthorised caller the shape of the warehouse.
+Listing models, metrics, and dimensions runs through the same authentication and policy as
+querying.
 
-Raw metric expressions are not returned unless you set `EXPOSE_METRIC_EXPRESSIONS`. The
-expression is the definition itself, and an agent grounds perfectly well on the name, the
-description, and the synonyms.
-
-Discovery uses the built-in role policy. The initial external-provider integration applies
-to query and SQL-plan requests only. Do not rely on OPA alone to hide names during
-discovery.
+- A metric or column the caller's roles cannot use is omitted from the listing, rather than
+  shown and refused later, so a listing never reveals the shape of the warehouse.
+- Raw metric expressions are not returned unless you opt in, since the name, description, and
+  synonyms are enough for an agent to ground on.
+- Discovery uses the built-in role policy only. External authorization covers query and
+  SQL-plan requests, so a provider is not a way to hide names during discovery.
 
 ### Resolve and authorize
 
-Metric and dimension names are looked up in the compiled model. Then governance runs,
-**before any SQL exists**.
+Metric and dimension names are resolved against the compiled model, and the request is
+authorized, all before any SQL string exists. Two checks apply, and both must pass. When a
+model names an external provider, that provider is consulted first, after request limits and
+before any cache lookup. The built-in role policy then runs as the statement is compiled.
 
-The check covers requested metrics against the role's allowlist, requested dimensions and
-filters against denied fields, and every field inside every requested metric expression.
-That last part is what stops a caller reading a forbidden column through an aggregate.
+#### Built-in governance
 
-Roles do not pool their permissions. Some single role must permit the whole request on its
-own, every metric and every field together. Combining them looks natural, because
-Kubernetes RBAC is additive, but a policy carries restrictions as well as grants. Under
-pooling, a role that grants nothing would cancel another role's denied fields and row
-filters just by being present. A caller holding both would then see more than either role
-allows.
+The role policy is the gate that always applies. It checks three things:
 
-A model can also name an external authorization provider. This is an additional gate, not a
-replacement for built-in policy. The server's provider configuration selects OPA or Ranger,
-its URL, credentials, and native settings. At startup, the server reads one strict YAML
-provider list from `AUTHORIZATION_PROVIDERS` or from the file named by
-`AUTHORIZATION_PROVIDERS_FILE`. Setting both is an error. Helm writes the list to an Opaque
-Secret, mounts it read-only, and uses the file source. Provider configuration changes take
-effect after a server rollout.
+- the requested metrics against the role's allowlist,
+- the requested dimensions and filters against the role's denied fields,
+- every field inside every requested metric expression.
 
-Every provider receives a versioned input containing the action, exact model identity,
-semantic request, principal, separate groups and roles, configured claims, access time, and
-adapter. It receives no SQL or raw metric expressions. The server evaluates the provider
-after request limits and before plan-cache access. A denial or provider failure therefore
-cannot be bypassed by a previously cached plan or result. Authorization fingerprints include
-the complete identity, provider, stable policy revision, and Ranger configuration scope.
+The last check is what stops a caller reading a forbidden column through an aggregate.
+Because it runs while the statement is built, an unauthorized request fails to compile.
+There is no filtered result set and no post-processing step that could be skipped.
 
-OPA uses a server credential and evaluates the structured input through its configured Data
-API decision path. It must return a boolean or an object containing only `allow` and an
-optional stable `revision`. Undefined results deny.
+Roles do not pool their permissions. One role must permit the whole request on its own,
+every metric and every field together. This differs from additive Kubernetes RBAC. If grants
+combined across roles, one role's denied fields and row filters would be cancelled by another
+role that lacks them, and a caller holding both would see more than either role allows.
 
-Ranger uses service mode. The wire contract targets the dedicated Apache Ranger 2.9.0 PDP.
-The PDP URL is the complete API base, normally ending in `/authz/v1`. The semantic server
-sends its configured `servicePrincipal` in `X-Forwarded-User` and submits the end user's
-principal, groups, roles, and allowlisted string attributes in the request body. Trusted
-headers require HTTPS by default. `allowInsecureHTTP: true` explicitly permits credentials
-and trusted headers over plain HTTP for isolated development environments. It must remain
-false in production. Ranger must configure the service principal as a delegation user for
-the selected service. Server-owned configuration maps the model to a Ranger resource,
-selects the permission, and supplies bounded static context attributes. The adapter sends
-full semantic request JSON as Ranger `requestData`, sets the adapter as `clientType`, and
-uses the server's current access time.
+#### External authorization
 
-Only a complete obligation-free Ranger `ALLOW` succeeds. `DENY`, `NOT_DETERMINED`, and
-`PARTIAL` deny. Missing or inconsistent decisions, transport errors, masks, row filters,
-subresource results, and additional obligations fail closed with 503. This first integration
-uses Ranger's `/authorize` operation for query and SQL-plan requests. Discovery and
-engine-native views continue to use built-in policy only.
+A model can also name an external provider, OPA or Ranger. It adds a second gate and never
+replaces the built-in policy. Because the provider is consulted before any cache lookup, a
+cached plan or result cannot bypass its decision, and an unavailable or unclear provider
+fails closed rather than falling back to allow. The provider evaluates the request and
+identity, and never receives SQL or raw metric expressions.
+
+| Provider result | Outcome |
+|---|---|
+| Allow, with no obligations | The request proceeds |
+| Deny | 403 |
+| Timeout, unreachable, malformed, or any obligation such as a mask or row filter | 503, never a fallback to allow |
+
+Configuring a provider, and the exact input it receives, is covered in
+[Authoring a model](/guides/authoring). The decision also becomes part of the cache key,
+described in [Configuration and deployment](/reference/configuration).
 
 ### Plan
 
-The planner picks the smallest join tree that connects the datasets the request needs. A
-query touching only a dimension table does not detour through the fact table.
+The planner turns the authorized request into one SQL statement in three conceptual moves.
 
-Ratio metrics get special care. If a ratio's denominator aggregates a dimension across a
-join, summing it directly would multiply it by the number of fact rows. The planner splits
-those into separate aggregations and deduplicates on the dimension's primary key. This is
-the single most common way hand written and generated SQL produce a wrong number.
+- **Join planning.** It picks the smallest join tree that connects the datasets the request
+  needs, so a query touching only a dimension table does not detour through the fact table.
+- **Fan-out safety.** If a ratio metric's denominator aggregates a dimension across a join,
+  summing it directly would multiply it by the number of fact rows. The planner splits those
+  into separate aggregations and deduplicates on the dimension's primary key.
+- **Governance in SQL.** The role's row filters are compiled into the statement, conjoined
+  within a role and unioned across the roles that authorized the request. A predicate may
+  interpolate a caller claim to express a rule like "each user sees their own region."
+  Ranking and the row limit are applied last.
 
-Ranking requests use `orderBy`. Each field must be a metric or dimension already requested,
-and each direction must be `asc` or `desc`. The planner resolves fields to output columns.
-It does not accept SQL expressions. When `orderBy` contains clauses, the planner emits
-exactly those clauses and does not append hidden tie-breakers. An omitted or empty `orderBy`
-retains the existing default ordering by requested dimensions. Ordering is applied before
-the row limit.
-
-```json
-{
-  "metrics": ["total_sales"],
-  "dimensions": ["item.i_category"],
-  "orderBy": [
-    {"field": "total_sales", "direction": "desc"},
-    {"field": "item.i_category", "direction": "asc"}
-  ],
-  "limit": 5
-}
-```
-
-The dimension clause makes selection stable when categories have equal sales. Tie-breakers
-are explicit. For a result grouped by several dimensions, include every dimension to
-produce a complete and stable tie-breaker. A metric-only ordering remains valid, but tied
-rows at the limit boundary may be returned in an engine-dependent order.
-
-Row filters are conjoined within a role and disjoined across the roles that authorized the
-request, so a caller sees the union of the rows those roles allow. A role that authorized
-the request and carries no filters can see every row, which collapses the whole disjunction
-rather than emitting SQL that looks restrictive and is not.
-
-A predicate may interpolate a caller attribute, which is how "each user sees their own
-region" is expressed.
-
-```yaml
-rowFilters:
-  - dataset: store
-    predicate: "region = {{claim.region}}"
-```
-
-The value is rendered through the dialect's literal function, so it is always an escaped
-SQL literal. A caller whose token does not carry the claim is refused rather than served a
-filter that silently matches the wrong rows.
-
-Everything is rendered through the engine's dialect, so identifier quoting and literal
-syntax match the target.
+Everything is rendered through the engine's dialect, so identifier quoting and literal syntax
+match the target. Row-filter authoring is covered in [Authoring a model](/guides/authoring).
 
 ### Execute and report
 
-One statement runs. The response carries the rows, the exact SQL, the model version, and a
-request hash. Every statement begins with a comment holding those same three values, so a
-query in the engine's log traces back to the request that caused it.
+The server runs one statement and returns the rows, the exact SQL, the model
+version, and a request hash. Every statement begins with a comment holding those same three
+values, so a query in the engine's log traces back to the request that caused it.
 
 The same request, from the same identity, against the same model version, produces byte
 identical SQL every time. Identity includes the principal, separate groups and roles, and all
 configured claims. A row filter can interpolate a claim. Two callers sharing a policy label
-but carrying different tenants compile to different SQL and never share a cached plan.
+but with different tenants compile to different SQL and never share a cached plan.
 
 ### What bounds a request
 
-The server is a fixed size pod, so every part of a request is bounded. All of these are
-Helm values under `server.query`, and the numbers below are the defaults.
-
-| Bound | Default | What happens past it |
-|---|---|---|
-| Row limit | 1000, max 10000 | Refused, not truncated |
-| Result size | 32 MiB | Abandoned while reading, before it is fully allocated |
-| Request body | 1 MiB | Refused |
-| Metrics, dimensions, filters | 25, 25, 50 | Refused |
-| Values in one `IN` list | 1000 | Refused |
-| Requests in flight | 4 | Queued briefly, then 503 with `Retry-After` |
-
-A request over a bound is refused rather than trimmed. A silently truncated result cannot
-be told apart from a complete one, which is the failure this whole system exists to
-prevent, and there is no pagination yet to signal it.
-
-The last two rows are one budget. Each in-flight request can hold a whole result until its
-response has been written, so `maxConcurrent` multiplied by `maxResultBytes` has to stay
-comfortably under the pod's memory limit. Raising either one means raising the memory limit
-too.
+The server runs in a fixed-size pod, so every part of a request has a limit, and a request
+over a limit is refused rather than trimmed. Because there is no pagination yet, a truncated
+result could not be told apart from a complete one. The specific limits, their defaults, and
+the memory budget that ties concurrency to result size are in
+[Configuration and deployment](/reference/configuration).
 
 ## Three surfaces, one compiler
 
@@ -208,17 +137,11 @@ All three go through the same compiler, so they cannot disagree about what a met
 
 ## Caching
 
-An optional Valkey cache stores compiled plans and query results. Caching is an
-optimisation and never a correctness dependency, so a cache miss or an unreachable cache
-degrades to recompute and rerun.
-
-The plan cache key includes the dialect, model identity, semantic request, and a full-width
-digest of principal, separate groups and roles, and configured claims. Results are keyed on
-the emitted SQL plus the external authorization fingerprint. When external authorization is
-configured, that fingerprint covers the logical provider, complete identity, allow result,
-and stable policy or configuration revision. The provider is evaluated before either lookup.
-These properties prevent a cached entry from bypassing a changed or revoked decision and
-prevent one authorized principal from inheriting another principal's cache scope.
+An optional Valkey cache stores compiled plans and query results. Caching is an optimisation
+and never a correctness dependency, so a cache miss or an unreachable cache degrades to
+recompute and rerun. Cache keys include the full identity and the external authorization
+decision, so no entry crosses an identity or survives a revoked decision. The exact key
+composition is in [Configuration and deployment](/reference/configuration).
 
 ## Access it needs
 
@@ -235,13 +158,11 @@ cloud credentials.
 
 ## Scaling and deployment
 
-Stateless and horizontal. The default is two replicas and you scale on request rate.
-Determinism makes the caches effective, so repeated questions can skip the engine entirely.
-
-The Service is `ClusterIP` and the chart refuses any other type unless you explicitly
-override it, because a load balancer in front of a header mode server is an unauthenticated
-query endpoint. Reach it with `kubectl port-forward`, or put an authenticating ingress in
-front and opt in deliberately.
+The server is stateless, so replicas are interchangeable and you scale horizontally on
+request rate. Determinism makes the caches effective, so repeated questions can skip the
+engine entirely. A header-mode deployment must sit behind something that authenticates
+callers. Service exposure and the chart's safeguards are in
+[Configuration and deployment](/reference/configuration).
 
 ## Next
 

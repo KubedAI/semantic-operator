@@ -252,17 +252,15 @@ Static context attributes are administrator-defined strings sent with every deci
 must not contain secrets. `clientType`, `requestData`, and the `semantic.*` namespace are
 managed by the server and cannot be overridden.
 
-Helm writes this provider list as strict YAML in an Opaque Secret. The server mounts
-`providers.yaml` read-only and loads it through `AUTHORIZATION_PROVIDERS_FILE`. Bearer-token
-values remain in their separately referenced Secrets. They are not copied into the provider
-configuration Secret.
+Helm renders this provider list into the server configuration file under
+`authorization.providers` and mounts it read-only in a ConfigMap. Bearer-token values remain
+in their separately referenced Secrets. They are not copied into the configuration file.
 
-A deployment outside this chart can instead set `AUTHORIZATION_PROVIDERS` to inline YAML or
-set `AUTHORIZATION_PROVIDERS_FILE` to a YAML file path. The two variables are mutually
-exclusive. Any `bearerTokenEnv` must use the dedicated
-`AUTHORIZATION_PROVIDER_TOKEN_*` namespace, so provider configuration cannot reference engine,
-cache, or other process secrets. Configuration is loaded once during startup, so a changed
-file requires a server rollout.
+A deployment outside this chart sets the same `authorization.providers` list in its own
+configuration file, which the server reads through `--config`. Any `bearerTokenEnv` must use
+the dedicated `AUTHORIZATION_PROVIDER_TOKEN_*` namespace, so provider configuration cannot
+reference engine, cache, or other process secrets. Configuration is loaded once during
+startup, so a changed file requires a server rollout.
 
 Every provider receives the versioned action, exact model identity, semantic request,
 principal, separate groups and roles, configured JWT claims, current access time, and adapter.

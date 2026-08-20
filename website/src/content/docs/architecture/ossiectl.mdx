@@ -1,5 +1,5 @@
 ---
-title: ossiectl, the authoring tool
+title: The ossiectl CLI
 description: The command line tool that generates a semantic model from your catalog, validates it offline, and converts between the portable Ossie document and the Kubernetes resource.
 ---
 
@@ -9,7 +9,7 @@ import OssiectlDiagram from '../../../components/OssiectlDiagram.astro';
 writes a YAML file, and exits. You can also write the same file by hand. It never runs
 inside the cluster and it is never in the query path.
 
-Everything it touches, it touches with the credentials of the person running it.
+`ossiectl` uses the local credentials of the person running it.
 
 <OssiectlDiagram />
 
@@ -54,12 +54,16 @@ ossiectl derive -source engine -catalog polaris -database sales \
   -out model.yaml
 ```
 
-Descriptions become documentation. Glossary terms become the synonyms an agent uses to map
-a person's words onto a certified metric. PII and sensitivity tags become `denyFields`
-entries, so a request for a classified column fails to compile. Deprecated datasets are
-flagged for review rather than dropped silently.
+Enrichment maps catalog metadata onto model fields:
 
-Metrics are never imported. Certifying a formula stays a human decision.
+- descriptions become field documentation,
+- glossary terms become the synonyms an agent uses to map a person's words onto a certified
+  metric,
+- PII and sensitivity tags become `denyFields` entries, so a request for a classified column
+  fails to compile,
+- deprecated datasets are flagged for review rather than dropped silently.
+
+`ossiectl` does not import metrics, because a person must review and certify each formula.
 
 Physical structure always comes from `-source`, never from the metadata platform. A
 metadata platform serves an ingested copy of the schema that can lag reality, and a model
@@ -71,8 +75,8 @@ built on stale structure fails its first drift check.
 ossiectl validate -f model.yaml
 ```
 
-Structural checks plus a compile dry run, with no cluster involved. This is the fastest
-feedback loop in the project and the one to wire into CI.
+Structural checks plus a compile dry run, with no cluster involved. Wire it into CI for early
+feedback.
 
 ### Convert between formats
 

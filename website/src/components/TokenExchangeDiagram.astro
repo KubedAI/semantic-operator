@@ -1,0 +1,52 @@
+---
+// TokenExchangeDiagram: inline SVG so the diagram is editable text and themes
+// with the site. Colours come from theme.css tokens; never hard-code a hex here.
+// It shows the exchange identity mode: the server swaps the caller's token for an
+// engine-audience token that keeps the same subject, then connects as the caller.
+const { caption = 'In exchange mode the server swaps the caller token for an engine-audience token with the same subject, then connects as the caller so the engine applies its own per-user policy.' } = Astro.props;
+---
+<figure class="so-figure">
+  <svg viewBox="0 0 760 348" role="img" aria-label="The caller sends a bearer token to the server, the server exchanges it at the identity provider for an engine-audience token with the same subject, and connects to the query engine as the caller">
+      <rect class="box" x="24" y="170" width="150" height="52" rx="6"/>
+      <text class="t" x="36" y="194">Caller</text>
+      <text class="t-sub" x="36" y="210">agent or app</text>
+
+      <rect class="box-strong" x="250" y="140" width="160" height="110" rx="6"/>
+      <text class="t-mono" x="262" y="166">server</text>
+      <text class="t-sub" x="262" y="186">validate token</text>
+      <text class="t-sub" x="262" y="202">exchange token</text>
+      <text class="t-sub" x="262" y="218">connect as caller</text>
+      <text class="t-sub" x="262" y="238">× N replicas</text>
+
+      <rect class="box" x="540" y="150" width="200" height="64" rx="6"/>
+      <text class="t" x="552" y="178">Identity provider</text>
+      <text class="t-sub" x="552" y="196">RFC 8693 token endpoint</text>
+
+      <rect class="box" x="540" y="270" width="200" height="60" rx="6"/>
+      <text class="t" x="552" y="296">Query engine</text>
+      <text class="t-sub" x="552" y="314">enforces per-user policy</text>
+
+      <path class="flow meta" d="M174 196 L244 196" marker-end="url(#tx-cm)"/>
+      <text class="flow-t meta" x="180" y="188">1 · bearer token</text>
+
+      <path class="flow meta" d="M410 176 L536 176" marker-end="url(#tx-cm)"/>
+      <text class="flow-t meta" x="424" y="168">2 · exchange grant</text>
+
+      <path class="flow meta" d="M536 200 L414 200" marker-end="url(#tx-cm)"/>
+      <text class="flow-t meta" x="424" y="216">3 · engine token, same subject</text>
+
+      <path class="flow data" d="M362 250 L536 294" marker-end="url(#tx-cd)"/>
+      <text class="flow-t data" x="400" y="266">4 · connect as caller</text>
+
+      <path class="flow data" d="M536 312 C 470 322, 430 300, 366 256" marker-end="url(#tx-cd)"/>
+      <text class="flow-t data" x="404" y="330">5 · governed rows</text>
+
+      <defs>
+        <marker id="tx-cm" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 L8 4 L0 8 z" fill="var(--so-meta)"/></marker>
+        <marker id="tx-cd" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 L8 4 L0 8 z" fill="var(--so-data)"/></marker>
+      </defs>
+    </svg>
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>
