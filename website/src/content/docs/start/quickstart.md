@@ -10,8 +10,8 @@ This runs the operator, a query engine, and a governed model on your own machine
 
 Install these and make sure Docker is running:
 
-- [Docker](https://docs.docker.com/get-docker/), [kind](https://kind.sigs.k8s.io/), `kubectl`, `helm`, `make`, `git`, and a Go toolchain matching `go.mod`.
-- `jq` is optional and only formats the output below.
+- [Docker](https://docs.docker.com/get-docker/), [kind](https://kind.sigs.k8s.io/), `kubectl`, `helm`, `make`, `git`, `curl`, and a Go toolchain matching `go.mod`.
+- `jq` is optional; drop `| jq` from the commands below if you do not have it.
 - Roughly 4 GB of memory free for the cluster.
 
 Clone the repository and run every command from its root:
@@ -145,10 +145,25 @@ You reached the model over REST above. The same certified definitions are open t
 - **AI agents** connect over [MCP](https://modelcontextprotocol.io/) at
   `http://localhost:8090/mcp`. An agent calls `list_metrics` and `list_dimensions` to read the
   certified vocabulary, then `query_metric` by name, so it selects a definition rather than
-  writing SQL. The governance and determinism from the previous step apply unchanged, so a
+  writing SQL. The governance and determinism from the previous step apply. A
   denied field is still refused and a role's row filter is still enforced. Any MCP host that
-  supports Streamable HTTP can connect, using a hosted or local model. The
-  [laptop example](/examples/kind) drives it with a real agent.
+  supports Streamable HTTP can connect, using a hosted or local model.
+  Optionally, if [Claude Code](https://code.claude.com/docs) is installed and
+  the port-forward from step 2 is still running, register the server from the repository root.
+
+  ```bash
+  claude mcp add --transport http --scope project semantic-layer http://localhost:8090/mcp \
+    -H "X-Semantic-User: demo-user" -H "X-Semantic-Role: analyst"
+  ```
+
+  `--scope project` applies to this repository only, not your whole machine, and writes a
+  `.mcp.json` you can remove later. Run `/mcp` in Claude Code to confirm the connection, then
+  ask a question:
+
+  - "What can I analyze with this model? What metrics and dimensions are available?"
+  - "What's store productivity by state?"
+  - "What's the customer lifetime value?"
+
 - **Applications** use REST, as above. `POST /v1/models/{model}/sql` returns the SQL for a
   request without running it, which helps in review and tests.
 - **BI tools** read the governed SQL views the operator created in the engine, with no server
@@ -158,6 +173,13 @@ You reached the model over REST above. The same certified definitions are open t
 
 ```bash
 kind delete cluster --name semantic-operator-dev
+```
+
+If you registered the server with Claude Code, remove it too, since it persists in
+`.mcp.json`:
+
+```bash
+claude mcp remove semantic-layer
 ```
 
 ## Next
