@@ -1,0 +1,51 @@
+suite: horizontal pod autoscaler
+# The HPA is off by default because it needs metrics-server. When enabled it
+# must target the server Deployment and carry at least one metric, otherwise the
+# autoscaler has nothing to act on. The Deployment dropping replicas in this
+# mode is covered in the server deployment suite.
+templates:
+  - templates/hpa.yaml
+set:
+  engine.host: engine.example
+  server.auth.allowInsecureHeaderAuth: true
+tests:
+  - it: renders no HPA by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: targets the server Deployment with default replica bounds when enabled
+    set:
+      server.autoscaling.enabled: true
+    asserts:
+      - containsDocument:
+          kind: HorizontalPodAutoscaler
+          apiVersion: autoscaling/v2
+          name: semantic-operator-server
+          any: true
+      - equal:
+          path: spec.scaleTargetRef.name
+          value: semantic-operator-server
+      - equal:
+          path: spec.scaleTargetRef.kind
+          value: Deployment
+      - equal:
+          path: spec.minReplicas
+          value: 2
+      - equal:
+          path: spec.maxReplicas
+          value: 10
+
+  - it: carries the default CPU utilization metric so the autoscaler has a target
+    set:
+      server.autoscaling.enabled: true
+    asserts:
+      - equal:
+          path: spec.metrics[0].type
+          value: Resource
+      - equal:
+          path: spec.metrics[0].resource.name
+          value: cpu
+      - equal:
+          path: spec.metrics[0].resource.target.averageUtilization
+          value: 75

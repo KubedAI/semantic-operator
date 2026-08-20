@@ -1,0 +1,62 @@
+suite: manager deployment wiring
+# The manager exposes metrics and health on fixed named ports, runs under the
+# manager ServiceAccount, mounts its own config ConfigMap, and takes the engine
+# password from its per-component Secret. A drift in any of these breaks probes,
+# permissions, or the operator's engine credential.
+templates:
+  - templates/manager-deployment.yaml
+set:
+  engine.host: engine.example
+tests:
+  - it: runs under the manager ServiceAccount
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: semantic-operator-manager
+
+  - it: exposes the metrics and health ports the probes reference
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].name
+          value: metrics
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8080
+      - equal:
+          path: spec.template.spec.containers[0].ports[1].name
+          value: health
+      - equal:
+          path: spec.template.spec.containers[0].ports[1].containerPort
+          value: 8081
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.port
+          value: health
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.port
+          value: health
+
+  - it: mounts the manager ConfigMap at the path the binary reads
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[0].configMap.name
+          value: semantic-operator-manager-config
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].mountPath
+          value: /etc/semantic-operator
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --config=/etc/semantic-operator/config.yaml
+
+  - it: injects the per-component manager engine password Secret
+    set:
+      engine.manager.passwordSecret.name: manager-pw
+      engine.manager.passwordSecret.key: password
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SEMANTIC__ENGINE_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: manager-pw
+                key: password

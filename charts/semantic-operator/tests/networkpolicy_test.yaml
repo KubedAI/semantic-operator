@@ -1,0 +1,56 @@
+suite: network policy defaults
+# The server answers governed queries, so ingress is locked down by default: a
+# policy is present, admits the release namespace, and its ingress port tracks
+# server.listenPort. Disabling the feature must remove the policies entirely,
+# not leave a half-open one.
+templates:
+  - templates/networkpolicy.yaml
+set:
+  engine.host: engine.example
+  server.auth.allowInsecureHeaderAuth: true
+tests:
+  - it: creates server and manager NetworkPolicies by default
+    asserts:
+      - containsDocument:
+          kind: NetworkPolicy
+          apiVersion: networking.k8s.io/v1
+          name: semantic-operator-server
+          any: true
+      - containsDocument:
+          kind: NetworkPolicy
+          apiVersion: networking.k8s.io/v1
+          name: semantic-operator-manager
+          any: true
+
+  - it: selects the server pods and admits the release namespace on the listen port
+    documentSelector:
+      path: metadata.name
+      value: semantic-operator-server
+    asserts:
+      - equal:
+          path: spec.podSelector.matchLabels["app.kubernetes.io/component"]
+          value: server
+      - contains:
+          path: spec.policyTypes
+          content: Ingress
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 8090
+
+  - it: tracks server.listenPort in the ingress rule
+    set:
+      server.listenPort: 9099
+    documentSelector:
+      path: metadata.name
+      value: semantic-operator-server
+    asserts:
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 9099
+
+  - it: renders no NetworkPolicies when the feature is disabled
+    set:
+      networkPolicy.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

@@ -1,0 +1,154 @@
+suite: server config and secret env wiring
+# The server reads non-secret config from a mounted ConfigMap and takes secrets
+# only as SEMANTIC__ / AUTHORIZATION_PROVIDER_ env from referenced Secrets. If a
+# future edit renames the volume, the mount path, the config arg, or an env
+# name, the server boots against the wrong config or without its credentials.
+templates:
+  - templates/server-deployment.yaml
+set:
+  engine.host: engine.example
+  server.auth.allowInsecureHeaderAuth: true
+tests:
+  - it: mounts the server ConfigMap read-only at the path the binary reads
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[0].name
+          value: config
+      - equal:
+          path: spec.template.spec.volumes[0].configMap.name
+          value: semantic-operator-server-config
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].name
+          value: config
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[0].mountPath
+          value: /etc/semantic-operator
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --config=/etc/semantic-operator/config.yaml
+
+  - it: stamps a config checksum so a config change rolls the pods
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - matchRegex:
+          path: spec.template.metadata.annotations["semantic.ossie.io/config-checksum"]
+          pattern: ^[0-9a-f]{16}$
+
+  - it: injects the per-component engine password Secret
+    set:
+      engine.server.passwordSecret.name: server-pw
+      engine.server.passwordSecret.key: password
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SEMANTIC__ENGINE_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: server-pw
+                key: password
+
+  - it: falls back to the shared engine password Secret
+    set:
+      engine.passwordSecret.name: shared-pw
+      engine.passwordSecret.key: password
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SEMANTIC__ENGINE_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: shared-pw
+                key: password
+
+  - it: falls back to the legacy starrocks password Secret when engine.type is starrocks
+    set:
+      starrocks.passwordSecret.name: legacy-pw
+      starrocks.passwordSecret.key: password
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SEMANTIC__ENGINE_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: legacy-pw
+                key: password
+
+  - it: prefers the per-component Secret over the shared one
+    set:
+      engine.server.passwordSecret.name: server-pw
+      engine.server.passwordSecret.key: password
+      engine.passwordSecret.name: shared-pw
+      engine.passwordSecret.key: password
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SEMANTIC__ENGINE_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: server-pw
+                key: password
+
+  - it: injects the exchange client secret env and the config names the same client
+    set:
+      engine.identityMode: exchange
+      engine.exchange.tokenURL: https://idp.example/token
+      engine.exchange.clientID: semantic-exchange
+      engine.exchange.clientSecretSecret.name: exchange-pw
+      engine.exchange.clientSecretSecret.key: client-secret
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: SEMANTIC__ENGINE_EXCHANGE_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: exchange-pw
+                key: client-secret
+
+  - it: injects the provider bearer token under the env name the config references
+    set:
+      server.authorization.providers:
+        - name: corporate-opa
+          type: opa
+          url: https://opa.example
+          opa:
+            decisionPath: semantic/query/allow
+          bearerTokenSecret:
+            name: opa-token
+            key: token
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: AUTHORIZATION_PROVIDER_TOKEN_0
+            valueFrom:
+              secretKeyRef:
+                name: opa-token
+                key: token

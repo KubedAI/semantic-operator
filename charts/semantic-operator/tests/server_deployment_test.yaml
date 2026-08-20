@@ -1,0 +1,104 @@
+suite: server deployment wiring
+# Invariants that silently break traffic or scaling if a future edit changes
+# one side but not the other: the Service selector must equal the pod labels,
+# the named http port must line up across container, probes, and Service, the
+# pod must run under the server ServiceAccount, and the Deployment must drop
+# replicas once the autoscaler owns the count.
+templates:
+  - templates/server-deployment.yaml
+set:
+  engine.host: engine.example
+  server.auth.allowInsecureHeaderAuth: true
+tests:
+  - it: the Deployment selector equals the pod template labels
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/name"]
+          value: semantic-operator
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/component"]
+          value: server
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/name"]
+          value: semantic-operator
+      - equal:
+          path: spec.template.metadata.labels["app.kubernetes.io/component"]
+          value: server
+
+  - it: the server Service selects those same pod labels
+    documentSelector:
+      path: kind
+      value: Service
+    asserts:
+      - equal:
+          path: spec.selector["app.kubernetes.io/name"]
+          value: semantic-operator
+      - equal:
+          path: spec.selector["app.kubernetes.io/component"]
+          value: server
+
+  - it: the container port is named http and follows server.listenPort
+    set:
+      server.listenPort: 9099
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].name
+          value: http
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 9099
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.port
+          value: http
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.port
+          value: http
+
+  - it: the Service targets the named http port
+    documentSelector:
+      path: kind
+      value: Service
+    asserts:
+      - equal:
+          path: spec.ports[0].name
+          value: http
+      - equal:
+          path: spec.ports[0].targetPort
+          value: http
+      - equal:
+          path: spec.ports[0].port
+          value: 8090
+
+  - it: the pod runs under the server ServiceAccount
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: semantic-operator-server
+
+  - it: sets replicas by default
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+
+  - it: omits replicas when the autoscaler owns the count
+    set:
+      server.autoscaling.enabled: true
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - notExists:
+          path: spec.replicas

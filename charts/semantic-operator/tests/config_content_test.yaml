@@ -1,0 +1,120 @@
+suite: rendered config content
+# The mounted ConfigMaps are the source of truth for non-secret config. These
+# assert the pieces the Go server and manager actually parse: provider entries
+# with the bearer-token env name that the Deployment injects, the exchange
+# identity block, and the manager cache namespace set that must track its RBAC.
+release:
+  name: my-release
+  namespace: prod
+templates:
+  - templates/configmap.yaml
+set:
+  engine.host: engine.example
+  server.auth.allowInsecureHeaderAuth: true
+tests:
+  - it: names the server and manager config ConfigMaps the Deployments mount
+    asserts:
+      - containsDocument:
+          kind: ConfigMap
+          apiVersion: v1
+          name: semantic-operator-server-config
+          namespace: prod
+          any: true
+      - containsDocument:
+          kind: ConfigMap
+          apiVersion: v1
+          name: semantic-operator-manager-config
+          namespace: prod
+          any: true
+
+  - it: renders an authorization provider with the bearer-token env the Deployment injects
+    set:
+      server.authorization.providers:
+        - name: corporate-opa
+          type: opa
+          url: https://opa.example
+          opa:
+            decisionPath: semantic/query/allow
+          bearerTokenSecret:
+            name: opa-token
+            key: token
+    documentSelector:
+      path: metadata.name
+      value: semantic-operator-server-config
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'name: corporate-opa'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'decisionPath: semantic/query/allow'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'bearerTokenEnv: AUTHORIZATION_PROVIDER_TOKEN_0'
+
+  - it: refuses a provider that is missing its url
+    set:
+      server.authorization.providers:
+        - name: corporate-opa
+          type: opa
+          opa:
+            decisionPath: semantic/query/allow
+    asserts:
+      - failedTemplate:
+          errorPattern: 'url is required'
+
+  - it: refuses an opa provider that is missing its decision path
+    set:
+      server.authorization.providers:
+        - name: corporate-opa
+          type: opa
+          url: https://opa.example
+    asserts:
+      - failedTemplate:
+          errorPattern: 'decisionPath is required'
+
+  - it: writes the exchange identity block when identityMode is exchange
+    set:
+      engine.identityMode: exchange
+      engine.exchange.tokenURL: https://idp.example/token
+      engine.exchange.clientID: semantic-exchange
+    documentSelector:
+      path: metadata.name
+      value: semantic-operator-server-config
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'mode: "exchange"'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'clientID: "semantic-exchange"'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'tokenURL: "https://idp.example/token"'
+
+  - it: narrows the manager cache to a fixed watchNamespaces list
+    set:
+      manager.watchNamespaces:
+        - analytics
+        - finance
+    documentSelector:
+      path: metadata.name
+      value: semantic-operator-manager-config
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: '- analytics'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: '- finance'
+
+  - it: omits the cache namespace list for cluster-wide operation
+    set:
+      manager.watchAllNamespaces: true
+    documentSelector:
+      path: metadata.name
+      value: semantic-operator-manager-config
+    asserts:
+      - notMatchRegex:
+          path: data["config.yaml"]
+          pattern: 'watchNamespaces'
