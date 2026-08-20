@@ -1,0 +1,24 @@
+suite: manager cache scope
+# The manager config file narrows the informer cache to the same namespaces its
+# RBAC covers. By default that is the release namespace, matching what this
+# release's server can serve.
+release:
+  name: my-release
+  namespace: prod
+templates:
+  - templates/configmap.yaml
+tests:
+  - it: default install narrows the manager cache to the release namespace
+    set:
+      engine.host: engine.example
+      server.auth.allowInsecureHeaderAuth: true
+    documentSelector:
+      path: metadata.name
+      value: semantic-operator-manager-config
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'watchNamespaces:'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: '- prod'

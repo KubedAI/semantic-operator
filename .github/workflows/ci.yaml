@@ -24,176 +24,20 @@ jobs:
         run: |
           make generate
           git diff --exit-code
-  
 
   helm:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
-      - name: Lint chart
-        run: helm lint charts/semantic-operator
-      # Guards use an explicit if rather than `cmd && { ...; exit 1; } || true`.
-      # The old form did work, because exit terminates the shell before `||`
-      # runs, but it only works with a brace group. Changing it to a subshell
-      # would silently disable the check, and that is too easy to do by
-      # accident in a security guard.
-      - name: Chart must refuse to expose the server publicly
-        run: |
-          if helm template charts/semantic-operator \
-            --set engine.host=engine.example \
-            --set server.auth.allowInsecureHeaderAuth=true \
-            --set server.service.type=LoadBalancer >/dev/null 2>&1; then
-            echo "chart allowed a LoadBalancer Service"
-            exit 1
-          fi
-          if ! helm template charts/semantic-operator \
-            --set engine.host=engine.example \
-            --set server.auth.allowInsecureHeaderAuth=true \
-            | grep -q 'type: ClusterIP'; then
-            echo "default Service is not ClusterIP"
-            exit 1
-          fi
-      - name: Render templates (starrocks, legacy values)
-        run: >
-          helm template charts/semantic-operator
-          --set starrocks.host=fe.example
-          --set server.auth.allowInsecureHeaderAuth=true >/dev/null
-      - name: Render templates (trino)
-        run: >
-          helm template charts/semantic-operator
-          --set engine.type=trino --set engine.host=trino.example
-          --set server.auth.allowInsecureHeaderAuth=true >/dev/null
-      # The chart used to append /manager and /server to image.repository, so a
-      # registry laid out any other way could not be installed at all. The
-      # per-component values are now used verbatim, and the old key is refused
-      # rather than ignored, so an existing --set does not silently pull the
-      # chart defaults instead of the image the user asked for.
-      - name: Chart must use image repositories verbatim
-        run: |
-          if ! helm template charts/semantic-operator \
-            --set engine.host=engine.example \
-            --set server.auth.allowInsecureHeaderAuth=true \
-            --set image.manager.repository=example.com/mgr \
-            --set image.server.repository=example.com/srv \
-            --set image.tag=t1 \
-            | grep -q 'image: "example.com/mgr:t1"'; then
-            echo "chart did not use image.manager.repository verbatim"
-            exit 1
-          fi
-          if helm template charts/semantic-operator \
-            --set engine.host=engine.example \
-            --set server.auth.allowInsecureHeaderAuth=true \
-            --set image.repository=example.com/semantic-operator >/dev/null 2>&1; then
-            echo "chart silently ignored the removed image.repository value"
-            exit 1
-          fi
-      - name: Chart must reject an unknown engine
-        run: |
-          if helm template charts/semantic-operator \
-            --set engine.host=engine.example \
-            --set server.auth.allowInsecureHeaderAuth=true \
-            --set engine.type=nonesuch >/dev/null 2>&1; then
-            echo "chart accepted an unknown engine.type"
-            exit 1
-          fi
-      - name: Chart must refuse trusted-header auth unless acknowledged
-        run: |
-          if helm template charts/semantic-operator \
-            --set engine.host=engine.example >/dev/null 2>&1; then
-            echo "chart allowed header auth without acknowledgement"
-            exit 1
-          fi
-      # The manager's cache scope and its RBAC scope come from one value and
-      # have to agree. A namespace in one but not the other either grants
-      # nothing or makes the manager crash-loop on forbidden watches.
-      #
-      # The default is the release namespace, which is what the server can
-      # actually serve. Cluster-wide is a separate, explicit flag.
-      - name: Manager scope defaults to its own namespace
-        run: |
-          helm template charts/semantic-operator -n prod \
-            --set engine.host=engine.example \
-            --set server.auth.allowInsecureHeaderAuth=true > /tmp/default.yaml
-          if grep -q 'kind: ClusterRole' /tmp/default.yaml; then
-            echo "the default install must not grant a ClusterRole"
-            exit 1
-          fi
-          if ! grep -q 'WATCH_NAMESPACES' /tmp/default.yaml; then
-            echo "manager cache was not narrowed to the release namespace"
-            exit 1
-          fi
-      - name: watchNamespaces issues one Role per namespace
-        run: |
-          helm template charts/semantic-operator -n prod \
-            --set engine.host=engine.example \
-            --set server.auth.allowInsecureHeaderAuth=true \
-            --set 'manager.watchNamespaces={analytics,finance}' > /tmp/scoped.yaml
-          if grep -q 'kind: ClusterRole' /tmp/scoped.yaml; then
-            echo "namespace-scoped mode still issued a ClusterRole"
-            exit 1
-          fi
-          for ns in analytics finance; do
-            if ! grep -q "namespace: $ns" /tmp/scoped.yaml; then
-              echo "no Role issued in $ns"
-              exit 1
-            fi
-          done
-      - name: Cluster-wide is opt-in and mutually exclusive
-        run: |
-          if ! helm template charts/semantic-operator -n prod \
-            --set engine.host=engine.example \
-            --set server.auth.allowInsecureHeaderAuth=true \
-            --set manager.watchAllNamespaces=true \
-            | grep -q 'kind: ClusterRole'; then
-            echo "watchAllNamespaces must grant a ClusterRole"
-            exit 1
-          fi
-          if helm template charts/semantic-operator -n prod \
-            --set engine.host=engine.example \
-            --set server.auth.allowInsecureHeaderAuth=true \
-            --set manager.watchAllNamespaces=true \
-            --set 'manager.watchNamespaces={a}' >/dev/null 2>&1; then
-            echo "contradictory scope values were accepted"
-            exit 1
-          fi
-      # Availability defaults must not depend on cluster features that may be
-      # absent, and must not block a drain.
-      - name: Availability defaults are safe
-        run: |
-          helm template charts/semantic-operator \
-            --set engine.host=engine.example \
-            --set server.auth.allowInsecureHeaderAuth=true > /tmp/av.yaml
-          if ! grep -q 'maxUnavailable' /tmp/av.yaml; then
-            echo "PDB must use maxUnavailable so a single replica can still drain"
-            exit 1
-          fi
-          if grep -q 'minAvailable' /tmp/av.yaml; then
-            echo "minAvailable can deadlock a drain on one replica"
-            exit 1
-          fi
-          if ! grep -q 'ScheduleAnyway' /tmp/av.yaml; then
-            echo "topology spread must be soft so single-node clusters still schedule"
-            exit 1
-          fi
-          # The image is distroless, so an exec preStop hook would fail. Only
-          # the native sleep action is acceptable, and only where supported.
-          if grep -q 'exec:' /tmp/av.yaml; then
-            echo "exec hook cannot run in a distroless image"
-            exit 1
-          fi
-          if helm template charts/semantic-operator \
-            --set engine.host=engine.example \
-            --set server.auth.allowInsecureHeaderAuth=true \
-            --kube-version 1.28.0 | grep -q 'preStop'; then
-            echo "sleep lifecycle action must be skipped before 1.29"
-            exit 1
-          fi
-      # The chart checks above only cover the chart. This scans every manifest
-      # in the repository, which is where a stray LoadBalancer actually crept in
-      # once.
-      - name: No public Service exposure anywhere in the repository
-        run: bash hack/check-no-public-services.sh
+      # helm itself is pinned in the Makefile (HELM_VERSION) and downloaded into
+      # bin/, so CI and local runs lint and unit test the chart with the same
+      # helm. The chart's behaviour is asserted by the unit tests in
+      # charts/semantic-operator/tests/ (engine selection and the legacy
+      # starrocks fallback, auth guardrails, manager cache/RBAC scope,
+      # availability defaults, and Service exposure). They render the templates
+      # and assert on the result instead of grepping rendered YAML.
+      - name: Lint and unit test the chart
+        run: make helm-lint helm-unittest
 
   image:
     runs-on: ubuntu-latest

@@ -1,0 +1,15 @@
+suite: manager image reference
+templates:
+  - templates/manager-deployment.yaml
+tests:
+  - it: builds the manager image from image.manager.repository and the shared tag
+    set:
+      engine.host: engine.example
+      server.auth.allowInsecureHeaderAuth: true
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: public.ecr.aws/data-on-eks/semantic-operator/manager:v0.1.1

@@ -1,0 +1,53 @@
+suite: engine configuration
+# The engine block is the source of truth for the connection. type selects the
+# dialect and client, the legacy starrocks.* values still fall back when the
+# engine is starrocks, and an unknown engine or a missing host must fail loudly.
+templates:
+  - templates/configmap.yaml
+tests:
+  - it: defaults to the starrocks dialect and honors the legacy starrocks.host fallback
+    set:
+      server.auth.allowInsecureHeaderAuth: true
+      starrocks.host: fe.example
+    documentSelector:
+      path: metadata.name
+      value: semantic-operator-server-config
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'dialect: "starrocks"'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'host: "fe.example"'
+
+  - it: renders the trino dialect and the engine host
+    set:
+      server.auth.allowInsecureHeaderAuth: true
+      engine.type: trino
+      engine.host: trino.example
+    documentSelector:
+      path: metadata.name
+      value: semantic-operator-server-config
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'dialect: "trino"'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'host: "trino.example"'
+
+  - it: rejects an unsupported engine type
+    set:
+      server.auth.allowInsecureHeaderAuth: true
+      engine.host: engine.example
+      engine.type: nonesuch
+    asserts:
+      - failedTemplate:
+          errorPattern: 'engine.type "nonesuch" is not supported'
+
+  - it: requires an engine host
+    set:
+      server.auth.allowInsecureHeaderAuth: true
+    asserts:
+      - failedTemplate:
+          errorPattern: 'engine.host is required'

@@ -1,0 +1,19 @@
+suite: server disruption budget
+# maxUnavailable, never minAvailable: a single-replica install must still drain
+# instead of blocking the eviction API forever.
+templates:
+  - templates/pdb.yaml
+tests:
+  - it: the PodDisruptionBudget uses maxUnavailable and never minAvailable
+    set:
+      engine.host: engine.example
+      server.auth.allowInsecureHeaderAuth: true
+    documentSelector:
+      path: kind
+      value: PodDisruptionBudget
+    asserts:
+      - equal:
+          path: spec.maxUnavailable
+          value: 1
+      - notExists:
+          path: spec.minAvailable

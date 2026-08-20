@@ -1,0 +1,2 @@
+# Chart unit tests are for development and CI, not for the packaged chart.
+tests/

@@ -1,0 +1,58 @@
+suite: server auth guardrails
+# header mode trusts inbound identity headers, so it is refused unless the
+# operator acknowledges an authenticating proxy is in front. jwt mode is the
+# production profile and needs a jwksURL. Token exchange needs its endpoint.
+templates:
+  - templates/configmap.yaml
+tests:
+  - it: refuses header auth unless explicitly acknowledged
+    set:
+      engine.host: engine.example
+    asserts:
+      - failedTemplate:
+          errorPattern: 'server.auth.mode=header trusts'
+
+  - it: allows header auth when acknowledged
+    set:
+      engine.host: engine.example
+      server.auth.allowInsecureHeaderAuth: true
+    documentSelector:
+      path: metadata.name
+      value: semantic-operator-server-config
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'mode: "header"'
+
+  - it: requires a jwksURL in jwt mode
+    set:
+      engine.host: engine.example
+      server.auth.mode: jwt
+    asserts:
+      - failedTemplate:
+          errorPattern: 'server.auth.jwksURL is required'
+
+  - it: renders the jwt auth block
+    set:
+      engine.host: engine.example
+      server.auth.mode: jwt
+      server.auth.jwksURL: https://idp.example/jwks
+    documentSelector:
+      path: metadata.name
+      value: semantic-operator-server-config
+    asserts:
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'mode: "jwt"'
+      - matchRegex:
+          path: data["config.yaml"]
+          pattern: 'jwksURL: "https://idp.example/jwks"'
+
+  - it: requires exchange settings when the identity mode is exchange
+    set:
+      engine.host: engine.example
+      server.auth.allowInsecureHeaderAuth: true
+      engine.identityMode: exchange
+    asserts:
+      - failedTemplate:
+          errorPattern: 'engine.exchange.tokenURL is required'

@@ -31,6 +31,14 @@ BIN_DIR ?= $(CURDIR)/bin
 CONTROLLER_GEN := $(BIN_DIR)/controller-gen
 GOLANGCI_LINT := $(BIN_DIR)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.12.2
+HELM := $(BIN_DIR)/helm
+HELM_VERSION ?= v4.2.4
+HELM_OS ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
+HELM_ARCH ?= $(if $(filter aarch64 arm64,$(shell uname -m)),arm64,amd64)
+HELM_UNITTEST_VERSION ?= v1.1.2
+
+# Running make with no target prints the available targets rather than building.
+.DEFAULT_GOAL := help
 
 .PHONY: all
 all: build
@@ -38,7 +46,7 @@ all: build
 ## Development
 
 .PHONY: tools
-tools: $(CONTROLLER_GEN) $(GOLANGCI_LINT) ## Install pinned developer tools into bin/
+tools: $(CONTROLLER_GEN) $(GOLANGCI_LINT) $(HELM) ## Install pinned developer tools into bin/
 
 $(CONTROLLER_GEN): Makefile go.mod go.sum
 	mkdir -p $(BIN_DIR)
@@ -47,6 +55,13 @@ $(CONTROLLER_GEN): Makefile go.mod go.sum
 $(GOLANGCI_LINT): Makefile
 	mkdir -p $(BIN_DIR)
 	GOBIN=$(abspath $(BIN_DIR)) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
+# Downloaded once into bin/ (gitignored), pinned by HELM_VERSION.
+$(HELM):
+	mkdir -p $(BIN_DIR)
+	curl -fsSL https://get.helm.sh/helm-$(HELM_VERSION)-$(HELM_OS)-$(HELM_ARCH).tar.gz \
+	  | tar -xzf - -C $(BIN_DIR) --strip-components=1 $(HELM_OS)-$(HELM_ARCH)/helm
+	@$(HELM) version --short
 
 .PHONY: generate
 generate: $(CONTROLLER_GEN) ## Regenerate deepcopy and CRD manifests after editing api/
@@ -70,7 +85,7 @@ lint: $(GOLANGCI_LINT) ## Check Go formatting, static analysis, and Service expo
 	$(GOLANGCI_LINT) run ./...
 
 .PHONY: cover
-cover:
+cover: ## Write a Go coverage profile to coverage.txt
 	go test ./... -coverprofile=coverage.txt -covermode=atomic
 
 ## Images
@@ -90,7 +105,7 @@ docker-build: ## Build manager and server images
 	docker build --platform $(PLATFORM) --target server  -t $(IMAGE_BASE)/server:$(TAG) .
 
 .PHONY: docker-push
-docker-push:
+docker-push: ## Push manager and server images to the registry
 	docker push $(IMAGE_BASE)/manager:$(TAG)
 	docker push $(IMAGE_BASE)/server:$(TAG)
 
@@ -147,7 +162,7 @@ trino-deploy: trino-secrets keycloak-deploy ## Deploy the single TLS+auth Trino 
 	./hack/trino-deploy.sh
 
 .PHONY: operator-deploy
-operator-deploy: $(if $(filter trino,$(KIND_ENGINE_TYPE)),trino-deploy,kind-deploy) ## Build, load, and install the semantic operator and server
+operator-deploy: $(if $(filter trino,$(KIND_ENGINE_TYPE)),trino-deploy,kind-deploy) ## Build, load into kind, and install the semantic operator and server
 	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
 	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
 	KIND_IMAGE_BASE="$(KIND_IMAGE_BASE)" \
@@ -225,15 +240,20 @@ quickstart: kind-deploy ## Minimal local stack for the Quickstart: plaintext Tri
 	./hack/quickstart.sh
 
 .PHONY: helm-lint
-helm-lint:
-	helm lint charts/semantic-operator
+helm-lint: $(HELM) ## Lint the Helm chart against a valid configuration
+	# Lint a valid configuration: with default values the chart's guardrails
+	# (engine.host required, header auth must be acknowledged) fire during
+	# rendering and drown the output in expected failures.
+	$(HELM) lint charts/semantic-operator \
+	  --set engine.host=lint.example \
+	  --set server.auth.allowInsecureHeaderAuth=true
 
-.PHONY: deploy
-deploy: ## Install/upgrade the chart (override values on the command line)
-	helm upgrade --install semantic-operator charts/semantic-operator \
-	  --namespace semantic-system --create-namespace \
-	  --set server.auth.allowInsecureHeaderAuth=true \
-	  --set image.repository=$(IMAGE_BASE) --set image.tag=$(TAG)
+.PHONY: helm-unittest
+helm-unittest: export HELM_DATA_HOME := $(BIN_DIR)/.helm-data
+helm-unittest: $(HELM) ## Run the Helm chart unit tests (installs the pinned helm-unittest plugin under bin/ if missing)
+	@$(HELM) plugin list 2>/dev/null | grep -q '^unittest' || \
+	  $(HELM) plugin install https://github.com/helm-unittest/helm-unittest.git --version $(HELM_UNITTEST_VERSION) --verify=false
+	$(HELM) unittest charts/semantic-operator
 
 ## Demo and benchmark (see examples/retail/README.md for required env)
 

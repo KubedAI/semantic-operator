@@ -1,0 +1,84 @@
+suite: manager scope and rbac
+# The manager's cache scope and its RBAC come from one value and must agree.
+# Default is the release namespace (a Role, never a ClusterRole). A fixed list
+# issues one Role per namespace. Cluster-wide is a separate, explicit flag that
+# is mutually exclusive with the list.
+release:
+  name: my-release
+  namespace: prod
+templates:
+  - templates/rbac.yaml
+tests:
+  - it: default install issues a namespaced Role in the release namespace and no ClusterRole
+    set:
+      engine.host: engine.example
+      server.auth.allowInsecureHeaderAuth: true
+    asserts:
+      - containsDocument:
+          kind: Role
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: semantic-operator-manager
+          namespace: prod
+          any: true
+      - hasDocuments:
+          count: 0
+          filterAware: true
+        documentSelector:
+          path: kind
+          value: ClusterRole
+          matchMany: true
+          skipEmptyTemplates: true
+
+  - it: a fixed watchNamespaces list issues one Role per namespace and no ClusterRole
+    set:
+      engine.host: engine.example
+      server.auth.allowInsecureHeaderAuth: true
+      manager.watchNamespaces:
+        - analytics
+        - finance
+    asserts:
+      - containsDocument:
+          kind: Role
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: semantic-operator-manager
+          namespace: analytics
+          any: true
+      - containsDocument:
+          kind: Role
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: semantic-operator-manager
+          namespace: finance
+          any: true
+      - hasDocuments:
+          count: 0
+          filterAware: true
+        documentSelector:
+          path: kind
+          value: ClusterRole
+          matchMany: true
+          skipEmptyTemplates: true
+
+  - it: cluster-wide operation grants a ClusterRole
+    set:
+      engine.host: engine.example
+      server.auth.allowInsecureHeaderAuth: true
+      manager.watchAllNamespaces: true
+    asserts:
+      - containsDocument:
+          kind: ClusterRole
+          apiVersion: rbac.authorization.k8s.io/v1
+          name: semantic-operator-manager
+          any: true
+
+  - it: watchAllNamespaces and watchNamespaces are mutually exclusive
+    templates:
+      - templates/rbac.yaml
+    set:
+      engine.host: engine.example
+      server.auth.allowInsecureHeaderAuth: true
+      manager.watchAllNamespaces: true
+      manager.watchNamespaces:
+        - analytics
+    asserts:
+      - failedTemplate:
+          errorPattern: 'mutually exclusive'

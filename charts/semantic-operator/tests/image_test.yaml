@@ -1,0 +1,26 @@
+suite: server image reference
+# The per-component repository is used verbatim with the shared tag, and the
+# old single image.repository key is refused rather than silently ignored.
+templates:
+  - templates/server-deployment.yaml
+tests:
+  - it: builds the server image from image.server.repository and the shared tag
+    set:
+      engine.host: engine.example
+      server.auth.allowInsecureHeaderAuth: true
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: public.ecr.aws/data-on-eks/semantic-operator/server:v0.1.1
+
+  - it: rejects the legacy image.repository key
+    set:
+      engine.host: engine.example
+      server.auth.allowInsecureHeaderAuth: true
+      image.repository: myregistry/foo
+    asserts:
+      - failedTemplate:
+          errorPattern: 'image.repository has been replaced'

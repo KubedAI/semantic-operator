@@ -1,0 +1,41 @@
+suite: server service exposure
+# The server trusts identity headers and expects an authenticating proxy, so
+# the chart refuses any Service type other than ClusterIP unless the operator
+# explicitly opts in to external exposure.
+templates:
+  - templates/server-deployment.yaml
+tests:
+  - it: defaults the server service to ClusterIP
+    set:
+      engine.host: engine.example
+      server.auth.allowInsecureHeaderAuth: true
+    documentSelector:
+      path: kind
+      value: Service
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+
+  - it: refuses to expose the server outside the cluster by default
+    set:
+      engine.host: engine.example
+      server.auth.allowInsecureHeaderAuth: true
+      server.service.type: LoadBalancer
+    asserts:
+      - failedTemplate:
+          errorPattern: 'would publish the semantic server outside the cluster'
+
+  - it: allows external exposure when explicitly opted in
+    set:
+      engine.host: engine.example
+      server.auth.allowInsecureHeaderAuth: true
+      server.service.type: LoadBalancer
+      server.service.allowExternalExposure: true
+    documentSelector:
+      path: kind
+      value: Service
+    asserts:
+      - equal:
+          path: spec.type
+          value: LoadBalancer
