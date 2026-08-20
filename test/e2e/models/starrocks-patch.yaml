@@ -1,0 +1,5 @@
+spec:
+  connection:
+    catalog: default_catalog
+    database: osi_demo
+    viewDatabase: default_catalog.semantic_views

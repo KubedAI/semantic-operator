@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 # Deploy all three engine identity modes as parallel operator releases, one per
 # namespace (sem-static, sem-passthrough, sem-exchange), all sharing the Trino
-# engine and Keycloak in the infra namespace. This is the fixture the per-PR Go
-# e2e asserts against: three stable endpoints, one per mode, with no mode
-# switching mid-test.
+# engine and Keycloak in the infra namespace.
 set -euo pipefail
 
 ROOT_DIR="$(git rev-parse --show-toplevel)"

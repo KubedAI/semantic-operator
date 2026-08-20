@@ -38,7 +38,9 @@ func PassthroughResolver() CredentialResolver {
 func ExchangeResolver(ex *exchange.Exchanger, engineUserClaim string) CredentialResolver {
 	path := strings.Split(engineUserClaim, ".")
 	return func(ctx context.Context, token, engineUser string, _ time.Time) (dbclient.EngineCredential, error) {
-		exchanged, expiry, err := ex.Exchange(ctx, token)
+		// engineUser is the resolved caller principal: a non-secret, stable key
+		// for the exchange cache. The subject token is never used as a key.
+		exchanged, expiry, err := ex.Exchange(ctx, engineUser, token)
 		if err != nil {
 			return dbclient.EngineCredential{}, err
 		}

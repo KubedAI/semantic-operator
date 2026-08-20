@@ -12,3 +12,10 @@ coverage.txt
 .cache/
 .DS_Store
 sources/
+
+Makefile
+hack/
+charts/
+examples/
+.github/
+website/

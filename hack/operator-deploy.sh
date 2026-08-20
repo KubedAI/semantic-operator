@@ -11,15 +11,19 @@ IMAGE_BASE="${KIND_IMAGE_BASE:-semantic-operator-kind}"
 IMAGE_TAG="${KIND_IMAGE_TAG:-local}"
 PLATFORM="${KIND_PLATFORM:-linux/amd64}"
 ENGINE_TYPE="${KIND_ENGINE_TYPE:-trino}"
-VALUES="$ROOT_DIR/test/e2e/helm-values/integration.yaml"
+case "$ENGINE_TYPE" in
+trino)     VALUES="$ROOT_DIR/test/e2e/helm-values/integration.yaml" ;;
+starrocks) VALUES="$ROOT_DIR/test/e2e/helm-values/integration-starrocks.yaml" ;;
+*)         VALUES="$ROOT_DIR/test/e2e/helm-values/integration.yaml" ;;
+esac
 
 KUBECTL=(kubectl --kubeconfig "$KUBECONFIG_PATH" --context "kind-$CLUSTER_NAME" --namespace "$NAMESPACE")
 HELM=(helm --kubeconfig "$KUBECONFIG_PATH" --kube-context "kind-$CLUSTER_NAME")
 MANAGER_IMAGE="$IMAGE_BASE/manager:$IMAGE_TAG"
 SERVER_IMAGE="$IMAGE_BASE/server:$IMAGE_TAG"
 
-if [[ "$ENGINE_TYPE" == trino ]]; then
-  "${KUBECTL[@]}" rollout status deployment/trino --timeout=5m
+if [[ "$ENGINE_TYPE" == trino || "$ENGINE_TYPE" == starrocks ]]; then
+  "${KUBECTL[@]}" rollout status "deployment/$ENGINE_TYPE" --timeout=5m
 fi
 
 make -C "$ROOT_DIR" docker-build \

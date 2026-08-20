@@ -1,0 +1,118 @@
+# Minimal single-node StarRocks for local development in kind.
+#
+# One allin1 container runs the FE and BE together in shared-nothing mode (the
+# image default, no object storage needed). This is a throwaway dev engine:
+# storage is the container's ephemeral filesystem, so data is lost when the pod
+# restarts. It is not a production topology.
+#
+# The image reference is substituted by hack/starrocks-deploy.sh from
+# KIND_STARROCKS_IMAGE; pin that by digest for an immutable image.
+# Ports: 9030 is the MySQL-protocol query port the semantic layer connects to;
+# 8080 is the feproxy HTTP port used by stream load (make demo-data). The FE
+# serves SSL on 9030 (self-signed, via the fe-tls-init initContainer) so token
+# passthrough, which sends the JWT over TLS, can connect.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: starrocks
+  labels:
+    app: starrocks
+spec:
+  replicas: 1
+  # One instance on ephemeral storage; never run two pods against it at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: starrocks
+  template:
+    metadata:
+      labels:
+        app: starrocks
+    spec:
+      initContainers:
+        # Seed the FE config dir that the main container mounts, then add a
+        # self-signed keystore and enable SSL on the MySQL protocol. SSL is
+        # available but not forced (ssl_force_secure_transport stays false), so
+        # static non-TLS connections still work.
+        - name: fe-tls-init
+          image: STARROCKS_IMAGE_REF
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              cp -a /data/deploy/starrocks/fe/conf/. /fe-conf/
+              rm -f /fe-conf/fe_ssl.keystore
+              keytool -genkeypair -alias starrocks -keyalg RSA -keysize 2048 \
+                -validity 3650 -dname "CN=starrocks" \
+                -keypass changeit -storepass changeit \
+                -keystore /fe-conf/fe_ssl.keystore
+              {
+                echo ""
+                echo "ssl_keystore_location = /data/deploy/starrocks/fe/conf/fe_ssl.keystore"
+                echo "ssl_keystore_password = changeit"
+                echo "ssl_key_password = changeit"
+              } >> /fe-conf/fe.conf
+          volumeMounts:
+            - name: fe-conf
+              mountPath: /fe-conf
+      containers:
+        - name: allin1
+          # Substituted with the digest-pinned ref by hack/starrocks-deploy.sh.
+          image: STARROCKS_IMAGE_REF
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9030
+              name: query
+            - containerPort: 8080
+              name: http
+          # A running pod is not a query-ready cluster: the BE has to register
+          # with the FE first. Gate readiness on a live backend so a successful
+          # rollout means StarRocks can actually serve queries.
+          readinessProbe:
+            exec:
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  mysql -uroot -h127.0.0.1 -P9030 -e 'SHOW BACKENDS\G' | grep -q 'Alive: true'
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
+          # StarRocks bundles a JVM front end and a C++ backend, so it wants
+          # several GB. The Docker VM backing kind must have headroom above the
+          # limit or the backend is OOM-killed before it registers.
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 3Gi
+            limits:
+              memory: 6Gi
+          volumeMounts:
+            - name: fe-conf
+              mountPath: /data/deploy/starrocks/fe/conf
+      volumes:
+        # Populated by fe-tls-init (baked conf + keystore + SSL settings), then
+        # mounted over the FE config dir.
+        - name: fe-conf
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: starrocks
+  labels:
+    app: starrocks
+spec:
+  selector:
+    app: starrocks
+  ports:
+    - name: query
+      port: 9030
+      targetPort: query
+    - name: http
+      port: 8080
+      targetPort: http

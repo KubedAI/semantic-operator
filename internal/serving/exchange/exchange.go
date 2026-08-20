@@ -8,8 +8,6 @@ package exchange
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -55,7 +53,9 @@ type Options struct {
 }
 
 // Exchanger exchanges a caller access token for an engine-audience token and
-// caches the result by subject token until shortly before expiry.
+// caches the result by the caller principal (a non-secret cache key) until
+// shortly before expiry. The caller's subject token is never used as or mixed
+// into a cache key.
 type Exchanger struct {
 	cfg        *oauth2.Config
 	httpClient *http.Client
@@ -115,24 +115,28 @@ func New(o Options) (*Exchanger, error) {
 	}, nil
 }
 
-// Exchange returns an engine-audience access token for the given caller token,
-// serving a cached token when one is still valid.
-func (e *Exchanger) Exchange(ctx context.Context, subjectToken string) (string, time.Time, error) {
+// Exchange returns an engine-audience access token for the caller identified by
+// cacheKey, serving a cached token when one is still valid. cacheKey must be a
+// non-secret, stable caller identifier (the resolved engine principal); the
+// subject token is the exchange input only and is never used as a cache key. An
+// empty cacheKey disables caching for the call.
+func (e *Exchanger) Exchange(ctx context.Context, cacheKey, subjectToken string) (string, time.Time, error) {
 	if subjectToken == "" {
 		return "", time.Time{}, errors.New("exchange: subject token is empty")
 	}
-	key := hash(subjectToken)
 	now := time.Now()
 
-	e.mu.Lock()
-	if c, ok := e.cache[key]; ok {
-		if now.Before(c.expiry.Add(-refreshMargin)) {
-			e.mu.Unlock()
-			return c.token, c.expiry, nil
+	if cacheKey != "" {
+		e.mu.Lock()
+		if c, ok := e.cache[cacheKey]; ok {
+			if now.Before(c.expiry.Add(-refreshMargin)) {
+				e.mu.Unlock()
+				return c.token, c.expiry, nil
+			}
+			delete(e.cache, cacheKey)
 		}
-		delete(e.cache, key)
+		e.mu.Unlock()
 	}
-	e.mu.Unlock()
 
 	reqCtx := context.WithValue(ctx, oauth2.HTTPClient, e.httpClient)
 	tok, err := e.cfg.Exchange(reqCtx, "",
@@ -141,30 +145,39 @@ func (e *Exchanger) Exchange(ctx context.Context, subjectToken string) (string, 
 		oauth2.SetAuthURLParam("subject_token_type", accessTokenType),
 	)
 	if err != nil {
-		// The authorization server's error can include its response body, which
-		// may carry sensitive detail. Log it server-side and return a generic
-		// error to the caller.
-		e.log.Error("token exchange failed", "err", err)
+		// oauth2.RetrieveError.Error embeds the raw response body when the
+		// server returns no RFC 6749 error code, and a reflecting or
+		// misconfigured endpoint could echo the subject token there. Log only
+		// non-reflective fields, never the raw error, body, or description.
+		var rerr *oauth2.RetrieveError
+		if errors.As(err, &rerr) {
+			status := 0
+			if rerr.Response != nil {
+				status = rerr.Response.StatusCode
+			}
+			e.log.Error("token exchange failed", "status", status, "oauthError", rerr.ErrorCode)
+		} else {
+			// Transport errors reference the endpoint, not the request body that
+			// carries the subject token, so they are safe to log.
+			e.log.Error("token exchange failed", "err", err)
+		}
 		return "", time.Time{}, ErrExchangeFailed
 	}
 	if tok.AccessToken == "" {
 		return "", time.Time{}, errors.New("exchange: authorization server returned no access token")
 	}
 
-	e.mu.Lock()
-	// Opportunistically drop expired entries so the cache cannot grow without
-	// bound as caller tokens rotate.
-	for k, c := range e.cache {
-		if !now.Before(c.expiry) {
-			delete(e.cache, k)
+	if cacheKey != "" {
+		e.mu.Lock()
+		// Opportunistically drop expired entries so the cache cannot grow without
+		// bound as callers come and go.
+		for k, c := range e.cache {
+			if !now.Before(c.expiry) {
+				delete(e.cache, k)
+			}
 		}
+		e.cache[cacheKey] = entry{token: tok.AccessToken, expiry: tok.Expiry}
+		e.mu.Unlock()
 	}
-	e.cache[key] = entry{token: tok.AccessToken, expiry: tok.Expiry}
-	e.mu.Unlock()
 	return tok.AccessToken, tok.Expiry, nil
-}
-
-func hash(s string) string {
-	sum := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(sum[:])
 }

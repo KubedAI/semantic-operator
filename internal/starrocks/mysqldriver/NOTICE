@@ -1,0 +1,45 @@
+# NOTICE
+
+This directory is a vendored, minimally modified copy of the Go MySQL driver.
+
+- Upstream project: go-sql-driver/mysql
+- Upstream source: https://github.com/go-sql-driver/mysql
+- Vendored version: v1.10.0
+- License: Mozilla Public License 2.0 (see LICENSE in this directory)
+- Copyright: The Go-MySQL-Driver Authors (see AUTHORS in this directory)
+
+## Why it is vendored
+
+The driver has no mechanism to register a custom authentication plugin. Its
+auth handshake is a fixed switch over built-in plugin names. StarRocks
+authenticates a JWT user through a custom client plugin,
+`authentication_openid_connect_client`, which the upstream driver does not
+implement. Adding it requires editing the driver source, so a minimal in-tree
+fork is the only option. The project points at exactly one MySQL driver; this
+copy replaces the upstream dependency for the StarRocks client.
+
+## Modifications by KubedAI (semantic-operator)
+
+Under MPL 2.0, modified files remain under MPL 2.0 and their source is
+available here. The changes are:
+
+1. driver.go — the driver registers with database/sql under the name
+   `starrocks-mysql` instead of `mysql`, so this fork never collides with an
+   upstream driver that may also be linked.
+2. auth.go — added the `authentication_openid_connect_client` case to the
+   `auth()` switch. It emits one capability byte followed by the
+   length-encoded JWT, which is the format
+   StarRocks `JWTAuthenticationProvider` reads. The token is carried in the
+   DSN password field.
+3. auth_openid_test.go — added tests that assert the plugin wire format, to
+   guard the change across future rebases.
+
+Each modified source file keeps its original MPL 2.0 header and carries an
+inline "MODIFIED by KubedAI" marker at the change site.
+
+## Maintenance
+
+This copy is pinned at v1.10.0. Rebase only when an upstream fix is needed.
+To rebase: replace the tree with the new upstream tag, reapply the three
+changes above, and run the tests. The durable fix is to upstream the plugin
+to go-sql-driver/mysql and retire this fork.

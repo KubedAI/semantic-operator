@@ -1,0 +1,31 @@
+image:
+  pullPolicy: IfNotPresent
+
+# The e2e runs on an isolated kind cluster and drives the server by
+# port-forward, so no NetworkPolicy is applied.
+networkPolicy:
+  enabled: false
+
+server:
+  replicas: 1
+  auth:
+    mode: header
+    allowInsecureHeaderAuth: true
+
+# Single-node StarRocks (allin1) engine. The manager and server authenticate
+# with static passwords; queries run under the server's own identity (static
+# mode) and governance is enforced by the built-in roles in the model.
+engine:
+  type: starrocks
+  host: starrocks.semantic-system.svc.cluster.local
+  port: 9030
+  manager:
+    user: semantic-manager
+    passwordSecret:
+      name: engine-manager-cred
+      key: password
+  server:
+    user: semantic-server
+    passwordSecret:
+      name: engine-server-cred
+      key: password

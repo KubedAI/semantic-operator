@@ -17,15 +17,23 @@ KIND_KUBECONFIG   ?= $(CURDIR)/.kube/config
 KIND_IMAGE_BASE   ?= semantic-operator-kind
 KIND_IMAGE_TAG    ?= local
 KIND_NAMESPACE    ?= semantic-system
-KIND_ENGINE_TYPE  ?= trino
+KIND_ENGINE_TYPE  ?= trino # or starrocks
 AUTH_IDENTITY_MODE ?= static
 KIND_TRINO_LOCAL_PORT ?= 18080
+KIND_STARROCKS_LOCAL_PORT ?= 19030
 KIND_NODE_IMAGE       ?=
 KIND_RELEASE_NAME     ?= semantic-operator
 KIND_RANGER_ADMIN_IMAGE      ?= apache/ranger:2.9.0
 KIND_RANGER_DB_IMAGE         ?= postgres:16
 KIND_RANGER_PDP_IMAGE        ?= semantic-ranger-pdp:2.9.0
 KIND_RANGER_ADMIN_LOCAL_PORT ?= 16080
+# Pin by digest (repo:tag@sha256:...) for an immutable engine image.
+KIND_STARROCKS_IMAGE         ?= starrocks/allin1-ubuntu:4.0.13
+STARROCKS_MANAGER_USER       ?= semantic-manager
+STARROCKS_MANAGER_PASSWORD   ?= manager
+STARROCKS_SERVER_USER        ?= semantic-server
+STARROCKS_SERVER_PASSWORD    ?= server
+STARROCKS_JWT_AUDIENCE       ?= starrocks
 
 BIN_DIR ?= $(CURDIR)/bin
 CONTROLLER_GEN := $(BIN_DIR)/controller-gen
@@ -162,7 +170,7 @@ trino-deploy: trino-secrets keycloak-deploy ## Deploy the single TLS+auth Trino 
 	./hack/trino-deploy.sh
 
 .PHONY: operator-deploy
-operator-deploy: $(if $(filter trino,$(KIND_ENGINE_TYPE)),trino-deploy,kind-deploy) ## Build, load into kind, and install the semantic operator and server
+operator-deploy: $(if $(filter trino,$(KIND_ENGINE_TYPE)),trino-deploy,$(if $(filter starrocks,$(KIND_ENGINE_TYPE)),starrocks-deploy,kind-deploy)) ## Build, load into kind, and install the semantic operator and server
 	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
 	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
 	KIND_IMAGE_BASE="$(KIND_IMAGE_BASE)" \
@@ -196,6 +204,19 @@ auth-e2e: trino-deploy ## Deploy all three identity modes as parallel releases (
 	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
 	./hack/auth-e2e.sh
 
+.PHONY: starrocks-deploy
+starrocks-deploy: kind-deploy keycloak-deploy ## Deploy a single-node StarRocks (allin1, shared-nothing) to kind with static + OIDC/JWT auth
+	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
+	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
+	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
+	KIND_STARROCKS_IMAGE="$(KIND_STARROCKS_IMAGE)" \
+	STARROCKS_MANAGER_USER="$(STARROCKS_MANAGER_USER)" \
+	STARROCKS_MANAGER_PASSWORD="$(STARROCKS_MANAGER_PASSWORD)" \
+	STARROCKS_SERVER_USER="$(STARROCKS_SERVER_USER)" \
+	STARROCKS_SERVER_PASSWORD="$(STARROCKS_SERVER_PASSWORD)" \
+	STARROCKS_JWT_AUDIENCE="$(STARROCKS_JWT_AUDIENCE)" \
+	./hack/starrocks-deploy.sh
+
 .PHONY: ranger-deploy
 ranger-deploy: kind-deploy ## Deploy a minimal Apache Ranger Admin and PDP stack to kind
 	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
@@ -216,11 +237,13 @@ opa-deploy: operator-deploy ## Deploy the pinned OPA image and retail example po
 	./hack/opa-deploy.sh
 
 .PHONY: models-deploy
-models-deploy: opa-deploy ## Load retail data into Trino and deploy the Trino/OPA E2E model
+models-deploy: $(if $(filter trino,$(KIND_ENGINE_TYPE)),opa-deploy,operator-deploy) ## Load retail data and publish the E2E model for KIND_ENGINE_TYPE (trino or starrocks)
 	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
 	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
 	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
+	KIND_ENGINE_TYPE="$(KIND_ENGINE_TYPE)" \
 	KIND_TRINO_LOCAL_PORT="$(KIND_TRINO_LOCAL_PORT)" \
+	KIND_STARROCKS_LOCAL_PORT="$(KIND_STARROCKS_LOCAL_PORT)" \
 	./hack/models-deploy.sh
 
 .PHONY: e2e
