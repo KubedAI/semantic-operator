@@ -403,7 +403,6 @@ func (mc *mysqlConn) handleAuthResult(oldAuthData []byte, plugin string) error {
 	}
 
 	switch plugin {
-
 	// https://dev.mysql.com/blog-archive/preparing-your-community-connector-for-mysql-8-part-2-sha256/
 	case "caching_sha2_password":
 		switch len(authData) {

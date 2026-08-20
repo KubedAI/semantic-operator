@@ -18,6 +18,9 @@ linters:
         - -ST1000
   exclusions:
     generated: lax
+    paths:
+      # Vendored go-sql-driver/mysql (see mysqldriver/NOTICE).
+      - internal/starrocks/mysqldriver/[^a].*\.go$
     rules:
       - path: 'api/v1alpha1/groupversion_info.go'
         linters:
@@ -27,4 +30,6 @@ formatters:
   enable:
     - gofmt
     - goimports
-
+  exclusions:
+    paths:
+      - internal/starrocks/mysqldriver/[^a].*\.go$

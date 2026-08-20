@@ -17,7 +17,7 @@ func TestQueryRejectsExpiredToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	cred := dbclient.EngineCredential{
 		Token:      "header.payload.sig",
@@ -35,7 +35,7 @@ func TestQueryRejectsMissingEngineUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	cred := dbclient.EngineCredential{Token: "header.payload.sig"} // no EngineUser
 	_, _, err = c.Query(context.Background(), cred, "SELECT 1")
@@ -49,7 +49,7 @@ func TestQueryRequiresTLSForPassthrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	cred := dbclient.EngineCredential{Token: "header.payload.sig", EngineUser: "alice"}
 	_, _, err = c.Query(context.Background(), cred, "SELECT 1")
@@ -63,7 +63,7 @@ func TestClientSupportsPerRequestIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	if _, ok := any(c).(dbclient.PerRequestIdentityClient); !ok {
 		t.Fatal("StarRocks client must implement dbclient.PerRequestIdentityClient")
