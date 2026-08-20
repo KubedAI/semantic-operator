@@ -12,7 +12,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -28,7 +28,7 @@ jobs:
   helm:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
       # helm itself is pinned in the Makefile (HELM_VERSION) and downloaded into
       # bin/, so CI and local runs lint and unit test the chart with the same
       # helm. The chart's behaviour is asserted by the unit tests in
@@ -42,7 +42,7 @@ jobs:
   image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
       - name: Build images (no push)
         run: |
           docker build --target manager -t manager:ci .
