@@ -57,28 +57,22 @@ this needs no warehouse of your own and no extra S3 grant. Trino writes the
 Parquet and Iceberg metadata to the warehouse its `iceberg` catalog is already
 configured with, and Glue tracks the tables.
 
-Set `GLUE_SCHEMA` if `osi_demo` is taken in your Glue catalog.
+Set `GLUE_SCHEMA` if `osi_demo` is taken in your Glue catalog. The model in Stage 4 binds to
+`osi_demo`, so if you change `GLUE_SCHEMA` you must set the model's `spec.connection.database`
+to the same value before you apply it.
 
 <details>
 <summary>Expected output</summary>
 
 ```
 [data-load] creating schema iceberg.osi_demo
-CREATE SCHEMA
 [data-load] loading date_dim (2000-2002)
-CREATE TABLE: 1096 rows
 [data-load] loading item
-CREATE TABLE: 18000 rows
 [data-load] loading customer
-CREATE TABLE: 100000 rows
 [data-load] loading store
-CREATE TABLE: 12 rows
 [data-load] loading store_sales (the big one, a few minutes)
-CREATE TABLE: 1591154 rows
 [data-load] spreading stores with sales across two states
-UPDATE: 12 rows
 [data-load]   TX stores: 2,7,10
-UPDATE: 3 rows
 [data-load] verify: row counts
 "customer","100000"
 "date_dim","1096"
@@ -90,9 +84,9 @@ UPDATE: 3 rows
 "TX","3","794348"
 ```
 
-On a re-run the `CREATE TABLE` lines report `0 rows`, which is the
-`IF NOT EXISTS` idempotency, not a failure. Both states must show a non-zero
-sales count or the row-filter check below returns nothing.
+On a re-run the tables already exist, so `IF NOT EXISTS` skips the loads and the
+verify counts stay the same. Both states must show a non-zero sales count or the
+row-filter check below returns nothing.
 
 </details>
 

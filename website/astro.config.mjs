@@ -77,7 +77,7 @@ export default defineConfig({
           { label: 'Retail on Glue and StarRocks', slug: 'examples/glue-starrocks' },
           { label: 'Retail on Glue and Trino', slug: 'examples/glue-trino' },
           { label: 'DataHub, Polaris and Trino', slug: 'examples/datahub-polaris-trino' },
-          { label: 'Everything on your laptop', slug: 'examples/kind' },
+          { label: 'Everything on your laptop', slug: 'examples/datahub-polaris-starrocks' },
           { label: 'See identity propagation by hand', slug: 'examples/identity-walkthrough' },
           { label: 'Govern a model with OPA', slug: 'examples/opa-governance' },
           { label: 'The flights model', slug: 'examples/flights' },

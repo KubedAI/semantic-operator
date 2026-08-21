@@ -59,25 +59,27 @@ These are the chart defaults, so a plain `helm install` pulls them and no image
 flags are needed.
 
 To run a build of your own instead, push to any registry your cluster can pull
-from. The chart uses each repository exactly as you write it, so the two images
-can live anywhere and need not share a path.
+from. The `docker-push` target builds both images under
+`<your-registry>/semantic-operator/`.
 
 ```bash
 make docker-build docker-push REGISTRY=<your-registry> TAG=<tag>
 ```
 
-Then point the chart at them.
+Then point the chart at them. The chart uses each repository exactly as you
+write it, so match the paths the push produced.
 
 ```bash
---set image.manager.repository=<your-registry>/manager \
---set image.server.repository=<your-registry>/server \
+--set image.manager.repository=<your-registry>/semantic-operator/manager \
+--set image.server.repository=<your-registry>/semantic-operator/server \
 --set image.tag=<tag>
 ```
 
-For Amazon ECR, authenticate first and create the repositories once.
+For Amazon ECR, authenticate first and create the repositories once. Pass the
+region, which the ECR targets read from `AWS_REGION`.
 
 ```bash
-make ecr-create ecr-login REGISTRY=<acct>.dkr.ecr.<region>.amazonaws.com
+make ecr-create ecr-login REGISTRY=<acct>.dkr.ecr.<region>.amazonaws.com AWS_REGION=<region>
 ```
 
 Use the same `TAG` value in the Helm install. A tag mismatch is the most common reason a

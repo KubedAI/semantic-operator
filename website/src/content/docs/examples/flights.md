@@ -14,11 +14,11 @@ Adapted from the upstream Apache Ossie flights example:
 <https://github.com/apache/ossie/blob/main/examples/flights.yaml>.
 
 That file uses Ossie's **`ontology` / `ontology_mappings`** representation. This
-operator implements the **`semantic_model`** form (`osi.datasets` /
-`relationships` / `metrics`), so `semanticmodel.yaml` here is a faithful
+operator implements the **`semantic_model`** form (`ossie.datasets` /
+`ossie.relationships` / `ossie.metrics`), so `semanticmodel.yaml` here is a faithful
 re-expression of the same flights domain in the form our validator and planner
-consume. (Ontology-form support is intentionally out of scope. See
-`docs/ARCHITECTURE.md`.)
+consume. Ontology-form support is intentionally out of scope. See
+[Semantic layers and ontologies](/architecture/ontology).
 
 ## How it binds to Glue
 
@@ -34,7 +34,7 @@ Each `dataset.source` is a bare table name that the operator resolves against
 `spec.connection` to `iceberg.osi_flights.<table>`. So `source: flights` binds
 to `iceberg.osi_flights.flights`, backed by an Iceberg table registered in the
 Glue Data Catalog. A fully-qualified `source` (`db.schema.table`) is used as-is.
-this keeps the Ossie document portable while the CR pins the binding.
+This keeps the Ossie document portable while the CR pins the binding.
 
 **Same table, two roles.** `orig_airport` and `dest_airport` are two datasets
 that both set `source: airports`. They bind to the *same* physical Glue table
@@ -65,9 +65,9 @@ go run ./cmd/ossiectl derive -region us-west-2 -database osi_flights -out flight
 
 To run it end to end, create the `osi_flights` Glue database and the
 `flights / carriers / routes / airports` Iceberg tables (via StarRocks INSERTs,
-Spark, or your own pipeline), then `kubectl apply -f semanticmodel.yaml` and
-query it exactly like the retail example (see
-[`./retail/README.md`](/examples/glue-starrocks)). A loader is not included for this
+Spark, or your own pipeline), then `kubectl apply -f examples/flights/semanticmodel.yaml`
+and query it exactly like the retail example, described in
+[Retail on Glue and StarRocks](/examples/glue-starrocks). A loader is not included for this
 example.
 
 ## What it defines

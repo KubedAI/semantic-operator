@@ -18,7 +18,7 @@ Start with [Prerequisites](/examples/prerequisites), which every walkthrough ass
 | [Retail on Glue and StarRocks](/examples/glue-starrocks) | AWS Glue | StarRocks | The reference path. Start here if you have no strong preference. |
 | [Retail on Glue and Trino](/examples/glue-trino) | AWS Glue | Trino | You already run Trino, or you want to see engine portability proved. |
 | [DataHub, Polaris and Trino](/examples/datahub-polaris-trino) | Apache Polaris | Trino | An open lakehouse with a metadata platform supplying business meaning. |
-| [Everything on your laptop](/examples/kind) | Apache Polaris | StarRocks | Trying the whole thing locally with no cloud account. |
+| [Everything on your laptop](/examples/datahub-polaris-starrocks) | Apache Polaris | StarRocks | Trying the whole thing locally with no cloud account. |
 
 ## What each walkthrough proves
 
