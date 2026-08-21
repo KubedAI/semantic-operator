@@ -5,7 +5,7 @@ import (
 	"math/rand/v2"
 	"strings"
 
-	"chd.local/datagen/constants"
+	"account-demo.local/datagen/constants"
 )
 
 const firstSupportTicketID int64 = 2_000_001

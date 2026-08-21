@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"chd.local/datagen/constants"
+	"account-demo.local/datagen/constants"
 )
 
 const firstAccountID int64 = 1001

@@ -8,6 +8,9 @@
 # and Postgres (Polaris catalog + DataHub metadata) survive `kind delete`. The
 # loaded dataset is only reusable if BOTH persist together, so they share the
 # one mount.
+#
+# Every host mapping is explicitly loopback-only. These ports are for local
+# development and SSH-forwarded demos; the HTTPS gateway is the normal user path.
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
@@ -17,18 +20,20 @@ nodes:
         containerPath: /mnt/local-data
     extraPortMappings:
       # Garage S3 API (StarRocks/Polaris reach it in-cluster; host access for debug)
-      - { containerPort: 30390, hostPort: 3900, protocol: TCP }
+      - { containerPort: 30390, hostPort: 3900, listenAddress: "127.0.0.1", protocol: TCP }
       # Polaris REST catalog
-      - { containerPort: 30818, hostPort: 8181, protocol: TCP }
+      - { containerPort: 30818, hostPort: 8181, listenAddress: "127.0.0.1", protocol: TCP }
       # StarRocks FE MySQL protocol (loader / BI / operator from host)
-      - { containerPort: 30903, hostPort: 9030, protocol: TCP }
+      - { containerPort: 30903, hostPort: 9030, listenAddress: "127.0.0.1", protocol: TCP }
       # StarRocks FE HTTP
-      - { containerPort: 30803, hostPort: 8030, protocol: TCP }
+      - { containerPort: 30803, hostPort: 8030, listenAddress: "127.0.0.1", protocol: TCP }
       # Semantic Operator server (MCP + REST) — the host agent connects here
-      - { containerPort: 30809, hostPort: 8090, protocol: TCP }
+      - { containerPort: 30809, hostPort: 8090, listenAddress: "127.0.0.1", protocol: TCP }
       # DataHub GMS (metadata API)
-      - { containerPort: 30808, hostPort: 8080, protocol: TCP }
+      - { containerPort: 30808, hostPort: 8080, listenAddress: "127.0.0.1", protocol: TCP }
       # DataHub MCP server (the host agent connects here)
-      - { containerPort: 30811, hostPort: 8091, protocol: TCP }
-      # DataHub frontend UI
-      - { containerPort: 30902, hostPort: 9002, protocol: TCP }
+      - { containerPort: 30811, hostPort: 8091, listenAddress: "127.0.0.1", protocol: TCP }
+      # DataHub frontend UI debug path
+      - { containerPort: 30902, hostPort: 9002, listenAddress: "127.0.0.1", protocol: TCP }
+      # Normal HTTPS entry point (Caddy gateway)
+      - { containerPort: 30443, hostPort: 8443, listenAddress: "127.0.0.1", protocol: TCP }

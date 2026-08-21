@@ -54,134 +54,337 @@
     {
       "id": "data-platform",
       "name": "Data Platform Team",
-      "description": "Technical owner for shared dimensions and all customer-health transformation jobs."
+      "description": "Technical owner for shared dimensions and all SaaS account transformation jobs."
     }
   ],
   "glossary_nodes": [
     {
-      "id": "revenue-metrics",
-      "name": "Revenue Metrics",
-      "description": "Certified recurring-revenue, retention, and renewal concepts."
+      "id": "customer-account-management",
+      "name": "Customer and Account Management",
+      "description": "Canonical customer, account, segmentation, and lifecycle concepts."
     },
     {
-      "id": "adoption-metrics",
-      "name": "Adoption Metrics",
-      "description": "Certified product activity, seat utilization, and feature adoption concepts."
+      "id": "revenue-finance",
+      "name": "Revenue and Finance",
+      "description": "Canonical recurring-revenue, retention, contract, subscription, and renewal concepts."
     },
     {
-      "id": "support-metrics",
-      "name": "Support Metrics",
-      "description": "Certified support volume, escalation, SLA, and response-time concepts."
+      "id": "product-adoption",
+      "name": "Product and Adoption",
+      "description": "Canonical product activity, licensed-capacity, entitlement, and adoption concepts."
     },
     {
-      "id": "customer-concepts",
-      "name": "Customer Concepts",
-      "description": "Shared account segmentation and lifecycle concepts."
+      "id": "customer-support",
+      "name": "Customer Support",
+      "description": "Canonical support volume, escalation, SLA, and response-time concepts."
+    },
+    {
+      "id": "data-classification",
+      "name": "Data Classification",
+      "description": "Governed information-sensitivity and personal-data classifications."
     }
   ],
   "glossary_terms": [
     {
       "id": "mrr",
-      "name": "MRR",
+      "name": "Monthly Recurring Revenue",
       "definition": "Monthly recurring revenue at the fixed current subscription snapshot; historical rows contribute zero to the certified current metric.",
-      "node": "revenue-metrics"
+      "node": "revenue-finance"
     },
     {
       "id": "arr",
-      "name": "ARR",
+      "name": "Annual Recurring Revenue",
       "definition": "Annual recurring revenue at the fixed current subscription snapshot, calculated as current monthly recurring revenue multiplied by twelve.",
-      "node": "revenue-metrics"
+      "node": "revenue-finance"
     },
     {
       "id": "grr",
-      "name": "GRR",
+      "name": "Gross Revenue Retention",
       "definition": "Gross revenue retention for the fixed baseline cohort: retained MRR divided by starting MRR, excluding expansion and new business and retaining churn as zero.",
-      "node": "revenue-metrics"
+      "node": "revenue-finance"
     },
     {
       "id": "nrr",
-      "name": "NRR",
+      "name": "Net Revenue Retention",
       "definition": "Net revenue retention for the fixed baseline cohort: ending MRR divided by starting MRR, including contraction and expansion while excluding new business.",
-      "node": "revenue-metrics"
+      "node": "revenue-finance"
     },
     {
       "id": "active-user",
-      "name": "Active user",
+      "name": "Active User",
       "definition": "A globally unique account user with qualifying product activity in the fixed 30-day current window.",
-      "node": "adoption-metrics"
+      "node": "product-adoption"
     },
     {
       "id": "active-account",
-      "name": "Active account",
+      "name": "Active Account",
       "definition": "A distinct customer account with qualifying product activity in the fixed 30-day current window.",
-      "node": "adoption-metrics"
+      "node": "customer-account-management"
     },
     {
       "id": "licensed-seat-utilization",
-      "name": "Licensed-seat utilization",
+      "name": "Licensed Seat Utilization",
       "definition": "Distinct active account-user-feature seat assignments divided by current licensed seats at account-feature grain; current unsnapshotted capacity means this metric does not support date dimensions.",
-      "node": "adoption-metrics"
+      "node": "product-adoption"
     },
     {
       "id": "feature-adoption",
-      "name": "Feature adoption",
+      "name": "Feature Adoption Rate",
       "definition": "Current adopted eligible seats divided by current eligible seats at account-feature grain; current unsnapshotted capacity means this metric does not support date dimensions.",
-      "node": "adoption-metrics"
+      "node": "product-adoption"
     },
     {
       "id": "escalation",
-      "name": "Escalation",
+      "name": "Escalation Rate",
       "definition": "The share of available current-period support tickets marked escalated at the support observation cutoff.",
-      "node": "support-metrics"
+      "node": "customer-support"
     },
     {
       "id": "sla-attainment",
-      "name": "SLA attainment",
+      "name": "SLA Attainment Rate",
       "definition": "The share of available current-period support tickets whose service-level target was met at the support observation cutoff.",
-      "node": "support-metrics"
+      "node": "customer-support"
     },
     {
       "id": "first-response",
-      "name": "First response",
+      "name": "Average First Response Time",
       "definition": "Elapsed hours from ticket creation to the first support response; the certified metric is the mean over available current-period observations.",
-      "node": "support-metrics"
+      "node": "customer-support"
     },
     {
       "id": "resolution-time",
-      "name": "Resolution time",
+      "name": "Average Resolution Time",
       "definition": "Elapsed hours from ticket creation to resolution; the certified mean excludes unresolved and non-current tickets.",
-      "node": "support-metrics"
+      "node": "customer-support"
     },
     {
       "id": "renewal-window",
-      "name": "Renewal window",
+      "name": "Renewal Window",
       "definition": "The half-open period from 2026-07-01 through 2026-10-01 used to identify current ARR approaching renewal.",
-      "node": "revenue-metrics"
+      "node": "revenue-finance"
     },
     {
       "id": "enterprise-account",
-      "name": "Enterprise account",
+      "name": "Enterprise Account",
       "definition": "A customer account whose governed account segment is Enterprise.",
-      "node": "customer-concepts"
+      "node": "customer-account-management"
+    },
+    {
+      "id": "personally-identifiable-information",
+      "name": "Personally Identifiable Information",
+      "definition": "Data that identifies or can reasonably be linked to an individual; in this demo it covers synthetic customer-contact fields and potentially identifying support content.",
+      "node": "data-classification"
+    },
+    {
+      "id": "confidential-information",
+      "name": "Confidential Information",
+      "definition": "Non-public commercially sensitive data requiring restricted handling; in this demo it covers negotiated contract terms.",
+      "node": "data-classification"
+    },
+    {
+      "id": "public-information",
+      "name": "Public Information",
+      "definition": "Information approved for unrestricted public disclosure and sharing outside the organization.",
+      "node": "data-classification"
+    },
+    {
+      "id": "internal-information",
+      "name": "Internal Information",
+      "definition": "Non-public information intended for routine use within the organization and approved internal audiences.",
+      "node": "data-classification"
+    },
+    {
+      "id": "customer-account",
+      "name": "Customer Account",
+      "definition": "A company or organization represented by a commercial customer account.",
+      "node": "customer-account-management"
+    },
+    {
+      "id": "primary-contact",
+      "name": "Primary Contact",
+      "definition": "The current person designated as the main business contact for a customer account.",
+      "node": "customer-account-management"
+    },
+    {
+      "id": "customer-segment",
+      "name": "Customer Segment",
+      "definition": "A governed commercial grouping used to categorize customer accounts, such as Enterprise, Mid-Market, or SMB.",
+      "node": "customer-account-management"
+    },
+    {
+      "id": "customer-region",
+      "name": "Customer Region",
+      "definition": "The governed geographic region assigned to a customer account.",
+      "node": "customer-account-management"
+    },
+    {
+      "id": "customer-success-team",
+      "name": "Customer Success Team",
+      "definition": "The team responsible for managing the health and success of a customer account.",
+      "node": "customer-account-management"
+    },
+    {
+      "id": "lifecycle-status",
+      "name": "Lifecycle Status",
+      "definition": "The current stage of a customer account in its commercial lifecycle.",
+      "node": "customer-account-management"
+    },
+    {
+      "id": "renewal-date",
+      "name": "Renewal Date",
+      "definition": "The date on which a customer account or governing contract is expected to renew.",
+      "node": "customer-account-management"
+    },
+    {
+      "id": "plan",
+      "name": "Plan",
+      "definition": "A named SaaS product offering or SKU defined by product family and commercial tier.",
+      "node": "revenue-finance"
+    },
+    {
+      "id": "contract",
+      "name": "Contract",
+      "definition": "A versioned commercial agreement governing an account subscription and its term.",
+      "node": "revenue-finance"
+    },
+    {
+      "id": "subscription",
+      "name": "Subscription",
+      "definition": "A recurring customer entitlement to a SaaS plan under a governing contract.",
+      "node": "revenue-finance"
+    },
+    {
+      "id": "subscription-status",
+      "name": "Subscription Status",
+      "definition": "The state of a subscription at a monthly snapshot.",
+      "node": "revenue-finance"
+    },
+    {
+      "id": "contract-value",
+      "name": "Contract Value",
+      "definition": "The calculated commercial value of a contract over its term after negotiated discount.",
+      "node": "revenue-finance"
+    },
+    {
+      "id": "negotiated-discount",
+      "name": "Negotiated Discount",
+      "definition": "The contract-specific percentage reduction applied to the negotiated annual rate.",
+      "node": "revenue-finance"
+    },
+    {
+      "id": "current-subscription-snapshot",
+      "name": "Current Subscription Snapshot",
+      "definition": "The fixed 2026-06-01 monthly subscription snapshot used by certified current revenue metrics.",
+      "node": "revenue-finance"
+    },
+    {
+      "id": "retention-baseline-cohort",
+      "name": "Retention Baseline Cohort",
+      "definition": "Subscriptions with positive MRR at the fixed 2025-06-01 baseline used for current GRR and NRR.",
+      "node": "revenue-finance"
+    },
+    {
+      "id": "product-feature",
+      "name": "Product Feature",
+      "definition": "A licensed product capability or module in the governed feature catalog.",
+      "node": "product-adoption"
+    },
+    {
+      "id": "product-area",
+      "name": "Product Area",
+      "definition": "A governed functional grouping of related product features.",
+      "node": "product-adoption"
+    },
+    {
+      "id": "feature-entitlement",
+      "name": "Feature Entitlement",
+      "definition": "The current licensed and eligible capacity for one account and product feature.",
+      "node": "product-adoption"
+    },
+    {
+      "id": "licensed-seat",
+      "name": "Licensed Seat",
+      "definition": "A seat purchased or licensed for an account-feature entitlement.",
+      "node": "product-adoption"
+    },
+    {
+      "id": "eligible-seat",
+      "name": "Eligible Seat",
+      "definition": "A licensed seat currently eligible to adopt a product feature.",
+      "node": "product-adoption"
+    },
+    {
+      "id": "adopted-seat",
+      "name": "Adopted Seat",
+      "definition": "An eligible seat that has adopted a product feature.",
+      "node": "product-adoption"
+    },
+    {
+      "id": "usage-event",
+      "name": "Usage Event",
+      "definition": "A product activity event represented in an account-user-feature-day observation.",
+      "node": "product-adoption"
+    },
+    {
+      "id": "product-error",
+      "name": "Product Error",
+      "definition": "A product activity event classified as an error.",
+      "node": "product-adoption"
+    },
+    {
+      "id": "current-adoption-window",
+      "name": "Current Adoption Window",
+      "definition": "The fixed half-open period from 2026-06-01 through 2026-07-01 used by certified current adoption metrics.",
+      "node": "product-adoption"
+    },
+    {
+      "id": "support-ticket",
+      "name": "Support Ticket",
+      "definition": "A customer request for assistance tracked by the support organization.",
+      "node": "customer-support"
+    },
+    {
+      "id": "escalated-ticket",
+      "name": "Escalated Ticket",
+      "definition": "A support ticket that required escalation beyond its normal handling path.",
+      "node": "customer-support"
+    },
+    {
+      "id": "service-level-agreement",
+      "name": "Service-Level Agreement",
+      "definition": "The service target used to evaluate support response performance.",
+      "node": "customer-support"
+    },
+    {
+      "id": "sla-met-ticket",
+      "name": "SLA-met Ticket",
+      "definition": "A support ticket whose applicable service-level target was met.",
+      "node": "customer-support"
+    },
+    {
+      "id": "first-response-time",
+      "name": "First Response Time",
+      "definition": "Elapsed hours from support-ticket creation to the first support response.",
+      "node": "customer-support"
+    },
+    {
+      "id": "ticket-resolution-time",
+      "name": "Resolution Time",
+      "definition": "Elapsed hours from support-ticket creation to resolution.",
+      "node": "customer-support"
+    },
+    {
+      "id": "support-observation-cutoff",
+      "name": "Support Observation Cutoff",
+      "definition": "The fixed 2026-06-28 date through which current support observations are available.",
+      "node": "customer-support"
     }
   ],
   "tags": [
     {
-      "id": "PII",
-      "name": "PII",
-      "description": "Field contains personally identifiable customer-contact information.",
-      "color": "D9485F"
-    },
-    {
-      "id": "Confidential",
-      "name": "Confidential",
-      "description": "Field contains commercially confidential negotiated contract information.",
-      "color": "8E44AD"
-    },
-    {
       "id": "Certified",
       "name": "Certified",
-      "description": "Supported curated asset approved for governed customer-health analysis.",
+      "description": "Supported curated asset approved for governed SaaS account analysis.",
       "color": "2E8B57"
     },
     {
@@ -201,6 +404,12 @@
       "name": "Freshness warning",
       "description": "Certified asset has a documented source-observation gap that must be disclosed in answers.",
       "color": "F39C12"
+    },
+    {
+      "id": "Derived",
+      "name": "Derived",
+      "description": "Field value is calculated, aggregated, or projected from other physical values.",
+      "color": "4C78A8"
     }
   ],
   "upstream_datasets": [
@@ -209,7 +418,7 @@
       "name": "crm.customer_master",
       "description": "Metadata-only representation of the source CRM account and primary-contact records.",
       "platform": "external-data",
-      "platform_instance": "customer-health-sources",
+      "platform_instance": "saas-accounts-sources",
       "env": "DEV"
     },
     {
@@ -217,7 +426,7 @@
       "name": "billing.subscription_ledger",
       "description": "Metadata-only representation of subscription billing and recurring-revenue records.",
       "platform": "external-data",
-      "platform_instance": "customer-health-sources",
+      "platform_instance": "saas-accounts-sources",
       "env": "DEV"
     },
     {
@@ -225,7 +434,7 @@
       "name": "contracts.agreements",
       "description": "Metadata-only representation of negotiated contracts and renewal dates.",
       "platform": "external-data",
-      "platform_instance": "customer-health-sources",
+      "platform_instance": "saas-accounts-sources",
       "env": "DEV"
     },
     {
@@ -233,7 +442,7 @@
       "name": "product.telemetry",
       "description": "Metadata-only representation of product activity, feature, and entitlement source records.",
       "platform": "external-data",
-      "platform_instance": "customer-health-sources",
+      "platform_instance": "saas-accounts-sources",
       "env": "DEV"
     },
     {
@@ -241,53 +450,97 @@
       "name": "support.tickets",
       "description": "Metadata-only representation of source support tickets and SLA observations.",
       "platform": "external-data",
-      "platform_instance": "customer-health-sources",
+      "platform_instance": "saas-accounts-sources",
       "env": "DEV"
     }
   ],
   "transformation_jobs": [
     {
       "id": "curate-crm-assets",
-      "flow_id": "customer-health-curation",
+      "flow_id": "saas-accounts-curation",
       "name": "Curate CRM account assets",
       "description": "Transforms CRM source records into the canonical account and primary-contact dimensions.",
-      "inputs": ["crm-system"],
-      "outputs": ["account", "account_primary_contact"],
-      "owners": ["data-platform"]
+      "inputs": [
+        "crm-system"
+      ],
+      "outputs": [
+        "account",
+        "account_primary_contact"
+      ],
+      "owners": [
+        "data-platform"
+      ]
     },
     {
       "id": "curate-revenue-assets",
-      "flow_id": "customer-health-curation",
+      "flow_id": "saas-accounts-curation",
       "name": "Curate revenue assets",
       "description": "Transforms billing and contract records into plan, contract, and monthly subscription snapshots.",
-      "inputs": ["billing-system", "contract-system"],
-      "outputs": ["plan", "contract", "subscription_monthly"],
-      "owners": ["data-platform"]
+      "inputs": [
+        "billing-system",
+        "contract-system"
+      ],
+      "outputs": [
+        "plan",
+        "contract",
+        "subscription_monthly"
+      ],
+      "owners": [
+        "data-platform"
+      ]
     },
     {
       "id": "curate-product-assets",
-      "flow_id": "customer-health-curation",
+      "flow_id": "saas-accounts-curation",
       "name": "Curate product analytics assets",
       "description": "Transforms product telemetry into the feature catalog, current entitlements, daily usage, and the stale monthly adoption aggregate.",
-      "inputs": ["product-telemetry"],
-      "outputs": ["product_feature", "account_feature_entitlement", "usage_daily", "account_feature_monthly"],
-      "owners": ["data-platform"]
+      "inputs": [
+        "product-telemetry"
+      ],
+      "outputs": [
+        "product_feature",
+        "account_feature_entitlement",
+        "usage_daily",
+        "account_feature_monthly"
+      ],
+      "owners": [
+        "data-platform"
+      ]
     },
     {
       "id": "curate-support-assets",
-      "flow_id": "customer-health-curation",
+      "flow_id": "saas-accounts-curation",
       "name": "Curate support tickets",
       "description": "Transforms support-platform records into the canonical support ticket fact.",
-      "inputs": ["support-platform"],
-      "outputs": ["support_ticket"],
-      "owners": ["data-platform"]
+      "inputs": [
+        "support-platform"
+      ],
+      "outputs": [
+        "support_ticket"
+      ],
+      "owners": [
+        "data-platform"
+      ]
     }
   ],
   "assets": {
     "account": {
       "domain": "customer-operations",
-      "owners": ["customer-operations", "data-platform"],
-      "glossary_terms": ["enterprise-account", "renewal-window", "active-account"],
+      "owners": [
+        "customer-operations",
+        "data-platform"
+      ],
+      "glossary_terms": [
+        "enterprise-account",
+        "renewal-window",
+        "active-account",
+        "customer-account",
+        "customer-segment",
+        "customer-region",
+        "customer-success-team",
+        "lifecycle-status",
+        "renewal-date"
+      ],
       "tags": [],
       "documentation": "Grain: one row per customer company account.\nCadence: daily curated dimension refresh.\nAs-of semantics: lifecycle, customer-success assignment, and renewal attributes describe the 2026-06-30 demo as-of state.\nApproved use: governed account segmentation, filtering, and grouping across certified revenue, adoption, and support metrics.\nKnown limitations: current-state dimension rather than a type-2 history; contact values reside in the separately governed primary-contact asset.",
       "certification": "CERTIFIED",
@@ -296,24 +549,130 @@
         "note": "Current supported shared account dimension."
       },
       "structured_properties": {
-        "semantic.models": ["saas_revenue", "saas_adoption", "saas_support"],
+        "semantic.models": [
+          "saas_revenue",
+          "saas_adoption",
+          "saas_support"
+        ],
         "semantic.dataset": "account",
-        "semantic.physical_table": "iceberg.saas_customer_health_demo.account",
+        "semantic.physical_table": "iceberg.saas_accounts_demo.account",
         "semantic.execution": "semantic-operator",
         "semantic.mcp_tool": "query_metric"
       },
-      "upstreams": ["crm-system"]
+      "upstreams": [
+        "crm-system"
+      ],
+      "fields": {
+        "account_id": {
+          "description": "Stable identifier for a customer company account.",
+          "glossary_terms": [
+            "internal-information",
+            "customer-account"
+          ]
+        },
+        "account_name": {
+          "description": "Current display name of the customer company.",
+          "glossary_terms": [
+            "confidential-information",
+            "customer-account"
+          ]
+        },
+        "segment": {
+          "description": "Current commercial segment: Enterprise, Mid-Market, or SMB.",
+          "glossary_terms": [
+            "internal-information",
+            "customer-segment",
+            "enterprise-account"
+          ]
+        },
+        "region": {
+          "description": "Geographic region assigned to the customer account.",
+          "glossary_terms": [
+            "internal-information",
+            "customer-region"
+          ]
+        },
+        "industry": {
+          "description": "Industry classification assigned to the customer account.",
+          "glossary_terms": [
+            "internal-information"
+          ]
+        },
+        "csm_team": {
+          "description": "Customer Success team currently responsible for the account.",
+          "glossary_terms": [
+            "internal-information",
+            "customer-success-team"
+          ]
+        },
+        "renewal_date": {
+          "description": "Current expected account renewal date as of 2026-06-30.",
+          "glossary_terms": [
+            "confidential-information",
+            "renewal-date",
+            "renewal-window"
+          ]
+        },
+        "lifecycle_status": {
+          "description": "Current account lifecycle state: trial, active, paused, churned, or renewal-due.",
+          "glossary_terms": [
+            "internal-information",
+            "lifecycle-status"
+          ]
+        }
+      }
     },
     "account_primary_contact": {
       "domain": "customer-operations",
-      "owners": ["customer-operations"],
-      "glossary_terms": ["enterprise-account"],
+      "owners": [
+        "customer-operations"
+      ],
+      "glossary_terms": [
+        "enterprise-account",
+        "customer-account",
+        "primary-contact"
+      ],
       "tags": [],
       "fields": {
-        "full_name": {"tags": ["PII"]},
-        "email": {"tags": ["PII"]},
-        "phone": {"tags": ["PII"]},
-        "job_title": {"tags": ["PII"]}
+        "account_id": {
+          "description": "Customer account associated with the current primary contact.",
+          "glossary_terms": [
+            "internal-information",
+            "customer-account"
+          ]
+        },
+        "full_name": {
+          "description": "Current primary contact full name.",
+          "glossary_terms": [
+            "internal-information",
+            "personally-identifiable-information",
+            "primary-contact"
+          ]
+        },
+        "email": {
+          "description": "Current primary contact email address.",
+          "glossary_terms": [
+            "internal-information",
+            "personally-identifiable-information",
+            "primary-contact"
+          ]
+        },
+        "phone": {
+          "description": "Current primary contact telephone number.",
+          "glossary_terms": [
+            "internal-information",
+            "personally-identifiable-information",
+            "primary-contact"
+          ]
+        },
+        "job_title": {
+          "description": "Current primary contact business title.",
+          "glossary_terms": [
+            "internal-information",
+            "personally-identifiable-information",
+            "primary-contact"
+          ]
+        }
       },
       "documentation": "Grain: exactly one primary contact per customer account.\nCadence: daily curated CRM refresh.\nAs-of semantics: current primary-contact assignment as of 2026-06-30; no contact history is retained.\nApproved use: role-governed renewal workflows that require current contact name, email, phone, or job title.\nKnown limitations: all contact attributes are PII and access is governed at semantic compile time; one-row grain does not represent secondary contacts.",
       "certification": "CERTIFIED",
@@ -322,18 +681,33 @@
         "note": "Current supported primary-contact dimension."
       },
       "structured_properties": {
-        "semantic.models": ["saas_revenue"],
+        "semantic.models": [
+          "saas_revenue"
+        ],
         "semantic.dataset": "account_primary_contact",
-        "semantic.physical_table": "iceberg.saas_customer_health_demo.account_primary_contact",
+        "semantic.physical_table": "iceberg.saas_accounts_demo.account_primary_contact",
         "semantic.execution": "semantic-operator",
         "semantic.mcp_tool": "query_metric"
       },
-      "upstreams": ["crm-system"]
+      "upstreams": [
+        "crm-system"
+      ]
     },
     "account_feature_entitlement": {
       "domain": "product-analytics",
-      "owners": ["product-analytics"],
-      "glossary_terms": ["licensed-seat-utilization", "feature-adoption"],
+      "owners": [
+        "product-analytics"
+      ],
+      "glossary_terms": [
+        "licensed-seat-utilization",
+        "feature-adoption",
+        "customer-account",
+        "product-feature",
+        "feature-entitlement",
+        "licensed-seat",
+        "eligible-seat",
+        "adopted-seat"
+      ],
       "tags": [],
       "documentation": "Grain: one current entitlement per account and product feature.\nCadence: daily curated entitlement refresh.\nAs-of semantics: licensed, eligible, and adopted seat capacity is an unsnapshotted current state as of 2026-06-30.\nApproved use: certified licensed-seat utilization and feature-adoption metrics grouped only by account or feature dimensions.\nKnown limitations: entitlement metrics do not support date dimensions because capacity is current and unsnapshotted; joining through dated usage would exclude zero-usage entitlements.",
       "certification": "CERTIFIED",
@@ -342,36 +716,224 @@
         "note": "Current supported entitlement fact."
       },
       "structured_properties": {
-        "semantic.models": ["saas_adoption"],
+        "semantic.models": [
+          "saas_adoption"
+        ],
         "semantic.dataset": "account_feature_entitlement",
-        "semantic.physical_table": "iceberg.saas_customer_health_demo.account_feature_entitlement",
+        "semantic.physical_table": "iceberg.saas_accounts_demo.account_feature_entitlement",
         "semantic.execution": "semantic-operator",
         "semantic.mcp_tool": "query_metric"
       },
-      "upstreams": ["product-telemetry"]
+      "upstreams": [
+        "product-telemetry"
+      ],
+      "fields": {
+        "account_id": {
+          "description": "Customer account holding the feature entitlement.",
+          "glossary_terms": [
+            "confidential-information",
+            "customer-account",
+            "feature-entitlement"
+          ]
+        },
+        "feature_id": {
+          "description": "Product feature covered by the entitlement.",
+          "glossary_terms": [
+            "confidential-information",
+            "product-feature",
+            "feature-entitlement"
+          ]
+        },
+        "licensed_seats": {
+          "description": "Current number of seats licensed for the account-feature pair as of 2026-06-30.",
+          "glossary_terms": [
+            "confidential-information",
+            "feature-entitlement",
+            "licensed-seat",
+            "licensed-seat-utilization"
+          ]
+        },
+        "eligible_seats": {
+          "description": "Current number of licensed seats eligible to adopt the feature as of 2026-06-30.",
+          "glossary_terms": [
+            "confidential-information",
+            "feature-entitlement",
+            "eligible-seat",
+            "feature-adoption"
+          ]
+        },
+        "adopted_seats": {
+          "description": "Current number of eligible seats that adopted the feature as of 2026-06-30.",
+          "glossary_terms": [
+            "confidential-information",
+            "feature-entitlement",
+            "adopted-seat",
+            "feature-adoption"
+          ]
+        }
+      }
     },
     "account_feature_monthly": {
       "domain": "product-analytics",
-      "owners": ["product-analytics"],
-      "glossary_terms": ["feature-adoption"],
-      "tags": ["Deprecated", "Stale"],
-      "documentation": "Grain: one row per account, product feature, and monthly snapshot.\nCadence: historical monthly aggregate with no current refresh.\nAs-of semantics: observations are stale relative to the 2026-06-30 demo as-of date.\nApproved use: lineage and deprecation demonstrations only; never use for current customer-health analysis or semantic execution.\nKnown limitations: deprecated stale aggregate, superseded by current entitlement and daily usage assets; intentionally has no semantic model, execution, or MCP linkage.",
+      "owners": [
+        "product-analytics"
+      ],
+      "glossary_terms": [
+        "feature-adoption",
+        "customer-account",
+        "product-feature",
+        "licensed-seat",
+        "eligible-seat",
+        "adopted-seat"
+      ],
+      "tags": [
+        "Deprecated",
+        "Stale"
+      ],
+      "documentation": "Grain: one row per account, product feature, and monthly snapshot.\nCadence: historical monthly aggregate with no current refresh.\nAs-of semantics: observations are stale relative to the 2026-06-30 demo as-of date.\nApproved use: lineage and deprecation demonstrations only; never use for current SaaS account analysis or semantic execution.\nKnown limitations: deprecated stale aggregate, superseded by current entitlement and daily usage assets; intentionally has no semantic model, execution, or MCP linkage.",
       "certification": "UNVERIFIED",
       "deprecation": {
         "deprecated": true,
         "note": "Deprecated and stale. Use account_feature_entitlement with usage_daily for governed current adoption analysis."
       },
-      "upstreams": ["product-telemetry"]
+      "upstreams": [
+        "product-telemetry"
+      ],
+      "fields": {
+        "account_id": {
+          "description": "Customer account represented by the monthly feature-adoption aggregate.",
+          "glossary_terms": [
+            "confidential-information",
+            "customer-account"
+          ]
+        },
+        "feature_id": {
+          "description": "Product feature represented by the monthly aggregate.",
+          "glossary_terms": [
+            "confidential-information",
+            "product-feature"
+          ]
+        },
+        "snapshot_date_sk": {
+          "description": "Calendar date key for the monthly account-feature snapshot.",
+          "glossary_terms": [
+            "confidential-information"
+          ]
+        },
+        "licensed_seats": {
+          "description": "Licensed seat capacity recorded for the account-feature-month.",
+          "glossary_terms": [
+            "confidential-information",
+            "licensed-seat"
+          ]
+        },
+        "eligible_seats": {
+          "description": "Eligible seat capacity recorded for the account-feature-month.",
+          "glossary_terms": [
+            "confidential-information",
+            "eligible-seat"
+          ]
+        },
+        "adopted_seats": {
+          "description": "Adopted eligible seats recorded for the account-feature-month.",
+          "glossary_terms": [
+            "confidential-information",
+            "adopted-seat",
+            "feature-adoption"
+          ]
+        },
+        "active_users": {
+          "description": "Aggregated active users for the account-feature-month.",
+          "glossary_terms": [
+            "confidential-information",
+            "active-user"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "total_events": {
+          "description": "Aggregated product events for the account-feature-month.",
+          "glossary_terms": [
+            "confidential-information",
+            "usage-event"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        }
+      }
     },
     "contract": {
       "domain": "revenue-operations",
-      "owners": ["revenue-operations"],
-      "glossary_terms": ["arr", "renewal-window"],
+      "owners": [
+        "revenue-operations"
+      ],
+      "glossary_terms": [
+        "arr",
+        "renewal-window",
+        "customer-account",
+        "contract",
+        "contract-value",
+        "negotiated-discount"
+      ],
       "tags": [],
       "fields": {
-        "negotiated_discount_pct": {"tags": ["Confidential"]},
-        "negotiated_annual_rate": {"tags": ["Confidential"]},
-        "contract_value": {"tags": ["Confidential"]}
+        "contract_id": {
+          "description": "Stable identifier for a contract version.",
+          "glossary_terms": [
+            "internal-information",
+            "contract"
+          ]
+        },
+        "account_id": {
+          "description": "Customer account governed by the contract.",
+          "glossary_terms": [
+            "internal-information",
+            "customer-account",
+            "contract"
+          ]
+        },
+        "contract_start": {
+          "description": "Inclusive first date of the contract term.",
+          "glossary_terms": [
+            "confidential-information",
+            "contract"
+          ]
+        },
+        "contract_end": {
+          "description": "Inclusive final date of the contract term used to evaluate renewal timing.",
+          "glossary_terms": [
+            "confidential-information",
+            "contract",
+            "renewal-date",
+            "renewal-window"
+          ]
+        },
+        "negotiated_discount_pct": {
+          "description": "Negotiated percentage discount applied to the annual rate.",
+          "glossary_terms": [
+            "confidential-information",
+            "negotiated-discount"
+          ]
+        },
+        "negotiated_annual_rate": {
+          "description": "Pre-discount negotiated annual rate in currency units.",
+          "glossary_terms": [
+            "confidential-information",
+            "contract"
+          ]
+        },
+        "contract_value": {
+          "description": "Calculated contract term value after applying the negotiated discount.",
+          "glossary_terms": [
+            "confidential-information",
+            "contract-value"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        }
       },
       "documentation": "Grain: one contract version per row.\nCadence: daily curated contract-system refresh.\nAs-of semantics: contract terms and boundaries available at the 2026-06-30 demo as-of date.\nApproved use: governed renewal-window filtering and certified recurring-revenue analysis.\nKnown limitations: negotiated discount, annual rate, and contract value are confidential; this dimension does not independently define recognized revenue.",
       "certification": "CERTIFIED",
@@ -380,18 +942,26 @@
         "note": "Current supported contract dimension."
       },
       "structured_properties": {
-        "semantic.models": ["saas_revenue"],
+        "semantic.models": [
+          "saas_revenue"
+        ],
         "semantic.dataset": "contract",
-        "semantic.physical_table": "iceberg.saas_customer_health_demo.contract",
+        "semantic.physical_table": "iceberg.saas_accounts_demo.contract",
         "semantic.execution": "semantic-operator",
         "semantic.mcp_tool": "query_metric"
       },
-      "upstreams": ["contract-system"]
+      "upstreams": [
+        "contract-system"
+      ]
     },
     "date_dim": {
       "domain": "data-platform",
-      "owners": ["data-platform"],
-      "glossary_terms": ["renewal-window"],
+      "owners": [
+        "data-platform"
+      ],
+      "glossary_terms": [
+        "renewal-window"
+      ],
       "tags": [],
       "documentation": "Grain: one calendar date per row from 2024-07-01 through 2027-06-30.\nCadence: regenerated with the versioned demo dataset.\nAs-of semantics: stable calendar attributes support snapshot, usage, and ticket dates around the 2026-06-30 as-of date.\nApproved use: governed date grouping and filtering where the selected semantic metric supports dated analysis.\nKnown limitations: licensed-seat utilization and feature adoption do not support date dimensions because their entitlement capacity is current and unsnapshotted.",
       "certification": "CERTIFIED",
@@ -400,17 +970,68 @@
         "note": "Current supported shared calendar dimension."
       },
       "structured_properties": {
-        "semantic.models": ["saas_revenue", "saas_adoption", "saas_support"],
+        "semantic.models": [
+          "saas_revenue",
+          "saas_adoption",
+          "saas_support"
+        ],
         "semantic.dataset": "date_dim",
-        "semantic.physical_table": "iceberg.saas_customer_health_demo.date_dim",
+        "semantic.physical_table": "iceberg.saas_accounts_demo.date_dim",
         "semantic.execution": "semantic-operator",
         "semantic.mcp_tool": "query_metric"
+      },
+      "fields": {
+        "date_sk": {
+          "description": "Calendar date key encoded as YYYYMMDD.",
+          "glossary_terms": [
+            "public-information"
+          ]
+        },
+        "date_date": {
+          "description": "Calendar date represented by this row.",
+          "glossary_terms": [
+            "public-information"
+          ]
+        },
+        "year": {
+          "description": "Four-digit calendar year derived from date_date.",
+          "glossary_terms": [
+            "public-information"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "quarter": {
+          "description": "Calendar quarter number from 1 through 4 derived from date_date.",
+          "glossary_terms": [
+            "public-information"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "month": {
+          "description": "Calendar month number from 1 through 12 derived from date_date.",
+          "glossary_terms": [
+            "public-information"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        }
       }
     },
     "plan": {
       "domain": "revenue-operations",
-      "owners": ["revenue-operations"],
-      "glossary_terms": ["mrr", "arr"],
+      "owners": [
+        "revenue-operations"
+      ],
+      "glossary_terms": [
+        "mrr",
+        "arr",
+        "plan"
+      ],
       "tags": [],
       "documentation": "Grain: one SaaS plan or SKU per row.\nCadence: daily curated billing-catalog refresh.\nAs-of semantics: current plan names, tiers, and product families as of 2026-06-30.\nApproved use: grouping and filtering certified recurring-revenue metrics by plan attributes.\nKnown limitations: plan attributes describe the current catalog and do not preserve renamed-plan history or define contract-specific negotiated pricing.",
       "certification": "CERTIFIED",
@@ -419,18 +1040,60 @@
         "note": "Current supported plan dimension."
       },
       "structured_properties": {
-        "semantic.models": ["saas_revenue"],
+        "semantic.models": [
+          "saas_revenue"
+        ],
         "semantic.dataset": "plan",
-        "semantic.physical_table": "iceberg.saas_customer_health_demo.plan",
+        "semantic.physical_table": "iceberg.saas_accounts_demo.plan",
         "semantic.execution": "semantic-operator",
         "semantic.mcp_tool": "query_metric"
       },
-      "upstreams": ["billing-system"]
+      "upstreams": [
+        "billing-system"
+      ],
+      "fields": {
+        "plan_id": {
+          "description": "Stable identifier for a SaaS plan or SKU.",
+          "glossary_terms": [
+            "internal-information",
+            "plan"
+          ]
+        },
+        "plan_name": {
+          "description": "Display name of the SaaS plan, combining product family and tier.",
+          "glossary_terms": [
+            "internal-information",
+            "plan"
+          ]
+        },
+        "plan_tier": {
+          "description": "Commercial plan tier: Starter, Growth, Business, or Enterprise.",
+          "glossary_terms": [
+            "internal-information",
+            "plan"
+          ]
+        },
+        "product_family": {
+          "description": "Product family containing the plan: Engage, Insights, or Platform.",
+          "glossary_terms": [
+            "internal-information",
+            "plan"
+          ]
+        }
+      }
     },
     "product_feature": {
       "domain": "product-analytics",
-      "owners": ["product-analytics", "data-platform"],
-      "glossary_terms": ["feature-adoption", "licensed-seat-utilization"],
+      "owners": [
+        "product-analytics",
+        "data-platform"
+      ],
+      "glossary_terms": [
+        "feature-adoption",
+        "licensed-seat-utilization",
+        "product-feature",
+        "product-area"
+      ],
       "tags": [],
       "documentation": "Grain: one licensed product feature or module per row.\nCadence: daily curated product-catalog refresh.\nAs-of semantics: current feature name, product area, and criticality as of 2026-06-30.\nApproved use: shared feature grouping for certified adoption, usage, and support metrics.\nKnown limitations: current-state catalog with no rename history; nullable support feature links mean unclassified tickets remain in support totals through a left join.",
       "certification": "CERTIFIED",
@@ -439,18 +1102,67 @@
         "note": "Current supported shared product-feature dimension."
       },
       "structured_properties": {
-        "semantic.models": ["saas_adoption", "saas_support"],
+        "semantic.models": [
+          "saas_adoption",
+          "saas_support"
+        ],
         "semantic.dataset": "product_feature",
-        "semantic.physical_table": "iceberg.saas_customer_health_demo.product_feature",
+        "semantic.physical_table": "iceberg.saas_accounts_demo.product_feature",
         "semantic.execution": "semantic-operator",
         "semantic.mcp_tool": "query_metric"
       },
-      "upstreams": ["product-telemetry"]
+      "upstreams": [
+        "product-telemetry"
+      ],
+      "fields": {
+        "feature_id": {
+          "description": "Stable identifier for a licensed product feature or module.",
+          "glossary_terms": [
+            "internal-information",
+            "product-feature"
+          ]
+        },
+        "feature_name": {
+          "description": "Display name of the product feature.",
+          "glossary_terms": [
+            "internal-information",
+            "product-feature"
+          ]
+        },
+        "product_area": {
+          "description": "Functional product area containing the feature.",
+          "glossary_terms": [
+            "internal-information",
+            "product-area"
+          ]
+        },
+        "criticality": {
+          "description": "Operational importance classification: low, medium, high, or critical.",
+          "glossary_terms": [
+            "internal-information"
+          ]
+        }
+      }
     },
     "subscription_monthly": {
       "domain": "revenue-operations",
-      "owners": ["revenue-operations"],
-      "glossary_terms": ["mrr", "arr", "grr", "nrr", "renewal-window"],
+      "owners": [
+        "revenue-operations"
+      ],
+      "glossary_terms": [
+        "mrr",
+        "arr",
+        "grr",
+        "nrr",
+        "renewal-window",
+        "customer-account",
+        "plan",
+        "contract",
+        "subscription",
+        "subscription-status",
+        "current-subscription-snapshot",
+        "retention-baseline-cohort"
+      ],
       "tags": [],
       "documentation": "Grain: one account-subscription-month snapshot per row.\nCadence: monthly snapshots from 2024-07-01 through the current 2026-06-01 revenue snapshot.\nAs-of semantics: MRR and ARR use the fixed 2026-06-01 snapshot; GRR and NRR use the fixed 2025-06-01 baseline cohort measured at that current snapshot; renewal ARR uses the 2026-07-01 to 2026-10-01 half-open horizon.\nApproved use: certified governed MRR, ARR, renewal value, GRR, NRR, and average revenue per account.\nKnown limitations: current metrics are intentionally fixed-snapshot measures, not arbitrary point-in-time calculations; retention excludes new business and GRR excludes expansion.",
       "certification": "CERTIFIED",
@@ -459,22 +1171,343 @@
         "note": "Current supported recurring-revenue fact."
       },
       "structured_properties": {
-        "semantic.models": ["saas_revenue"],
+        "semantic.models": [
+          "saas_revenue"
+        ],
         "semantic.dataset": "subscription_monthly",
-        "semantic.physical_table": "iceberg.saas_customer_health_demo.subscription_monthly",
+        "semantic.physical_table": "iceberg.saas_accounts_demo.subscription_monthly",
         "semantic.execution": "semantic-operator",
         "semantic.mcp_tool": "query_metric"
       },
-      "upstreams": ["billing-system", "contract-system"]
+      "upstreams": [
+        "billing-system",
+        "contract-system"
+      ],
+      "fields": {
+        "subscription_id": {
+          "description": "Stable identifier for a customer subscription.",
+          "glossary_terms": [
+            "confidential-information",
+            "subscription"
+          ]
+        },
+        "snapshot_date_sk": {
+          "description": "Calendar date key for the monthly subscription snapshot.",
+          "glossary_terms": [
+            "confidential-information",
+            "subscription",
+            "current-subscription-snapshot"
+          ]
+        },
+        "account_id": {
+          "description": "Customer account owning the subscription.",
+          "glossary_terms": [
+            "confidential-information",
+            "customer-account",
+            "subscription"
+          ]
+        },
+        "plan_id": {
+          "description": "SaaS plan assigned to the subscription.",
+          "glossary_terms": [
+            "confidential-information",
+            "plan",
+            "subscription"
+          ]
+        },
+        "contract_id": {
+          "description": "Contract governing the subscription.",
+          "glossary_terms": [
+            "confidential-information",
+            "contract",
+            "subscription"
+          ]
+        },
+        "status": {
+          "description": "Subscription state at the monthly snapshot: trial, active, paused, churned, or renewal-due.",
+          "glossary_terms": [
+            "confidential-information",
+            "subscription",
+            "subscription-status"
+          ]
+        },
+        "mrr": {
+          "description": "Monthly recurring revenue at this historical subscription snapshot.",
+          "glossary_terms": [
+            "confidential-information",
+            "subscription",
+            "mrr"
+          ]
+        },
+        "current_account_id": {
+          "description": "Account ID only on positive-MRR rows at the fixed 2026-06-01 current snapshot; NULL otherwise.",
+          "glossary_terms": [
+            "confidential-information",
+            "customer-account",
+            "subscription",
+            "current-subscription-snapshot"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_mrr_amount": {
+          "description": "Monthly recurring revenue at the fixed 2026-06-01 current snapshot; zero on all other rows.",
+          "glossary_terms": [
+            "confidential-information",
+            "mrr",
+            "current-subscription-snapshot"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_arr_amount": {
+          "description": "Current monthly recurring revenue multiplied by 12; zero outside the fixed current snapshot.",
+          "glossary_terms": [
+            "confidential-information",
+            "arr",
+            "current-subscription-snapshot"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_renewal_arr_amount": {
+          "description": "Current ARR whose contract ends in the half-open 2026-07-01 to 2026-10-01 renewal window; zero otherwise.",
+          "glossary_terms": [
+            "confidential-information",
+            "arr",
+            "renewal-window",
+            "current-subscription-snapshot"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_grr_starting_mrr": {
+          "description": "Baseline MRR for subscriptions in the fixed current gross-retention cohort.",
+          "glossary_terms": [
+            "confidential-information",
+            "grr",
+            "retention-baseline-cohort"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_grr_retained_mrr": {
+          "description": "Retained cohort MRR capped at baseline, excluding expansion and new business.",
+          "glossary_terms": [
+            "confidential-information",
+            "grr",
+            "retention-baseline-cohort"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_nrr_starting_mrr": {
+          "description": "Baseline MRR for subscriptions in the fixed current net-retention cohort.",
+          "glossary_terms": [
+            "confidential-information",
+            "nrr",
+            "retention-baseline-cohort"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_nrr_ending_mrr": {
+          "description": "Current cohort MRR including contraction and expansion while excluding new business.",
+          "glossary_terms": [
+            "confidential-information",
+            "nrr",
+            "retention-baseline-cohort"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        }
+      }
     },
     "support_ticket": {
       "domain": "customer-operations",
-      "owners": ["customer-operations"],
-      "glossary_terms": ["escalation", "sla-attainment", "first-response", "resolution-time"],
-      "tags": ["FreshnessWarning"],
+      "owners": [
+        "customer-operations"
+      ],
+      "glossary_terms": [
+        "escalation",
+        "sla-attainment",
+        "first-response",
+        "resolution-time",
+        "customer-account",
+        "support-ticket",
+        "service-level-agreement",
+        "support-observation-cutoff"
+      ],
+      "tags": [
+        "FreshnessWarning"
+      ],
       "fields": {
-        "requester_email": {"tags": ["PII"]},
-        "subject": {"tags": ["PII"]}
+        "ticket_id": {
+          "description": "Stable identifier for a customer support ticket.",
+          "glossary_terms": [
+            "confidential-information",
+            "support-ticket"
+          ]
+        },
+        "account_id": {
+          "description": "Customer account that opened the support ticket.",
+          "glossary_terms": [
+            "confidential-information",
+            "customer-account",
+            "support-ticket"
+          ]
+        },
+        "feature_id": {
+          "description": "Optional product feature associated with the issue; NULL for unclassified tickets.",
+          "glossary_terms": [
+            "confidential-information",
+            "product-feature",
+            "support-ticket"
+          ]
+        },
+        "created_date_sk": {
+          "description": "Calendar date key on which the support ticket was created.",
+          "glossary_terms": [
+            "confidential-information",
+            "support-ticket"
+          ]
+        },
+        "requester_email": {
+          "description": "Email address of the person requesting support.",
+          "glossary_terms": [
+            "confidential-information",
+            "personally-identifiable-information",
+            "support-ticket"
+          ]
+        },
+        "subject": {
+          "description": "Free-text ticket summary that can contain identifying or sensitive customer content.",
+          "glossary_terms": [
+            "confidential-information",
+            "personally-identifiable-information",
+            "support-ticket"
+          ]
+        },
+        "status": {
+          "description": "Ticket state at the fixed 2026-06-28 support observation cutoff.",
+          "glossary_terms": [
+            "confidential-information",
+            "support-ticket",
+            "support-observation-cutoff"
+          ]
+        },
+        "escalated_flag": {
+          "description": "Indicator equal to 1 when the ticket was escalated and 0 otherwise.",
+          "glossary_terms": [
+            "confidential-information",
+            "support-ticket",
+            "escalated-ticket"
+          ]
+        },
+        "sla_met_flag": {
+          "description": "Indicator equal to 1 when the ticket met its service-level target and 0 otherwise.",
+          "glossary_terms": [
+            "confidential-information",
+            "support-ticket",
+            "service-level-agreement",
+            "sla-met-ticket"
+          ]
+        },
+        "first_response_hours": {
+          "description": "Elapsed hours from ticket creation to the first support response.",
+          "glossary_terms": [
+            "confidential-information",
+            "support-ticket",
+            "first-response-time"
+          ]
+        },
+        "resolution_hours": {
+          "description": "Elapsed hours from ticket creation to resolution; NULL while unresolved.",
+          "glossary_terms": [
+            "confidential-information",
+            "support-ticket",
+            "ticket-resolution-time"
+          ]
+        },
+        "current_ticket_id": {
+          "description": "Ticket ID inside the nominal current support window and observed through 2026-06-28; NULL otherwise.",
+          "glossary_terms": [
+            "confidential-information",
+            "support-ticket",
+            "support-observation-cutoff"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_open_flag": {
+          "description": "Indicator equal to 1 when an in-window ticket remains open at the observation cutoff.",
+          "glossary_terms": [
+            "confidential-information",
+            "support-ticket",
+            "support-observation-cutoff"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_escalated_flag": {
+          "description": "Escalation indicator for an in-window ticket observed through the support cutoff.",
+          "glossary_terms": [
+            "confidential-information",
+            "escalated-ticket",
+            "escalation",
+            "support-observation-cutoff"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_sla_met_flag": {
+          "description": "SLA-attainment indicator for an in-window ticket observed through the support cutoff.",
+          "glossary_terms": [
+            "confidential-information",
+            "service-level-agreement",
+            "sla-met-ticket",
+            "sla-attainment",
+            "support-observation-cutoff"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_first_response_hours": {
+          "description": "First-response hours for an in-window ticket observed through the support cutoff.",
+          "glossary_terms": [
+            "confidential-information",
+            "first-response-time",
+            "first-response",
+            "support-observation-cutoff"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_resolution_hours": {
+          "description": "Resolution hours for resolved in-window tickets; NULL for unresolved or out-of-window rows.",
+          "glossary_terms": [
+            "confidential-information",
+            "ticket-resolution-time",
+            "resolution-time",
+            "support-observation-cutoff"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        }
       },
       "documentation": "Grain: one support ticket per row.\nCadence: expected daily through the 2026-06-30 as-of date, but the observed source stops on 2026-06-28.\nAs-of semantics: ticket status, escalation, SLA, response, and resolution measures are evaluated at the 2026-06-28 observation cutoff for the nominal 90-day window beginning 2026-04-02.\nApproved use: certified governed support volume, escalation, SLA-attainment, first-response, and resolution metrics when the freshness warning is disclosed.\nKnown limitations: a two-day freshness gap omits June 29-30, so results must not be represented as complete through 2026-06-30; requester email and subject are PII.",
       "certification": "CERTIFIED",
@@ -483,18 +1516,34 @@
         "note": "Current supported support fact with a documented two-day freshness warning."
       },
       "structured_properties": {
-        "semantic.models": ["saas_support"],
+        "semantic.models": [
+          "saas_support"
+        ],
         "semantic.dataset": "support_ticket",
-        "semantic.physical_table": "iceberg.saas_customer_health_demo.support_ticket",
+        "semantic.physical_table": "iceberg.saas_accounts_demo.support_ticket",
         "semantic.execution": "semantic-operator",
         "semantic.mcp_tool": "query_metric"
       },
-      "upstreams": ["support-platform"]
+      "upstreams": [
+        "support-platform"
+      ]
     },
     "usage_daily": {
       "domain": "product-analytics",
-      "owners": ["product-analytics"],
-      "glossary_terms": ["active-user", "active-account", "licensed-seat-utilization", "feature-adoption"],
+      "owners": [
+        "product-analytics"
+      ],
+      "glossary_terms": [
+        "active-user",
+        "active-account",
+        "licensed-seat-utilization",
+        "feature-adoption",
+        "customer-account",
+        "product-feature",
+        "usage-event",
+        "product-error",
+        "current-adoption-window"
+      ],
       "tags": [],
       "documentation": "Grain: one account-user-feature-day event or observation per row.\nCadence: daily curated product-telemetry refresh.\nAs-of semantics: active IDs and counters represent the fixed 30-day window from 2026-06-01 through 2026-07-01, with values outside the window null or zero.\nApproved use: certified governed active-user, active-account, product-error, active-day, and fan-out-safe licensed-seat-utilization analysis.\nKnown limitations: licensed-seat utilization must use current account-feature entitlements and does not support date dimensions; sparse activity is not evidence that an entitlement does not exist.",
       "certification": "CERTIFIED",
@@ -503,13 +1552,137 @@
         "note": "Current supported daily usage fact."
       },
       "structured_properties": {
-        "semantic.models": ["saas_adoption"],
+        "semantic.models": [
+          "saas_adoption"
+        ],
         "semantic.dataset": "usage_daily",
-        "semantic.physical_table": "iceberg.saas_customer_health_demo.usage_daily",
+        "semantic.physical_table": "iceberg.saas_accounts_demo.usage_daily",
         "semantic.execution": "semantic-operator",
         "semantic.mcp_tool": "query_metric"
       },
-      "upstreams": ["product-telemetry"]
+      "upstreams": [
+        "product-telemetry"
+      ],
+      "fields": {
+        "usage_event_id": {
+          "description": "Stable identifier for an account-user-feature-day usage observation.",
+          "glossary_terms": [
+            "confidential-information",
+            "usage-event"
+          ]
+        },
+        "account_id": {
+          "description": "Customer account that produced the product activity.",
+          "glossary_terms": [
+            "confidential-information",
+            "customer-account",
+            "usage-event"
+          ]
+        },
+        "user_id": {
+          "description": "Synthetic user identifier associated with a customer account.",
+          "glossary_terms": [
+            "confidential-information",
+            "personally-identifiable-information"
+          ]
+        },
+        "feature_id": {
+          "description": "Entitled product feature used in the observation.",
+          "glossary_terms": [
+            "confidential-information",
+            "product-feature",
+            "usage-event"
+          ]
+        },
+        "usage_date_sk": {
+          "description": "Calendar date key for the usage observation.",
+          "glossary_terms": [
+            "confidential-information",
+            "usage-event"
+          ]
+        },
+        "total_events": {
+          "description": "Total product activity events represented by the observation.",
+          "glossary_terms": [
+            "confidential-information",
+            "usage-event"
+          ]
+        },
+        "error_events": {
+          "description": "Product activity events classified as errors.",
+          "glossary_terms": [
+            "confidential-information",
+            "product-error"
+          ]
+        },
+        "current_user_id": {
+          "description": "Globally unique active-user ID in the fixed 2026-06-01 to 2026-07-01 adoption window; NULL otherwise.",
+          "glossary_terms": [
+            "confidential-information",
+            "personally-identifiable-information",
+            "active-user",
+            "current-adoption-window"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_user_feature_id": {
+          "description": "Unique active account-user-feature assignment in the fixed adoption window; NULL otherwise.",
+          "glossary_terms": [
+            "confidential-information",
+            "personally-identifiable-information",
+            "licensed-seat-utilization",
+            "current-adoption-window"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_account_id": {
+          "description": "Account ID with qualifying activity in the fixed adoption window; NULL otherwise.",
+          "glossary_terms": [
+            "confidential-information",
+            "active-account",
+            "current-adoption-window"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_usage_date_sk": {
+          "description": "Usage date key in the fixed adoption window; NULL otherwise.",
+          "glossary_terms": [
+            "confidential-information",
+            "current-adoption-window"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_error_events": {
+          "description": "Product error events in the fixed adoption window; zero otherwise.",
+          "glossary_terms": [
+            "confidential-information",
+            "product-error",
+            "current-adoption-window"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        },
+        "current_total_events": {
+          "description": "Total product events in the fixed adoption window; zero otherwise.",
+          "glossary_terms": [
+            "confidential-information",
+            "usage-event",
+            "current-adoption-window"
+          ],
+          "tags": [
+            "Derived"
+          ]
+        }
+      }
     }
   }
 }

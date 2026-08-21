@@ -1,0 +1,61 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-realm-import
+  namespace: account-demo
+  labels:
+    app.kubernetes.io/name: keycloak-realm-import
+    app.kubernetes.io/managed-by: account-demo-local
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak-realm-import
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: import
+          image: quay.io/keycloak/keycloak:26.6
+          imagePullPolicy: IfNotPresent
+          args: ["import", "--dir", "/opt/keycloak/data/import", "--override", "true"]
+          env:
+            - { name: KC_DB, value: postgres }
+            - { name: KC_DB_URL, value: "jdbc:postgresql://postgres.account-demo.svc.cluster.local:5432/keycloak" }
+            - { name: KC_DB_USERNAME, value: keycloak }
+            - name: KC_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-runtime, key: KEYCLOAK_DB_PASSWORD } }
+            - name: DATAHUB_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: keycloak-runtime, key: DATAHUB_CLIENT_SECRET } }
+            - name: CHAT_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: keycloak-runtime, key: CHAT_CLIENT_SECRET } }
+            - name: ALICE_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-runtime, key: ALICE_PASSWORD } }
+            - name: BOB_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-runtime, key: BOB_PASSWORD } }
+            - name: CAROL_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-runtime, key: CAROL_PASSWORD } }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { memory: "1Gi" }
+          volumeMounts:
+            - { name: data, mountPath: /opt/keycloak/data }
+            - { name: realm, mountPath: /opt/keycloak/data/import, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: realm
+          configMap: { name: keycloak-realm }
+        - name: tmp
+          emptyDir: {}

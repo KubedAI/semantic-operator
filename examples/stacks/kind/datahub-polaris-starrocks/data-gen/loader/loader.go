@@ -1,9 +1,9 @@
 // Package loader creates the demo tables in a StarRocks Iceberg (REST-catalog)
 // external catalog and bulk-loads the generated rows. It is deliberately
 // minimal: the REST catalog (Polaris) owns table locations, so there is no S3
-// preflight, no explicit LOCATION, no manifest, and no force/reset. Tables are
-// created with CREATE TABLE IF NOT EXISTS and loaded with batched multi-row
-// INSERTs; each table's row count is verified after load.
+// preflight, explicit LOCATION, manifest, or force/reset mode. Before any table
+// creation or INSERT, it verifies that the namespace is empty or that the
+// complete expected dataset is already present. Partial data is never appended.
 package loader
 
 import (
@@ -12,12 +12,13 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"chd.local/datagen/constants"
-	"chd.local/datagen/gen"
+	"account-demo.local/datagen/constants"
+	"account-demo.local/datagen/gen"
 )
 
 const (
@@ -120,12 +121,20 @@ func New(db DB, cfg Config, log func(string, ...any)) (*Loader, error) {
 	return &Loader{db: db, cfg: cfg, log: log}, nil
 }
 
-// Run creates the database and all tables, then loads and verifies each table
-// in the fixed generation order. It is idempotent for schema creation
-// (CREATE ... IF NOT EXISTS); rows are appended, so run it against empty tables.
+// Run creates the database, checks the entire dataset state, then creates and
+// loads tables only when every existing expected table is empty. A complete
+// dataset is skipped. Partial or mismatched data fails before any INSERT.
 func (l *Loader) Run(ctx context.Context) error {
 	if err := l.db.Exec(ctx, "CREATE DATABASE IF NOT EXISTS "+l.databaseName()); err != nil {
 		return fmt.Errorf("loader: create database %s: %w", l.databaseName(), err)
+	}
+	skip, err := l.preflightExistingData(ctx)
+	if err != nil {
+		return err
+	}
+	if skip {
+		l.log("dataset already loaded in %s; skipping", l.databaseName())
+		return nil
 	}
 	for _, table := range gen.Tables() {
 		ddl, err := l.createTableSQL(table)
@@ -146,6 +155,94 @@ func (l *Loader) Run(ctx context.Context) error {
 		l.log("loaded %-32s %d rows", table, count)
 	}
 	return nil
+}
+
+// preflightExistingData returns true only when the complete expected dataset is
+// already present. It permits loading into an empty namespace (including empty
+// expected tables), but refuses to append to any partial or mismatched dataset.
+func (l *Loader) preflightExistingData(ctx context.Context) (bool, error) {
+	tables := gen.Tables()
+	expected := make(map[string]struct{}, len(tables))
+	for _, table := range tables {
+		expected[table] = struct{}{}
+	}
+
+	rows, err := l.db.Query(ctx, "SHOW TABLES FROM "+l.databaseName())
+	if err != nil {
+		return false, fmt.Errorf("loader: list existing tables in %s: %w", l.databaseName(), err)
+	}
+	existing := make(map[string]struct{}, len(rows))
+	unexpected := make([]string, 0)
+	for _, row := range rows {
+		if len(row) != 1 {
+			return false, fmt.Errorf("loader: list existing tables in %s returned an unexpected result", l.databaseName())
+		}
+		table := scalarString(row[0])
+		if table == "" {
+			return false, fmt.Errorf("loader: list existing tables in %s returned an empty table name", l.databaseName())
+		}
+		if _, duplicate := existing[table]; duplicate {
+			continue
+		}
+		existing[table] = struct{}{}
+		if _, ok := expected[table]; !ok {
+			unexpected = append(unexpected, table)
+		}
+	}
+	if len(unexpected) > 0 {
+		sort.Strings(unexpected)
+		return false, fmt.Errorf(
+			"loader: unexpected tables in %s: %s; refusing to modify this namespace",
+			l.databaseName(), strings.Join(unexpected, ", "),
+		)
+	}
+	if len(existing) == 0 {
+		return false, nil
+	}
+
+	counts := make(map[string]int64, len(existing))
+	nonEmpty := false
+	complete := len(existing) == len(tables)
+	for _, table := range tables {
+		if _, ok := existing[table]; !ok {
+			complete = false
+			continue
+		}
+		count, err := l.countTable(ctx, table)
+		if err != nil {
+			return false, fmt.Errorf("loader: inspect existing table %s: %w", table, err)
+		}
+		counts[table] = count
+		if count > 0 {
+			nonEmpty = true
+		}
+		if count != int64(constants.ExpectedTableRowCounts[table]) {
+			complete = false
+		}
+	}
+	if complete {
+		return true, nil
+	}
+	if !nonEmpty {
+		return false, nil
+	}
+
+	issues := make([]string, 0, len(tables))
+	for _, table := range tables {
+		count, ok := counts[table]
+		if !ok {
+			issues = append(issues, table+"=missing")
+			continue
+		}
+		expectedCount := int64(constants.ExpectedTableRowCounts[table])
+		if count != expectedCount {
+			issues = append(issues, fmt.Sprintf("%s=%d (expected %d)", table, count, expectedCount))
+		}
+	}
+	return false, fmt.Errorf(
+		"loader: existing dataset in %s is partial or has mismatched row counts: %s; refusing to append; drop the demo tables before retrying",
+		l.databaseName(), strings.Join(issues, ", "),
+	)
 }
 
 func (l *Loader) databaseName() string {
@@ -263,5 +360,16 @@ func scalarInt64(value any) (int64, error) {
 		return strconv.ParseInt(string(v), 10, 64)
 	default:
 		return strconv.ParseInt(fmt.Sprint(value), 10, 64)
+	}
+}
+
+func scalarString(value any) string {
+	switch v := value.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case []byte:
+		return strings.TrimSpace(string(v))
+	default:
+		return strings.TrimSpace(fmt.Sprint(v))
 	}
 }

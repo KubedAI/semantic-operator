@@ -13,7 +13,7 @@ operator:
 
 starrocks:
   starrocksCluster:
-    name: chd
+    name: account-demo
     # shared-data: run CN, not BE.
     enabledBe: false
     enabledCn: true
@@ -50,7 +50,7 @@ starrocks:
       cloud_native_storage_type = S3
       enable_load_volume_from_conf = true
       aws_s3_path = starrocks-storage/starrocks
-      aws_s3_endpoint = http://garage.chd.svc.cluster.local:3900
+      aws_s3_endpoint = http://garage.account-demo.svc.cluster.local:3900
       aws_s3_region = garage
       aws_s3_use_aws_sdk_default_behavior = false
       aws_s3_use_instance_profile = false

@@ -26,7 +26,7 @@ from typing import Any, Iterable, Mapping, Protocol, Sequence
 
 SCHEMA_VERSION = 1
 MANIFEST_SCHEMA_VERSION = 1
-DEFAULT_DATABASE = "saas_customer_health_demo"
+DEFAULT_DATABASE = "saas_accounts_demo"
 DEFAULT_PLATFORM = "glue"
 DEFAULT_ENV = "DEV"
 FIXED_PROPERTIES: tuple[dict[str, Any], ...] = (
@@ -163,7 +163,7 @@ _ASSET_ALLOWED = {
     "structured_properties",
     "upstreams",
 }
-_FIELD_ALLOWED = {"tags", "glossary_terms"}
+_FIELD_ALLOWED = {"description", "tags", "glossary_terms"}
 _SEMANTIC_PROPERTY_IDS = {item["id"] for item in FIXED_PROPERTIES}
 
 
@@ -281,10 +281,14 @@ def validate_metadata(raw: Any) -> dict[str, Any]:
             for field_name, raw_field in fields.items():
                 _nonempty_string(field_name, f"{path}.fields key")
                 field = _mapping(raw_field, f"{path}.fields.{field_name}")
-                unknown = sorted(set(field) - _FIELD_ALLOWED)
-                if unknown:
-                    _fail(f"{path}.fields.{field_name}", f"unknown keys: {', '.join(unknown)}")
-                for key in _FIELD_ALLOWED:
+                _check_fields(
+                    field,
+                    f"{path}.fields.{field_name}",
+                    {"description"},
+                    _FIELD_ALLOWED,
+                )
+                _nonempty_string(field["description"], f"{path}.fields.{field_name}.description")
+                for key in ("tags", "glossary_terms"):
                     if key in field:
                         _string_list(field[key], f"{path}.fields.{field_name}.{key}")
 
@@ -535,7 +539,7 @@ class DataHubClient:
                 id=payload["id"],
                 type="string",
                 display_name=payload["display_name"],
-                description="Customer-health semantic linkage property.",
+                description="SaaS account semantic linkage property.",
                 entity_types=["dataset"],
                 cardinality=payload["cardinality"],
             )
@@ -566,7 +570,7 @@ class DataHubClient:
             ])
         elif operation.kind == "transformation_job":
             refs = self._dataset_refs()
-            flow = DataFlow(id=payload["flow_id"], orchestrator="semantic-operator", env=DEFAULT_ENV, name=payload["flow_id"], description="Customer-health metadata transformation flow")
+            flow = DataFlow(id=payload["flow_id"], orchestrator="semantic-operator", env=DEFAULT_ENV, name=payload["flow_id"], description="SaaS account metadata transformation flow")
             mcps.extend(flow.generate_mcp())
             job = DataJob(
                 id=payload["id"],
@@ -609,6 +613,7 @@ class DataHubClient:
                     terms = sorted(set(field.get("glossary_terms", [])))
                     field_info.append(EditableSchemaFieldInfoClass(
                         fieldPath=field_name,
+                        description=field.get("description"),
                         globalTags=GlobalTagsClass(tags=[
                             TagAssociationClass(tag=self._urn("tag", tag))
                             for tag in tags

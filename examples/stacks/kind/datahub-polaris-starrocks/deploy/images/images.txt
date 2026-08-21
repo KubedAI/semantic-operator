@@ -8,6 +8,10 @@ dxflrs/garage:v2.3.0
 apache/polaris:1.6.0
 apache/polaris-admin-tool:1.6.0
 postgres:16
+caddy:2.10.2-alpine
+quay.io/keycloak/keycloak:26.6
+# OPA — external first-gate authorizer
+openpolicyagent/opa:1.19.1
 # Apache Kafka (KRaft) — maintained upstream image; replaces the prereq chart's
 # unmaintained bundled broker
 apache/kafka:3.9.0

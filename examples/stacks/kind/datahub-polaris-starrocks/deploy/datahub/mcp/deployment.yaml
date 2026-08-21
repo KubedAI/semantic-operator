@@ -6,7 +6,7 @@
 # lineage, glossary, structured properties) to the host agent over MCP
 # streamable HTTP. It talks to GMS in-cluster; GMS auth is disabled locally so
 # the token is a placeholder. Built by scripts/datahub-mcp-build.sh as
-# chd/datahub-mcp:local (installs mcp-server-datahub from PyPI) and loaded with
+# account-demo/datahub-mcp:local (installs mcp-server-datahub from PyPI) and loaded with
 # `kind load` (imagePullPolicy=Never).
 apiVersion: apps/v1
 kind: Deployment
@@ -15,7 +15,7 @@ metadata:
   namespace: datahub
   labels:
     app.kubernetes.io/name: datahub-mcp
-    app.kubernetes.io/managed-by: chd-local
+    app.kubernetes.io/managed-by: account-demo-local
 spec:
   replicas: 1
   selector:
@@ -28,12 +28,16 @@ spec:
     spec:
       containers:
         - name: datahub-mcp
-          image: chd/datahub-mcp:local
+          image: account-demo/datahub-mcp:local
           imagePullPolicy: Never
           env:
             # In-cluster GMS. Auth disabled in the local demo, so token is empty.
             - { name: DATAHUB_GMS_URL, value: "http://datahub-datahub-gms:8080" }
             - { name: DATAHUB_GMS_TOKEN, value: "" }
+            # Disable acryl-datahub usage telemetry. Without this the SDK blocks
+            # on startup retrying track.datahubproject.io, which has no egress in
+            # the local cluster (ConnectTimeoutError on /mp/engage).
+            - { name: DATAHUB_TELEMETRY_ENABLED, value: "false" }
             - { name: FASTMCP_HOST, value: "0.0.0.0" }
             - { name: FASTMCP_PORT, value: "8000" }
             - { name: FASTMCP_STREAMABLE_HTTP_PATH, value: "/mcp" }
@@ -58,7 +62,7 @@ metadata:
   namespace: datahub
   labels:
     app.kubernetes.io/name: datahub-mcp
-    app.kubernetes.io/managed-by: chd-local
+    app.kubernetes.io/managed-by: account-demo-local
 spec:
   selector:
     app.kubernetes.io/name: datahub-mcp
@@ -74,7 +78,7 @@ metadata:
   namespace: datahub
   labels:
     app.kubernetes.io/name: datahub-mcp
-    app.kubernetes.io/managed-by: chd-local
+    app.kubernetes.io/managed-by: account-demo-local
 spec:
   type: NodePort
   selector:

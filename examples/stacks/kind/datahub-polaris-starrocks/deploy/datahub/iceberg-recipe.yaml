@@ -1,16 +1,16 @@
-# DataHub ingestion of the customer-health Iceberg tables, read from the Polaris
-# REST catalog (warehouse 'chd') with Garage as the S3 FileIO. Runs client-side
+# DataHub ingestion of the SaaS accounts Iceberg tables, read from the Polaris
+# REST catalog (warehouse 'account-demo') with Garage as the S3 FileIO. Runs client-side
 # from the host, so the endpoints are the kind host mappings (Polaris 8181,
 # Garage 3900, GMS 8080). Values are expanded from the environment by
 # datahub-ingest.sh, which reads them from the in-cluster Secrets.
 #
-# Datasets land on platform 'iceberg' as saas_customer_health_demo.<table>.
+# Datasets land on platform 'iceberg' as saas_accounts_demo.<table>.
 # Metadata only: no profiling, no sample values.
 source:
   type: iceberg
   config:
     catalog:
-      chd:
+      account-demo:
         type: rest
         uri: "${ICEBERG_REST_URI}"
         warehouse: "${ICEBERG_WAREHOUSE}"
@@ -29,10 +29,10 @@ source:
         s3.region: "${AWS_REGION}"
         s3.path-style-access: "true"
     env: "DEV"
-    platform_instance: "chd-local"
+    platform_instance: "account-demo-local"
     namespace_pattern:
       allow:
-        - "^saas_customer_health_demo$"
+        - "^saas_accounts_demo$"
     table_pattern:
       deny:
         - ".*_demo_manifest$"

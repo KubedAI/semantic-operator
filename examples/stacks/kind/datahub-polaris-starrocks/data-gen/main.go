@@ -1,4 +1,4 @@
-// Command data-gen generates the fixed small (~44k-row) customer-health
+// Command data-gen generates the fixed small (~44k-row) saas-accounts
 // dataset and loads it into a StarRocks Iceberg external catalog over the
 // MySQL protocol. It is standalone: no AWS, no profiles, no manifest, no reset.
 //
@@ -19,9 +19,9 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 
-	"chd.local/datagen/constants"
-	"chd.local/datagen/gen"
-	"chd.local/datagen/loader"
+	"account-demo.local/datagen/constants"
+	"account-demo.local/datagen/gen"
+	"account-demo.local/datagen/loader"
 )
 
 func main() {

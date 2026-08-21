@@ -3,7 +3,7 @@ package gen
 import (
 	"time"
 
-	"chd.local/datagen/constants"
+	"account-demo.local/datagen/constants"
 )
 
 // AccountAnchor fixes a company fixture used across independently generated facts.

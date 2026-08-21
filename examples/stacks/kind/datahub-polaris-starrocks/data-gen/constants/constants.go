@@ -12,7 +12,7 @@ const (
 	// changes the generated data.
 	Seed int64 = 20260720
 	// DatabaseName is the Iceberg namespace the tables live in.
-	DatabaseName = "saas_customer_health_demo"
+	DatabaseName = "saas_accounts_demo"
 	// SubscriptionSnapshotCount is the number of monthly subscription snapshots.
 	SubscriptionSnapshotCount = 24
 )

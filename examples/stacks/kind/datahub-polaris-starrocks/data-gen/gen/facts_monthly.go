@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 
-	"chd.local/datagen/constants"
+	"account-demo.local/datagen/constants"
 )
 
 func generateAccountFeatureMonthly(rng *rand.Rand, emit func(Row) error) error {

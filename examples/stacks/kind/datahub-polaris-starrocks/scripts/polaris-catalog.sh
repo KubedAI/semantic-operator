@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Create the Iceberg REST catalog 'chd' on Garage. Idempotent.
+# Create the Iceberg REST catalog 'account-demo' on Garage. Idempotent.
 # Uses the exact token + management-API calls validated offline against the
 # real images (S3 storageConfigInfo: endpoint + pathStyleAccess + stsUnavailable;
 # server holds the Garage key in AWS_* env). Runs curl inside the polaris pod.
 . "$(dirname "$0")/lib.sh"
 
-NS=chd
-CATALOG="${POLARIS_CATALOG:-chd}"
+NS=account-demo
+CATALOG="${POLARIS_CATALOG:-account-demo}"
 BASE="s3://iceberg-warehouse/${CATALOG}"
-ENDPOINT="http://garage.chd.svc.cluster.local:3900"
+ENDPOINT="http://garage.account-demo.svc.cluster.local:3900"
 
 SECRET="$(kubectl -n "$NS" get secret polaris-credentials -o jsonpath='{.data.ROOT_CLIENT_SECRET}' | base64 -d)"
 REGION="$(kubectl -n "$NS" get secret garage-credentials -o jsonpath='{.data.region}' | base64 -d)"

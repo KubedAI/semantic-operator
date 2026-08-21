@@ -1,19 +1,24 @@
 # semantic-operator Helm values for the local kind cluster. Images are built
-# and kind-loaded by operator-build.sh (chd/manager:local, chd/server:local),
+# and kind-loaded by operator-build.sh (account-demo/manager:local, account-demo/server:local),
 # so pullPolicy=IfNotPresent must find them locally. StarRocks is the engine;
 # caching (Valkey) is disabled; the catalog is the Polaris-backed 'iceberg'.
 image:
-  repository: chd
-  tag: local
-  pullPolicy: IfNotPresent
+  manager:
+    repository: account-demo/manager
+    tag: local
+    pullPolicy: IfNotPresent
+  server:
+    repository: account-demo/server
+    tag: local
+    pullPolicy: IfNotPresent
 
 engine:
   type: starrocks
 
-# Passwordless dev StarRocks FE in namespace chd. engine.host is empty, so the
+# Passwordless dev StarRocks FE in namespace account-demo. engine.host is empty, so the
 # legacy starrocks.host below is used.
 starrocks:
-  host: chd-fe-service.chd.svc.cluster.local
+  host: account-demo-fe-service.account-demo.svc.cluster.local
   port: 9030
   user: root
   icebergCatalog: iceberg
@@ -41,14 +46,34 @@ server:
   logLevel: info
   listenPort: 8090
   auth:
-    # A single-node kind cluster reachable only over port-forward, so the
-    # trusted-header shortcut is acceptable here. Never copy this to a shared
-    # cluster: it lets any client that reaches the port assert any role.
+    # A single-node kind cluster whose host mappings bind only to loopback, so
+    # the trusted-header shortcut remains available for direct demo/debug use.
+    # Never copy this to a shared cluster: any client reaching the port can
+    # assert any role until the planned JWT cutover is complete.
     mode: header
     allowInsecureHeaderAuth: true
+  # External, first-gate authorizer. The server calls OPA before it compiles a
+  # model to SQL, so a deny here means the request never becomes a query. Models
+  # opt in with spec.governance.external.providerRef: account-opa. Connection
+  # details live here in deployment config, never in a SemanticModel.
+  authorization:
+    providers:
+      - name: account-opa
+        type: opa
+        url: http://opa.account-demo.svc.cluster.local:8181
+        timeoutSeconds: 2
+        opa:
+          decisionPath: semantic/query/allow
   resources:
     requests: {cpu: 100m, memory: 128Mi}
     limits: {memory: 256Mi}
   service:
     type: ClusterIP
     port: 8090
+
+# LOCAL KIND ONLY. The server uses trusted-header auth and the fixed NodePort is
+# bound to 127.0.0.1 for demo/debug access. Disabling these policies also lets
+# every pod in this local cluster reach the server, so never copy this override
+# to a shared cluster. Set enabled=true to restore the chart's default lockdown.
+networkPolicy:
+  enabled: false

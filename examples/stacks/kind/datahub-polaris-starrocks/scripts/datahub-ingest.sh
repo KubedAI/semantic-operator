@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ingest the customer-health Iceberg tables into DataHub, reading
+# Ingest the SaaS accounts Iceberg tables into DataHub, reading
 # from the Polaris REST catalog with Garage FileIO. Runs client-side via uv
 # (PEP 723 inline deps in datahub_ingest.py). Reads Garage + Polaris credentials
 # from the in-cluster Secrets and exposes them (plus the kind host endpoints) as
@@ -8,7 +8,7 @@
 
 command -v uv >/dev/null 2>&1 || die "uv is required (https://docs.astral.sh/uv/)"
 
-d() { kubectl -n chd get secret "$1" -o jsonpath="{.data.$2}" | base64 -d; }
+d() { kubectl -n account-demo get secret "$1" -o jsonpath="{.data.$2}" | base64 -d; }
 
 # Garage S3 FileIO (host reaches Garage at the kind host mapping localhost:3900).
 export AWS_ACCESS_KEY_ID="$(d garage-credentials AWS_ACCESS_KEY_ID)"
@@ -23,7 +23,7 @@ PSEC="$(d polaris-credentials ROOT_CLIENT_SECRET)"
 [ -n "$PSEC" ] || die "could not read polaris-credentials (is Polaris deployed?)"
 export ICEBERG_CREDENTIAL="${PID}:${PSEC}"
 export ICEBERG_REST_URI="${ICEBERG_REST_URI:-http://localhost:8181/api/catalog}"
-export ICEBERG_WAREHOUSE="${ICEBERG_WAREHOUSE:-chd}"
+export ICEBERG_WAREHOUSE="${ICEBERG_WAREHOUSE:-account-demo}"
 
 # DataHub GMS sink (host 8080). Token empty when GMS auth is disabled (dev default).
 export DATAHUB_GMS_URL="${DATAHUB_GMS_URL:-http://localhost:8080}"

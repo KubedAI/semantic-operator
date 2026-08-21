@@ -1,9 +1,9 @@
-// Standalone, self-contained generator/loader for the local customer-health
+// Standalone, self-contained generator/loader for the local saas-accounts
 // demo dataset. It is deliberately its own Go module (not part of the parent
 // demo module) so it stays lightweight: one dependency, no AWS/S3/Glue code,
 // no profiles, no manifest, no force/reset. It generates the fixed small
 // (~44k-row) dataset and loads it into the local StarRocks Iceberg catalog.
-module chd.local/datagen
+module account-demo.local/datagen
 
 go 1.26.2
 

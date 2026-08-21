@@ -8,7 +8,7 @@
 
 [ -f "$ROOT_DIR/go.mod" ] || die "repo root (go.mod) not found at $ROOT_DIR"
 
-REPO="${OPERATOR_IMAGE_REPO:-chd}"
+REPO="${OPERATOR_IMAGE_REPO:-account-demo}"
 TAG="${OPERATOR_IMAGE_TAG:-local}"
 BUILD_DIR="$DATA_DIR/operator-build"
 mkdir -p "$BUILD_DIR"

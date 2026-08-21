@@ -6,7 +6,7 @@ metadata:
 spec:
   connection:
     catalog: iceberg
-    database: saas_customer_health_demo
+    database: saas_accounts_demo
     viewDatabase: semantic_views
   ossie:
     name: saas_adoption
@@ -212,6 +212,8 @@ spec:
         description: Distinct active dates in the fixed 30-day current window.
 
   governance:
+    external:
+      providerRef: account-opa
     defaultRole: platform_analyst
     roles:
       - name: platform_analyst

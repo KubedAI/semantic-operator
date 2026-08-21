@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: account-demo
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/managed-by: account-demo-local
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.6
+          imagePullPolicy: IfNotPresent
+          args: ["start", "--import-realm"]
+          env:
+            - { name: KC_DB, value: postgres }
+            - { name: KC_DB_URL, value: "jdbc:postgresql://postgres.account-demo.svc.cluster.local:5432/keycloak" }
+            - { name: KC_DB_USERNAME, value: keycloak }
+            - name: KC_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-runtime, key: KEYCLOAK_DB_PASSWORD } }
+            - { name: KC_BOOTSTRAP_ADMIN_USERNAME, value: admin }
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-runtime, key: KEYCLOAK_ADMIN_PASSWORD } }
+            - name: DATAHUB_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: keycloak-runtime, key: DATAHUB_CLIENT_SECRET } }
+            - name: CHAT_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: keycloak-runtime, key: CHAT_CLIENT_SECRET } }
+            - name: ALICE_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-runtime, key: ALICE_PASSWORD } }
+            - name: BOB_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-runtime, key: BOB_PASSWORD } }
+            - name: CAROL_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-runtime, key: CAROL_PASSWORD } }
+            - { name: KC_HTTP_ENABLED, value: "true" }
+            - { name: KC_HTTP_PORT, value: "8080" }
+            - { name: KC_HOSTNAME, value: "https://auth.localtest.me:8443" }
+            - { name: KC_HOSTNAME_STRICT, value: "true" }
+            - { name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC, value: "true" }
+            - { name: KC_PROXY_HEADERS, value: xforwarded }
+            - { name: KC_HEALTH_ENABLED, value: "true" }
+            - { name: KC_CACHE, value: local }
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: management, containerPort: 9000 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          startupProbe:
+            httpGet: { path: /health/started, port: management }
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /health/ready, port: management }
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet: { path: /health/live, port: management }
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { memory: "1Gi" }
+          volumeMounts:
+            - { name: data, mountPath: /opt/keycloak/data }
+            - { name: realm, mountPath: /opt/keycloak/data/import, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: realm
+          configMap: { name: keycloak-realm }
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: account-demo
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/managed-by: account-demo-local
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: keycloak
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keycloak-gateway-only
+  namespace: account-demo
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: https-gateway
+      ports:
+        - { protocol: TCP, port: 8080 }

@@ -17,13 +17,13 @@ export DATAHUB_GMS_URL="${DATAHUB_GMS_URL:-http://localhost:8080}"
 # metadata-service authentication.
 export DATAHUB_GMS_TOKEN="${DATAHUB_GMS_TOKEN:-local-no-auth}"
 
-log "enriching iceberg datasets (instance chd-local) via $DATAHUB_GMS_URL"
+log "enriching iceberg datasets (instance account-demo-local) via $DATAHUB_GMS_URL"
 uv run "$LOCAL_DIR/scripts/datahub_enrich.py" \
   --metadata "$DEPLOY_DIR/datahub/enrichment-metadata.yaml" \
   --platform iceberg \
-  --platform-instance "${DATAHUB_PLATFORM_INSTANCE:-chd-local}" \
+  --platform-instance "${DATAHUB_PLATFORM_INSTANCE:-account-demo-local}" \
   --env DEV \
-  --database saas_customer_health_demo \
+  --database saas_accounts_demo \
   --manifest-output "$DATA_DIR/datahub-urn-manifest.json" \
   ${ARGS:-} "$@"
 log "enrichment complete — manifest at $DATA_DIR/datahub-urn-manifest.json"

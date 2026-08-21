@@ -9,7 +9,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: postgres-credentials
-  namespace: chd
+  namespace: account-demo
 type: Opaque
 stringData:
   POSTGRES_PASSWORD: postgres-local-dev      # superuser
@@ -20,7 +20,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: postgres-init
-  namespace: chd
+  namespace: account-demo
 data:
   # Runs only on first initialization (empty PGDATA). Creates the two app
   # roles + databases. Passwords are injected from the Secret via env.
@@ -38,7 +38,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: postgres
-  namespace: chd
+  namespace: account-demo
   labels: { app: postgres }
 spec:
   replicas: 1
@@ -85,7 +85,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: postgres
-  namespace: chd
+  namespace: account-demo
   labels: { app: postgres }
 spec:
   selector: { app: postgres }

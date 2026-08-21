@@ -1,5 +1,5 @@
 // Package gen provides deterministic, streaming synthetic data for the local
-// customer-health demo. Each table has an independent random stream, so
+// SaaS accounts demo. Each table has an independent random stream, so
 // loading or skipping one table cannot change another table's rows.
 package gen
 
@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 
-	"chd.local/datagen/constants"
+	"account-demo.local/datagen/constants"
 )
 
 // Row is ordered to match the corresponding TableSchema.Columns slice.

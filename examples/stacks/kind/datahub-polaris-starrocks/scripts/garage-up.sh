@@ -6,13 +6,13 @@
 . "$(dirname "$0")/lib.sh"
 
 BUCKETS=(iceberg-warehouse starrocks-storage)
-G=(kubectl -n chd exec garage-0 -- /garage)
+G=(kubectl -n account-demo exec garage-0 -- /garage)
 
 kubectl apply -f "$DEPLOY_DIR/namespaces.yaml"
 kubectl apply -f "$DEPLOY_DIR/garage/garage.yaml"
 
 log "waiting for garage statefulset"
-kubectl -n chd rollout status statefulset/garage --timeout=180s
+kubectl -n account-demo rollout status statefulset/garage --timeout=180s
 
 NODEID="$("${G[@]}" node id -q 2>/dev/null | cut -d@ -f1)"
 [ -n "$NODEID" ] || die "could not read garage node id"
@@ -33,8 +33,8 @@ done
 
 # Fixed, obviously-fake local-dev access key (all "deadbeef" — not a real
 # credential, so secret scanners leave it alone). Garage key NAMES are not
-# unique, so 'key create chd-key' on a re-run makes a duplicate and
-# 'key info chd-key' then fails with "2 matching keys"; importing a fixed ID
+# unique, so 'key create account-demo-key' on a re-run makes a duplicate and
+# 'key info account-demo-key' then fails with "2 matching keys"; importing a fixed ID
 # is idempotent.
 KEYID="GKdeadbeefdeadbeefdeadbeef"
 SECRET="deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
@@ -42,18 +42,18 @@ if "${G[@]}" key info "$KEYID" >/dev/null 2>&1; then
   log "access key $KEYID exists"
 else
   log "importing fixed access key $KEYID"
-  "${G[@]}" key import --yes -n chd-key "$KEYID" "$SECRET"
+  "${G[@]}" key import --yes -n account-demo-key "$KEYID" "$SECRET"
 fi
 
 for b in "${BUCKETS[@]}"; do
   "${G[@]}" bucket allow --read --write --owner "$b" --key "$KEYID"
 done
 
-log "storing garage-credentials secret in ns chd"
-kubectl -n chd create secret generic garage-credentials \
+log "storing garage-credentials secret in ns account-demo"
+kubectl -n account-demo create secret generic garage-credentials \
   --from-literal=AWS_ACCESS_KEY_ID="$KEYID" \
   --from-literal=AWS_SECRET_ACCESS_KEY="$SECRET" \
-  --from-literal=endpoint="http://garage.chd.svc.cluster.local:3900" \
+  --from-literal=endpoint="http://garage.account-demo.svc.cluster.local:3900" \
   --from-literal=region="garage" \
   --dry-run=client -o yaml | kubectl apply -f -
 

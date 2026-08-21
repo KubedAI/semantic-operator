@@ -15,7 +15,7 @@ metadata:
   namespace: datahub
   labels:
     app.kubernetes.io/name: datahub-gms
-    app.kubernetes.io/managed-by: chd-local
+    app.kubernetes.io/managed-by: account-demo-local
 spec:
   type: NodePort
   selector:
@@ -34,7 +34,7 @@ metadata:
   namespace: datahub
   labels:
     app.kubernetes.io/name: datahub-frontend
-    app.kubernetes.io/managed-by: chd-local
+    app.kubernetes.io/managed-by: account-demo-local
 spec:
   type: NodePort
   selector:

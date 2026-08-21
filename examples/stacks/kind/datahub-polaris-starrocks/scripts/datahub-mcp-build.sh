@@ -8,7 +8,7 @@
 # build; leave it empty for the latest release.
 . "$(dirname "$0")/lib.sh"
 
-REPO="${DATAHUB_MCP_IMAGE_REPO:-chd}"
+REPO="${DATAHUB_MCP_IMAGE_REPO:-account-demo}"
 TAG="${DATAHUB_MCP_IMAGE_TAG:-local}"
 CTX="$DEPLOY_DIR/datahub/mcp"
 SPEC="mcp-server-datahub${DATAHUB_MCP_VERSION:+==$DATAHUB_MCP_VERSION}"

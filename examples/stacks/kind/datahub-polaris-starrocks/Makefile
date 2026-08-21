@@ -1,4 +1,4 @@
-# Local customer-health demo.
+# Local SaaS accounts demo.
 #
 # A single-node kind cluster running the whole lakehouse + semantic stack:
 # Garage (S3), Postgres, Polaris (Iceberg REST catalog), StarRocks, the
@@ -8,18 +8,18 @@
 # Run the stages in order; each is small and independently verifiable.
 #
 #   Setup (needs network, run once):
-#     make charts-vendor charts-images images-pull
+#     make tools charts-vendor charts-images images-pull
 #   Bring up the platform (offline):
 #     make cluster-up images-load
 #     make garage-up postgres-up
 #     make polaris-up polaris-catalog
 #     make starrocks-up starrocks-catalog
 #     make data-load
-#     make operator-build operator-up models-apply
+#     make operator-build operator-up opa-up models-apply
+#     make gateway-up keycloak-up
 #     make datahub-up datahub-ingest datahub-enrich
-#   Ask questions interactively (needs an OpenAI-compatible LLM endpoint):
+#   Expose DataHub over MCP so your own agent can use it:
 #     make datahub-mcp-build datahub-mcp-up
-#     make agent
 #   Tear down (host data/ is preserved):
 #     make cluster-down
 #
@@ -30,8 +30,10 @@ LOCAL_DIR   := $(CURDIR)
 DATA_DIR    := $(LOCAL_DIR)/data
 DEPLOY_DIR  := $(LOCAL_DIR)/deploy
 SCRIPTS     := $(LOCAL_DIR)/scripts
-CLUSTER_NAME ?= chd-local
+CLUSTER_NAME ?= account-demo-local
 export KUBECONFIG := $(LOCAL_DIR)/.kube/config
+# Prefer tools fetched by `make tools` into ./bin, then fall back to PATH.
+export PATH := $(LOCAL_DIR)/bin:$(PATH)
 
 -include $(DEPLOY_DIR)/versions.lock
 
@@ -47,6 +49,10 @@ help: ## Show targets
 # images are pulled into the local Docker cache, so later cluster rebuilds
 # reload them with 'kind load' instead of hitting a registry.
 # =============================================================================
+.PHONY: tools
+tools: ## (network) Fetch pinned kind/kubectl/helm/uv into ./bin for this host OS+arch
+	@bash $(SCRIPTS)/tools-install.sh
+
 .PHONY: charts-vendor
 charts-vendor: ## (network) Vendor pinned helm charts into deploy/*/charts
 	@bash $(SCRIPTS)/charts-vendor.sh
@@ -99,7 +105,7 @@ polaris-up: ## Bootstrap + deploy Polaris server (relational-jdbc on Postgres)
 	@bash $(SCRIPTS)/polaris-up.sh
 
 .PHONY: polaris-catalog
-polaris-catalog: ## Create/ensure the Iceberg REST catalog 'chd' on Garage
+polaris-catalog: ## Create/ensure the Iceberg REST catalog 'account-demo' on Garage
 	@bash $(SCRIPTS)/polaris-catalog.sh
 
 # =============================================================================
@@ -131,6 +137,10 @@ operator-build: ## Build + kind-load the manager & server images (offline)
 operator-up: ## Install semantic-operator + server (namespace semantic-system)
 	@bash $(SCRIPTS)/operator-up.sh
 
+.PHONY: opa-up
+opa-up: ## Deploy OPA as the external first-gate authorizer (namespace account-demo)
+	@bash $(SCRIPTS)/opa-up.sh
+
 .PHONY: models-apply
 models-apply: ## Apply the 3 local SemanticModels (catalog=iceberg)
 	@bash $(SCRIPTS)/models-apply.sh
@@ -139,11 +149,11 @@ models-apply: ## Apply the 3 local SemanticModels (catalog=iceberg)
 # Data catalog — DataHub v1.6.0 (single replica, shared Postgres) + ingest/enrich.
 # =============================================================================
 .PHONY: datahub-up
-datahub-up: ## Install DataHub + prerequisites (OpenSearch + Apache Kafka) in ns datahub
+datahub-up: keycloak-up ## Install OIDC-enabled DataHub + prerequisites in ns datahub
 	@bash $(SCRIPTS)/datahub-up.sh
 
 .PHONY: datahub-ingest
-datahub-ingest: ## Ingest Iceberg tables (Polaris chd) into DataHub via uv (client-side)
+datahub-ingest: ## Ingest Iceberg tables (Polaris account-demo) into DataHub via uv (client-side)
 	@bash $(SCRIPTS)/datahub-ingest.sh
 
 .PHONY: datahub-enrich
@@ -151,9 +161,19 @@ datahub-enrich: ## Enrich ingested datasets with semantic metadata via uv (clien
 	@bash $(SCRIPTS)/datahub-enrich.sh
 
 # =============================================================================
-# Interactive agent — a host-side analyst that composes the Semantic Operator
-# MCP and the in-cluster DataHub MCP over an OpenAI-compatible LLM endpoint
-# (Amazon Bedrock's bedrock-mantle). The model never writes SQL.
+# HTTPS and identity — Caddy gateway first, then Keycloak behind it.
+# =============================================================================
+.PHONY: gateway-up keycloak-up
+gateway-up: ## Deploy the local-CA HTTPS gateway and install kind split DNS
+	@bash $(SCRIPTS)/gateway-up.sh
+
+keycloak-up: gateway-up ## Provision Keycloak DB, realm, clients, roles, and demo credentials
+	@bash $(SCRIPTS)/keycloak-up.sh
+
+# =============================================================================
+# DataHub MCP server — exposes DataHub search, metadata, lineage, and glossary
+# over MCP so your own agent (Claude Code, Kiro CLI, or any MCP host) can use it
+# alongside the Semantic Operator MCP. See the docs for client registration.
 # =============================================================================
 .PHONY: datahub-mcp-build
 datahub-mcp-build: ## Build + kind-load the DataHub MCP server image (installs mcp-server-datahub from PyPI)
@@ -162,13 +182,6 @@ datahub-mcp-build: ## Build + kind-load the DataHub MCP server image (installs m
 .PHONY: datahub-mcp-up
 datahub-mcp-up: ## Deploy the in-cluster DataHub MCP server (namespace datahub)
 	@bash $(SCRIPTS)/datahub-mcp-up.sh
-
-.PHONY: agent
-agent: ## Run the interactive agent (set OPENAI_BASE_URL, OPENAI_API_KEY, BEDROCK_MODEL_ID; optional ROLE=, QUESTION=)
-	@cd $(LOCAL_DIR)/agent && \
-	  SEMANTIC_MCP_URL="$${SEMANTIC_MCP_URL:-http://localhost:8090/mcp}" \
-	  DATAHUB_MCP_URL="$${DATAHUB_MCP_URL:-http://localhost:8091/mcp}" \
-	  go run . $(if $(ROLE),-role $(ROLE),) $(if $(QUESTION),-question "$(QUESTION)",)
 
 # =============================================================================
 # Teardown + utilities

@@ -5,7 +5,7 @@ import (
 	"math/rand/v2"
 	"time"
 
-	"chd.local/datagen/constants"
+	"account-demo.local/datagen/constants"
 )
 
 const (

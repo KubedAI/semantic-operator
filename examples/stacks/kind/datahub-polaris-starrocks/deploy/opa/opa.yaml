@@ -1,0 +1,83 @@
+# OPA (Open Policy Agent) as the external, first-gate authorizer for the demo.
+# The Semantic Operator server calls it before it compiles any model to SQL.
+#
+# The policy is loaded from the `opa-policy` ConfigMap, which opa-up.sh renders
+# from deploy/opa/policy.rego so the Rego stays the single source of truth.
+# Served on 8181; the operator is pointed at http://opa.account-demo.svc.cluster.local:8181
+# with decisionPath semantic/query/allow via deploy/operator/values.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opa
+  namespace: account-demo
+  labels:
+    app.kubernetes.io/name: opa
+    app.kubernetes.io/managed-by: account-demo-local
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opa
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: opa
+        app.kubernetes.io/managed-by: account-demo-local
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: opa
+          image: openpolicyagent/opa:1.19.1
+          args:
+            - run
+            - --server
+            - --addr=0.0.0.0:8181
+            - --log-level=info
+            - /policies/policy.rego
+          ports:
+            - name: http
+              containerPort: 8181
+          volumeMounts:
+            - name: policy
+              mountPath: /policies
+              readOnly: true
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 128Mi }
+      volumes:
+        - name: policy
+          configMap:
+            name: opa-policy
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opa
+  namespace: account-demo
+  labels:
+    app.kubernetes.io/name: opa
+    app.kubernetes.io/managed-by: account-demo-local
+spec:
+  selector:
+    app.kubernetes.io/name: opa
+  ports:
+    - name: http
+      port: 8181
+      targetPort: http

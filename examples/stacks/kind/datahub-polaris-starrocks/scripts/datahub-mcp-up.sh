@@ -10,5 +10,5 @@ kubectl apply -f "$DEPLOY_DIR/datahub/mcp/deployment.yaml"
 log "waiting for datahub-mcp rollout"
 kubectl -n datahub rollout status deploy/datahub-mcp --timeout=120s
 
-log "DataHub MCP ready — host agent endpoint http://localhost:8091/mcp"
-log "next: make agent"
+log "DataHub MCP ready — endpoint http://localhost:8091/mcp"
+log "next: point your own MCP client (Claude Code, Kiro CLI) at the operator and DataHub MCP endpoints; see the docs"

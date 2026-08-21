@@ -5,6 +5,8 @@ set -euo pipefail
 # Resolve local/ root regardless of caller CWD.
 LOCAL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export LOCAL_DIR
+# Prefer tools fetched by `make tools` into ./bin, then fall back to PATH.
+export PATH="$LOCAL_DIR/bin:$PATH"
 DATA_DIR="$LOCAL_DIR/data"
 DEPLOY_DIR="$LOCAL_DIR/deploy"
 export DATA_DIR DEPLOY_DIR
@@ -15,11 +17,11 @@ ROOT_DIR="$(git -C "$LOCAL_DIR" rev-parse --show-toplevel)"
 export ROOT_DIR
 
 # Pinned kind cluster + local kubeconfig. We NEVER write ~/.kube/config; every
-# kubectl/helm/kind call in this project uses this local kubeconfig.
-CLUSTER_NAME="${CLUSTER_NAME:-chd-local}"
-KIND="${KIND:-$LOCAL_DIR/bin/kind}"
+# kubectl/helm/kind call in this project uses this local kubeconfig. kind itself
+# must be on PATH.
+CLUSTER_NAME="${CLUSTER_NAME:-account-demo-local}"
 export KUBECONFIG="${KUBECONFIG:-$LOCAL_DIR/.kube/config}"
-export CLUSTER_NAME KIND
+export CLUSTER_NAME
 mkdir -p "$(dirname "$KUBECONFIG")"
 
 # Load pinned versions (KEY=VALUE, comment-safe).

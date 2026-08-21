@@ -1,0 +1,145 @@
+{
+  "realm": "saas-accounts",
+  "enabled": true,
+  "displayName": "SaaS Accounts",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "loginWithEmailAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 28800,
+  "roles": {
+    "client": {
+      "semantic-api": [
+        { "name": "platform_analyst" },
+        { "name": "na_customer_success" },
+        { "name": "finance_analyst" },
+        { "name": "privacy_admin" }
+      ]
+    }
+  },
+  "clients": [
+    {
+      "clientId": "semantic-api",
+      "name": "Semantic API",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "bearerOnly": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false
+    },
+    {
+      "clientId": "datahub",
+      "name": "DataHub",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${DATAHUB_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "redirectUris": ["https://datahub.localtest.me:8443/callback/oidc"],
+      "webOrigins": ["https://datahub.localtest.me:8443"],
+      "defaultClientScopes": ["web-origins", "acr", "profile", "email"]
+    },
+    {
+      "clientId": "chat",
+      "name": "SaaS Accounts Chat",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${CHAT_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "redirectUris": ["https://chat.localtest.me:8443/oauth/callback"],
+      "webOrigins": ["https://chat.localtest.me:8443"],
+      "defaultClientScopes": ["web-origins", "acr", "profile", "email"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "semantic-api roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "semantic-api",
+            "claim.name": "semantic_roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "false",
+            "access.tokenResponse.claim": "false"
+          }
+        },
+        {
+          "name": "semantic-api audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "semantic-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "firstName": "Alice",
+      "lastName": "San",
+      "email": "alice@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "${ALICE_PASSWORD}", "temporary": false }
+      ],
+      "clientRoles": {"semantic-api": ["platform_analyst"]}
+    },
+    {
+      "username": "bob",
+      "firstName": "Bob",
+      "lastName": "San",
+      "email": "bob@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "${BOB_PASSWORD}", "temporary": false }
+      ],
+      "clientRoles": {"semantic-api": ["na_customer_success"]}
+    },
+    {
+      "username": "carol",
+      "firstName": "Carol",
+      "lastName": "San",
+      "email": "carol@example.com",
+      "emailVerified": true,
+      "enabled": true,
+      "credentials": [
+        { "type": "password", "value": "${CAROL_PASSWORD}", "temporary": false }
+      ],
+      "clientRoles": {"semantic-api": ["finance_analyst"]}
+    }
+  ]
+}

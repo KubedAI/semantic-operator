@@ -13,7 +13,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: polaris-credentials
-  namespace: chd
+  namespace: account-demo
 type: Opaque
 stringData:
   ROOT_CLIENT_ID: root
@@ -24,7 +24,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: polaris-bootstrap
-  namespace: chd
+  namespace: account-demo
 spec:
   backoffLimit: 2
   template:
@@ -43,13 +43,13 @@ spec:
             - { name: QUARKUS_DATASOURCE_USERNAME, value: polaris }
             - name: QUARKUS_DATASOURCE_PASSWORD
               valueFrom: { secretKeyRef: { name: postgres-credentials, key: POLARIS_DB_PASSWORD } }
-            - { name: QUARKUS_DATASOURCE_JDBC_URL, value: "jdbc:postgresql://postgres.chd.svc.cluster.local:5432/polaris" }
+            - { name: QUARKUS_DATASOURCE_JDBC_URL, value: "jdbc:postgresql://postgres.account-demo.svc.cluster.local:5432/polaris" }
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: polaris
-  namespace: chd
+  namespace: account-demo
   labels: { app: polaris }
 spec:
   replicas: 1
@@ -68,7 +68,7 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              until psql -h postgres.chd.svc.cluster.local -U polaris -d polaris \
+              until psql -h postgres.account-demo.svc.cluster.local -U polaris -d polaris \
                     -tAc "SELECT 1 FROM polaris_schema.version LIMIT 1" >/dev/null 2>&1; do
                 echo "waiting for polaris bootstrap..."; sleep 3
               done
@@ -88,7 +88,7 @@ spec:
             - { name: QUARKUS_DATASOURCE_USERNAME, value: polaris }
             - name: QUARKUS_DATASOURCE_PASSWORD
               valueFrom: { secretKeyRef: { name: postgres-credentials, key: POLARIS_DB_PASSWORD } }
-            - { name: QUARKUS_DATASOURCE_JDBC_URL, value: "jdbc:postgresql://postgres.chd.svc.cluster.local:5432/polaris" }
+            - { name: QUARKUS_DATASOURCE_JDBC_URL, value: "jdbc:postgresql://postgres.account-demo.svc.cluster.local:5432/polaris" }
             - { name: POLARIS_PERSISTENCE_TYPE, value: relational-jdbc }
             - { name: POLARIS_REALM_CONTEXT_REALMS, value: POLARIS }
             # S3 access to Garage for catalog storage. stsUnavailable=true on the
@@ -123,7 +123,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: polaris
-  namespace: chd
+  namespace: account-demo
   labels: { app: polaris }
 spec:
   selector: { app: polaris }
@@ -136,7 +136,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: polaris-nodeport
-  namespace: chd
+  namespace: account-demo
 spec:
   type: NodePort
   selector: { app: polaris }

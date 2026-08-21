@@ -4,7 +4,7 @@
 # Relational store is the shared Postgres 'datahub' DB (not the bundled MySQL).
 # Graph + search are the OpenSearch from the prerequisites release. neo4j is
 # unused. The password comes from the datahub-postgres Secret created by
-# datahub-up.sh (mirrored from the chd postgres-credentials Secret).
+# datahub-up.sh (mirrored from the account-demo postgres-credentials Secret).
 
 global:
   datahub:
@@ -19,10 +19,10 @@ global:
 
   sql:
     datasource:
-      host: "postgres.chd.svc.cluster.local:5432"
-      hostForpostgresqlClient: "postgres.chd.svc.cluster.local"
+      host: "postgres.account-demo.svc.cluster.local:5432"
+      hostForpostgresqlClient: "postgres.account-demo.svc.cluster.local"
       port: "5432"
-      url: "jdbc:postgresql://postgres.chd.svc.cluster.local:5432/datahub"
+      url: "jdbc:postgresql://postgres.account-demo.svc.cluster.local:5432/datahub"
       driver: "org.postgresql.Driver"
       database: "datahub"
       username: "datahub"
@@ -53,6 +53,63 @@ datahub-frontend:
   replicaCount: 1
   service:
     type: ClusterIP
+  oidcAuthentication:
+    enabled: true
+    provider: other
+    clientId: datahub
+    clientSecretRef:
+      secretRef: datahub-oidc
+      secretKey: client-secret
+    discoveryUri: "https://auth.localtest.me:8443/realms/saas-accounts/.well-known/openid-configuration"
+    oidcBaseUrl: "https://datahub.localtest.me:8443"
+    scope: "openid profile email"
+    user_name_claim: preferred_username
+    user_name_claim_regex: "(.+)"
+  authCookies:
+    sameSite: "LAX"
+    secure: "true"
+  extraEnvs:
+    - name: JAVA_TOOL_OPTIONS
+      value: "-Djavax.net.ssl.trustStore=/etc/datahub/oidc/cacerts -Djavax.net.ssl.trustStorePassword=changeit"
+  extraVolumes:
+    - name: gateway-ca
+      configMap:
+        name: gateway-ca
+    - name: oidc-truststore
+      emptyDir: {}
+  extraVolumeMounts:
+    - name: oidc-truststore
+      mountPath: /etc/datahub/oidc
+      readOnly: true
+  extraInitContainers:
+    - name: prepare-oidc-truststore
+      image: quay.io/keycloak/keycloak:26.6
+      imagePullPolicy: IfNotPresent
+      command: ["/bin/sh", "-ec"]
+      args:
+        - |
+          java_path="$(readlink -f "$(command -v java)")"
+          cacerts="$(dirname "$(dirname "$java_path")")/lib/security/cacerts"
+          cp "$cacerts" /truststore/cacerts
+          chmod 0644 /truststore/cacerts
+          keytool -importcert -noprompt -trustcacerts \
+            -alias saas-accounts-local-ca \
+            -file /gateway-ca/ca.crt \
+            -keystore /truststore/cacerts \
+            -storepass changeit
+          chmod 0444 /truststore/cacerts
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        allowPrivilegeEscalation: false
+        capabilities: {drop: ["ALL"]}
+      volumeMounts:
+        - name: gateway-ca
+          mountPath: /gateway-ca
+          readOnly: true
+        - name: oidc-truststore
+          mountPath: /truststore
   resources:
     requests: {cpu: "50m", memory: "256Mi"}
     limits: {memory: "640Mi"}

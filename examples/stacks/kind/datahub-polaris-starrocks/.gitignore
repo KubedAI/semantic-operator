@@ -16,3 +16,18 @@ sources
 # Python bytecode from the uv ingest/enrich scripts.
 __pycache__/
 *.pyc
+
+# Generated TLS, Keycloak credentials, and other local runtime state.
+/.tmp/
+
+# Local demo agent and chat UI. Kept for private demos, not maintained in the
+# repo. Untracked with: git rm -r --cached agent
+/agent/
+/deploy/chat/
+/scripts/chat-build.sh
+/scripts/chat-up.sh
+
+# Per-directory MCP client config a user writes to point their own harness
+# (Claude Code, Kiro CLI) at the local MCP servers.
+/.mcp.json
+/.kiro/

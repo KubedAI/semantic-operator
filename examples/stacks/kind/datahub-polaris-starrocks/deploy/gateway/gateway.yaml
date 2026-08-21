@@ -1,0 +1,149 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: https-gateway
+  namespace: account-demo
+data:
+  Caddyfile: |
+    {
+      admin off
+      auto_https off
+    }
+
+    :8443 {
+      tls /etc/caddy/tls/tls.crt /etc/caddy/tls/tls.key
+
+      @datahub host datahub.localtest.me
+      handle @datahub {
+        reverse_proxy datahub-datahub-frontend.datahub.svc.cluster.local:9002
+      }
+
+      @keycloak host auth.localtest.me
+      handle @keycloak {
+        reverse_proxy keycloak.account-demo.svc.cluster.local:8080
+      }
+
+      @chat host chat.localtest.me
+      handle @chat {
+        reverse_proxy chat.account-demo.svc.cluster.local:8080
+      }
+
+      respond "unknown host\n" 421
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: https-gateway
+  namespace: account-demo
+  labels:
+    app.kubernetes.io/name: https-gateway
+    app.kubernetes.io/managed-by: account-demo-local
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: https-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: https-gateway
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      initContainers:
+        # The official binary carries cap_net_bind_service for ports 80/443.
+        # This gateway listens on 8443, so copy it to strip that file capability
+        # before the no-new-privileges main container executes it.
+        - name: prepare-caddy
+          image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args: ["cp /usr/bin/caddy /opt/caddy/caddy && chmod 0555 /opt/caddy/caddy"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: caddy-binary, mountPath: /opt/caddy }
+      containers:
+        - name: caddy
+          image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+          imagePullPolicy: IfNotPresent
+          command: ["/opt/caddy/caddy"]
+          args: ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+          ports:
+            - { name: https, containerPort: 8443 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          readinessProbe:
+            tcpSocket: { port: https }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: { port: https }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "25m", memory: "32Mi" }
+            limits: { memory: "128Mi" }
+          volumeMounts:
+            - { name: caddy-binary, mountPath: /opt/caddy, readOnly: true }
+            - { name: config, mountPath: /etc/caddy, readOnly: true }
+            - { name: tls, mountPath: /etc/caddy/tls, readOnly: true }
+            - { name: data, mountPath: /data }
+            - { name: runtime-config, mountPath: /config }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: caddy-binary
+          emptyDir: {}
+        - name: config
+          configMap: { name: https-gateway }
+        - name: tls
+          secret: { secretName: gateway-tls, defaultMode: 0440 }
+        - name: data
+          emptyDir: {}
+        - name: runtime-config
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: https-gateway
+  namespace: account-demo
+  labels:
+    app.kubernetes.io/name: https-gateway
+    app.kubernetes.io/managed-by: account-demo-local
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: https-gateway
+  ports:
+    - { name: https-host, port: 443, targetPort: 8443 }
+    - { name: https-issuer, port: 8443, targetPort: 8443 }
+---
+# Local kind host access. deploy/kind/cluster.yaml maps nodePort 30443 to
+# 127.0.0.1:8443; the ClusterIP Service above remains the in-cluster DNS target.
+apiVersion: v1
+kind: Service
+metadata:
+  name: https-gateway-nodeport
+  namespace: account-demo
+  labels:
+    app.kubernetes.io/name: https-gateway
+    app.kubernetes.io/managed-by: account-demo-local
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: https-gateway
+  ports:
+    - { name: https, port: 443, targetPort: 8443, nodePort: 30443 }
