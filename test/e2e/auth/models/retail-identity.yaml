@@ -1,0 +1,80 @@
+# A minimal SemanticModel over the retail data, for the StarRocks identity
+# passthrough e2e. It has no views, so the manager only introspects. Built-in
+# governance allows every role, so per-user differences come from engine-side
+# enforcement: StarRocks denies the customer table for bob with native grants.
+apiVersion: semantic.ossie.io/v1alpha1
+kind: SemanticModel
+metadata:
+  name: retail-identity
+  namespace: semantic-system
+spec:
+  connection:
+    catalog: default_catalog
+    database: osi_demo
+  ossie:
+    name: retail_identity_model
+    description: Retail store_sales, store, and customer for the identity passthrough e2e
+    datasets:
+      - name: store_sales
+        source: store_sales
+        primary_key: [ss_item_sk, ss_ticket_number]
+        fields:
+          - name: ss_item_sk
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: ss_item_sk }]
+          - name: ss_ticket_number
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: ss_ticket_number }]
+          - name: ss_customer_sk
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: ss_customer_sk }]
+          - name: ss_store_sk
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: ss_store_sk }]
+          - name: ss_ext_sales_price
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: ss_ext_sales_price }]
+      - name: store
+        source: store
+        primary_key: [s_store_sk]
+        fields:
+          - name: s_store_sk
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: s_store_sk }]
+          - name: s_store_name
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: s_store_name }]
+      - name: customer
+        source: customer
+        primary_key: [c_customer_sk]
+        fields:
+          - name: c_customer_sk
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: c_customer_sk }]
+          - name: c_birth_year
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: c_birth_year }]
+    relationships:
+      - name: store_sales_to_store
+        from: store_sales
+        to: store
+        from_columns: [ss_store_sk]
+        to_columns: [s_store_sk]
+      - name: store_sales_to_customer
+        from: store_sales
+        to: customer
+        from_columns: [ss_customer_sk]
+        to_columns: [c_customer_sk]
+    metrics:
+      - name: total_sales
+        expression:
+          dialects: [{ dialect: ANSI_SQL, expression: SUM(store_sales.ss_ext_sales_price) }]
+  governance:
+    defaultRole: analyst
+    roles:
+      - name: analyst
+        allowMetrics: ["*"]
+      - name: tx_analyst
+        allowMetrics: ["*"]
+      - name: admin
+        allowMetrics: ["*"]

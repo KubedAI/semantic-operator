@@ -17,7 +17,8 @@ KIND_KUBECONFIG   ?= $(CURDIR)/.kube/config
 KIND_IMAGE_BASE   ?= semantic-operator-kind
 KIND_IMAGE_TAG    ?= local
 KIND_NAMESPACE    ?= semantic-system
-KIND_ENGINE_TYPE  ?= trino # or starrocks
+# Query engine for the kind targets: trino (default) or starrocks.
+KIND_ENGINE_TYPE ?= trino
 AUTH_IDENTITY_MODE ?= static
 KIND_TRINO_LOCAL_PORT ?= 18080
 KIND_STARROCKS_LOCAL_PORT ?= 19030
@@ -182,7 +183,7 @@ operator-deploy: $(if $(filter trino,$(KIND_ENGINE_TYPE)),trino-deploy,$(if $(fi
 	./hack/operator-deploy.sh
 
 .PHONY: auth-operator
-auth-operator: trino-deploy ## Deploy the operator in AUTH_IDENTITY_MODE (passthrough|static|exchange) and publish the identity model
+auth-operator: $(if $(filter trino,$(KIND_ENGINE_TYPE)),trino-deploy,starrocks-deploy) ## Deploy the operator in AUTH_IDENTITY_MODE (static|passthrough|exchange) against KIND_ENGINE_TYPE and publish the identity model
 	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
 	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
 	KIND_IMAGE_BASE="$(KIND_IMAGE_BASE)" \
@@ -190,19 +191,9 @@ auth-operator: trino-deploy ## Deploy the operator in AUTH_IDENTITY_MODE (passth
 	KIND_PLATFORM="$(PLATFORM)" \
 	KIND_RELEASE_NAME="$(KIND_RELEASE_NAME)" \
 	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
+	KIND_ENGINE_TYPE="$(KIND_ENGINE_TYPE)" \
 	AUTH_IDENTITY_MODE="$(AUTH_IDENTITY_MODE)" \
 	./hack/auth-operator.sh
-
-.PHONY: auth-e2e
-auth-e2e: trino-deploy ## Deploy all three identity modes as parallel releases (sem-static/passthrough/exchange) for the Go e2e
-	KIND_CLUSTER_NAME="$(KIND_CLUSTER_NAME)" \
-	KIND_KUBECONFIG="$(KIND_KUBECONFIG)" \
-	KIND_IMAGE_BASE="$(KIND_IMAGE_BASE)" \
-	KIND_IMAGE_TAG="$(KIND_IMAGE_TAG)" \
-	KIND_PLATFORM="$(PLATFORM)" \
-	KIND_RELEASE_NAME="$(KIND_RELEASE_NAME)" \
-	KIND_NAMESPACE="$(KIND_NAMESPACE)" \
-	./hack/auth-e2e.sh
 
 .PHONY: starrocks-deploy
 starrocks-deploy: kind-deploy keycloak-deploy ## Deploy a single-node StarRocks (allin1, shared-nothing) to kind with static + OIDC/JWT auth
@@ -247,8 +238,27 @@ models-deploy: $(if $(filter trino,$(KIND_ENGINE_TYPE)),opa-deploy,operator-depl
 	./hack/models-deploy.sh
 
 .PHONY: e2e
-e2e: models-deploy ## Prepare kind, Trino, operator, OPA, data, and model for manual tests
-	@echo "E2E environment is ready"
+e2e: ## Deploy the auth e2e matrix (KIND_ENGINE_TYPE) and run the suite in one step
+	E2E_KUBECONFIG="$(KIND_KUBECONFIG)" \
+	E2E_CONTEXT="kind-$(KIND_CLUSTER_NAME)" \
+	E2E_ENGINE="$(KIND_ENGINE_TYPE)" \
+	E2E_SETUP=1 \
+	go test -tags e2e -count=1 -v ./test/e2e/auth/...
+
+.PHONY: e2e-deploy
+e2e-deploy: ## Stand up the auth e2e matrix (engine, data, identity-mode releases); no tests
+	E2E_KUBECONFIG="$(KIND_KUBECONFIG)" \
+	E2E_CONTEXT="kind-$(KIND_CLUSTER_NAME)" \
+	E2E_ENGINE="$(KIND_ENGINE_TYPE)" \
+	E2E_SETUP=1 \
+	go test -tags e2e -count=1 -run '^$$' ./test/e2e/auth/...
+
+.PHONY: e2e-test
+e2e-test: ## Run the auth e2e assertions against an already-deployed cluster
+	E2E_KUBECONFIG="$(KIND_KUBECONFIG)" \
+	E2E_CONTEXT="kind-$(KIND_CLUSTER_NAME)" \
+	E2E_ENGINE="$(KIND_ENGINE_TYPE)" \
+	go test -tags e2e -count=1 -v ./test/e2e/auth/...
 
 .PHONY: quickstart
 quickstart: kind-deploy ## Minimal local stack for the Quickstart: plaintext Trino, operator, demo data, plain model (no auth, no OPA/Ranger)

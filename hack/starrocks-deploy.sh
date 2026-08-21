@@ -72,8 +72,9 @@ CREATE SECURITY INTEGRATION oidc PROPERTIES (
 SQL
 fi
 
-# Granting SELECT to public lets any Keycloak-authenticated identity read, a
-# dev-only convenience.
+# The server reads under its own identity, so it has an explicit grant. There is
+# no blanket grant to public; a public read would override the per-user grants
+# that the auth fixture adds after the data load, and bob could not be denied.
 sr_sql <<SQL
 ADMIN SET FRONTEND CONFIG ("authentication_chain" = "native,oidc");
 CREATE USER IF NOT EXISTS '$MANAGER_USER'@'%' IDENTIFIED BY '$MANAGER_PW';
@@ -81,7 +82,6 @@ GRANT db_admin TO USER '$MANAGER_USER'@'%';
 ALTER USER '$MANAGER_USER'@'%' DEFAULT ROLE 'db_admin';
 CREATE USER IF NOT EXISTS '$SERVER_USER'@'%' IDENTIFIED BY '$SERVER_PW';
 GRANT SELECT ON ALL TABLES IN ALL DATABASES TO USER '$SERVER_USER'@'%';
-GRANT SELECT ON ALL TABLES IN ALL DATABASES TO ROLE public;
 SQL
 
 echo "StarRocks is ready at starrocks.$NAMESPACE.svc.cluster.local:9030 (MySQL protocol)"

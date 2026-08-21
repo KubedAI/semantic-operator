@@ -1,0 +1,40 @@
+# Base operator values for the StarRocks identity e2e. The server validates
+# Keycloak JWTs; the manager and server authenticate to StarRocks with static
+# passwords. Passthrough sends the caller token to StarRocks over the JWT auth
+# plugin, which the client refuses without TLS, so engine TLS is enabled. The
+# identity mode comes from a values overlay (static.yaml, passthrough.yaml, or
+# exchange.yaml).
+image:
+  pullPolicy: IfNotPresent
+
+server:
+  replicas: 1
+  auth:
+    mode: jwt
+    jwksURL: http://keycloak.semantic-system.svc:8080/realms/semantic/protocol/openid-connect/certs
+    issuer: http://keycloak.semantic-system.svc:8080/realms/semantic
+    audience: semantic-api
+    principalClaim: preferred_username
+    roleClaim: semantic_roles
+
+engine:
+  type: starrocks
+  host: starrocks.semantic-system.svc.cluster.local
+  port: 9030
+  # preferred_username is the StarRocks session user for passthrough, matching
+  # the OIDC integration principal_field. Ignored in static mode.
+  userClaim: preferred_username
+  # The FE serves a self-signed cert on 9030; passthrough requires TLS.
+  tls:
+    enabled: true
+    insecureSkipVerify: true
+  manager:
+    user: semantic-manager
+    passwordSecret:
+      name: engine-manager-cred
+      key: password
+  server:
+    user: semantic-server
+    passwordSecret:
+      name: engine-server-cred
+      key: password

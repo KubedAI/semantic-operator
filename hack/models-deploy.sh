@@ -10,6 +10,7 @@ CLUSTER_NAME="${KIND_CLUSTER_NAME:-semantic-operator-dev}"
 KUBECONFIG_PATH="${KIND_KUBECONFIG:-$ROOT_DIR/.kube/config}"
 NAMESPACE="${KIND_NAMESPACE:-semantic-system}"
 ENGINE_TYPE="${KIND_ENGINE_TYPE:-trino}"
+DEMO_DATABASE="${DEMO_DATABASE:-osi_demo}"
 MODEL="$ROOT_DIR/examples/retail/model/semanticmodel.yaml"
 
 KUBECTL=(kubectl --kubeconfig "$KUBECONFIG_PATH" --context "kind-$CLUSTER_NAME" --namespace "$NAMESPACE")
@@ -61,10 +62,35 @@ done
   env CGO_ENABLED=0 \
     ENGINE_HOST=127.0.0.1 ENGINE_PORT="$LOCAL_PORT" \
     ENGINE_USER=semantic-manager ENGINE_PASSWORD=manager \
-    DEMO_DATABASE=osi_demo \
+    DEMO_DATABASE="$DEMO_DATABASE" \
     "${engine_env[@]}" \
     go run ./examples/retail/data -profile e2e
 )
+
+# StarRocks enforces per-user access with native grants; it has no OPA and no
+# masking DDL. Seed the passthrough identities here, where the tables exist and
+# root can manage users: alice and carol read all of the demo database, bob is
+# denied the customer table. The callers authenticate by JWT, so they are
+# created with authentication_jwt; a plain user would be native and reject the
+# forwarded token. The loader connects as the db_admin manager, which cannot
+# manage other users, so this runs as root inside the pod.
+if [ "$ENGINE_TYPE" = starrocks ]; then
+  sr_root() { "${KUBECTL[@]}" exec -i deploy/starrocks -c allin1 -- mysql -uroot -h127.0.0.1 -P9030 -N "$@"; }
+  sr_issuer="http://keycloak.$NAMESPACE.svc:8080/realms/semantic"
+  sr_jwks="$sr_issuer/protocol/openid-connect/certs"
+  sr_aud="${STARROCKS_JWT_AUDIENCE:-starrocks}"
+  jwt_props="{\"jwks_url\":\"$sr_jwks\",\"principal_field\":\"preferred_username\",\"required_issuer\":\"$sr_issuer\",\"required_audience\":\"$sr_aud\"}"
+  for u in alice bob carol; do
+    sr_root -e "DROP USER IF EXISTS '$u'@'%'; CREATE USER '$u'@'%' IDENTIFIED WITH authentication_jwt AS '$jwt_props';"
+  done
+  for u in alice carol; do
+    sr_root -e "GRANT SELECT ON ALL TABLES IN DATABASE $DEMO_DATABASE TO USER '$u'@'%';"
+  done
+  for t in $(sr_root -e "SELECT table_name FROM information_schema.tables WHERE table_schema = '$DEMO_DATABASE';"); do
+    [ "$t" = customer ] && continue
+    sr_root -e "GRANT SELECT ON TABLE $DEMO_DATABASE.$t TO USER 'bob'@'%';"
+  done
+fi
 
 # Merge the engine's connection (and, for Trino, provider) settings onto the
 # shared model without changing it, then apply into the release namespace.
