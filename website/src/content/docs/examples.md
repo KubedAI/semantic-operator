@@ -45,5 +45,13 @@ read them.
 [The flights model](/examples/flights) is a second model with no deployment attached, useful
 for seeing how a different domain is structured.
 
+[See identity propagation by hand](/examples/identity-walkthrough) is a curl walkthrough on
+Trino. You mint a real Keycloak token and watch the same query return different results for
+different users, with the engine enforcing policy under each caller's identity.
+
+[Govern a model with OPA](/examples/opa-governance) is a curl walkthrough on Trino. You deploy
+an Open Policy Agent decision engine and watch two authorization layers apply to one query,
+the model's built-in governance and an external OPA policy.
+
 [Benchmark results](/examples/benchmark-results) has the measured comparison between raw
 text to SQL and the semantic layer, with the method and the per question verdicts.

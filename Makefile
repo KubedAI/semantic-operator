@@ -251,7 +251,7 @@ e2e-deploy: ## Stand up the auth e2e matrix (engine, data, identity-mode release
 	E2E_CONTEXT="kind-$(KIND_CLUSTER_NAME)" \
 	E2E_ENGINE="$(KIND_ENGINE_TYPE)" \
 	E2E_SETUP=1 \
-	go test -tags e2e -count=1 -run '^$$' ./test/e2e/auth/...
+	go test -tags e2e -count=1 -v -run '^$$' ./test/e2e/auth/...
 
 .PHONY: e2e-test
 e2e-test: ## Run the auth e2e assertions against an already-deployed cluster
