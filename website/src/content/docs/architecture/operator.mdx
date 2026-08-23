@@ -1,5 +1,5 @@
 ---
-title: The operator
+title: Semantic Operator
 description: The control plane. It validates a SemanticModel, checks it against the live database, compiles it into a versioned artifact, and creates governed views.
 ---
 
@@ -8,6 +8,8 @@ import OperatorDiagram from '../../../components/OperatorDiagram.astro';
 The operator is a controller in the ordinary Kubernetes sense. It watches `SemanticModel`
 resources and works to make reality match them. Reconciliation is level triggered and
 idempotent, so it behaves correctly under GitOps tools such as ArgoCD.
+
+<p class="so-key-point">An invalid new model never replaces the last version known to work.</p>
 
 It is the only component that writes to the query engine, and its write scope is exactly
 one schema.
@@ -98,8 +100,9 @@ place to look when something does not line up.
 | `leases` | Namespace scoped | Leader election |
 | `events` | create, patch | Surface drift and failures to `kubectl describe` |
 
-It needs **no table data access** and **no cloud or catalog credentials**. Only `ossiectl`
-reads Glue, DataHub, or Polaris, and only during authoring.
+It needs **no table data access** and **no cloud or catalog credentials**. During authoring,
+`ossiectl` reads Glue directly or reads a catalog such as Polaris through the query engine.
+DataHub enrichment also happens only in `ossiectl`.
 
 By default these permissions are a `Role` in the release namespace, the same namespace the
 server reads from, so the two agree out of the box. Watching more namespaces or the whole

@@ -39,19 +39,20 @@ export default defineConfig({
         items: [
           { label: 'What a semantic layer is', slug: 'start/introduction' },
           { label: 'Quickstart', slug: 'start/quickstart' },
-          { label: 'How Semantic Operator compares', slug: 'start/how-this-compares' },
         ],
       },
       {
         label: 'Architecture',
         items: [
           { label: 'How it works', slug: 'architecture' },
-          { label: 'The ossiectl CLI', slug: 'architecture/ossiectl' },
-          { label: 'The operator', slug: 'architecture/operator' },
-          { label: 'The semantic server', slug: 'architecture/server' },
+          { label: 'Request to SQL', slug: 'architecture/agent-to-sql' },
+          { label: 'Ossiectl CLI', slug: 'architecture/ossiectl' },
+          { label: 'Semantic Operator', slug: 'architecture/operator' },
+          { label: 'Semantic Server', slug: 'architecture/server' },
           { label: 'Identity and the engine', slug: 'architecture/identity' },
+          { label: 'Authorization', slug: 'architecture/authorization' },
           { label: 'Access and credentials', slug: 'architecture/access' },
-          { label: 'Semantic layers and ontologies', slug: 'architecture/ontology' },
+          { label: 'Ontology', slug: 'architecture/ontology' },
         ],
       },
       {

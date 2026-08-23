@@ -1,0 +1,96 @@
+---
+title: Authorization
+description: How built-in model governance composes with optional OPA or Apache Ranger decisions before Semantic Operator generates SQL.
+---
+
+import ServerDiagram from '../../../components/ServerDiagram.astro';
+
+Authentication establishes who is calling. Authorization decides whether that identity may
+make a particular semantic request. The semantic server keeps these as separate steps.
+
+| Step | Question | Source |
+|---|---|---|
+| Authentication | Who is the caller? | A validated JWT, or trusted identity headers behind an authenticating proxy |
+| External authorization | May this caller make this request now? | Optional OPA or Apache Ranger policy |
+| Built-in governance | May one of the caller's roles use every requested metric and field? | The published `SemanticModel` |
+
+<p class="so-key-point">External policy can add a denial. It can never weaken built-in model governance.</p>
+
+<ServerDiagram caption="OPA or Ranger can add an external decision before the server checks built-in model policy and generates SQL. Both gates must allow the request." />
+
+## Two authorization gates
+
+Built-in governance always applies. A role in the model controls which metrics may be
+queried, which fields are denied, and which row filters are added to SQL. One role must
+permit the complete request. Roles do not combine their permissions.
+
+A model can also name one external provider:
+
+```yaml
+governance:
+  defaultRole: analyst
+  roles:
+    - name: analyst
+      allowMetrics: ["*"]
+  external:
+    providerRef: corporate-opa
+```
+
+`providerRef` is only a logical name. The server administrator configures whether that name
+maps to OPA or Ranger, along with its URL, credentials, timeout, and provider-specific
+settings. Keeping connection details out of the model prevents a model author from
+redirecting authorization requests or accessing provider credentials.
+
+When an MCP or REST query arrives, the server follows this order:
+
+1. Authenticate the caller and resolve the principal, groups, roles, and configured claims.
+2. Apply request size and shape limits.
+3. Ask the model's OPA or Ranger provider, when configured. This happens before any plan or
+   result cache lookup.
+4. Resolve metric and dimension names and apply the model's built-in role policy.
+5. Generate and execute SQL only when both gates allow the request.
+
+An external decision cannot weaken the model's built-in governance. It can only add another
+reason to deny the request.
+
+## What the policy provider receives
+
+The server sends bounded semantic context rather than generated SQL:
+
+- the action and adapter, such as an MCP query,
+- the authenticated principal, groups, roles, and copied claims,
+- the exact model name, namespace, resource, and version,
+- requested metrics, dimensions, filters, time grain, ordering, and limit,
+- the trusted access time.
+
+Raw metric expressions and SQL are never sent to OPA or Ranger. Policies therefore decide
+against stable business names such as `total_revenue` and `customer.region`, not
+engine-specific query text.
+
+## OPA and Ranger
+
+The OPA adapter calls a configured Data API decision path. OPA may return a boolean or an
+object containing `allow` and a stable policy revision.
+
+The Ranger adapter calls the standalone Ranger PDP `/authorize` API, not Ranger Admin. It
+maps the model to a configured Ranger resource and sends the authenticated caller as the
+request subject. The semantic server's service principal must be configured as a delegation
+user when Ranger service authentication is used.
+
+| Provider result | Server response |
+|---|---|
+| Explicit deny | 403 |
+| Allow, followed by built-in allow | Continue to planning |
+| Timeout, unavailable provider, malformed response, or inconsistent decision | 503 |
+| Row filter, mask, or another unsupported external obligation | 503 |
+
+The integration currently accepts allow or deny decisions only. Row policies and denied
+fields remain in the `SemanticModel`, where the deterministic planner can enforce them while
+building SQL.
+
+External authorization covers MCP and REST query requests, including SQL dry runs.
+Discovery and engine-native governed views use built-in model governance only.
+
+See [Authoring a model](/guides/authoring#add-an-external-decision-gate) for model and provider
+examples. See [Configuration and deployment](/reference/configuration) for Helm settings,
+timeouts, credentials, TLS requirements, and cache isolation.

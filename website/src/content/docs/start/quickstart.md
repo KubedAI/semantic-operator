@@ -6,12 +6,14 @@ description: Run the whole stack locally on kind with one command, then run a go
 This runs the operator, a query engine, and a governed model on your own machine in a local
 [kind](https://kind.sigs.k8s.io/) cluster.
 
+<p class="so-key-point">One local command takes you from an empty cluster to a governed metric query.</p>
+
 ## Prerequisites
 
 Install these and make sure Docker is running:
 
 - [Docker](https://docs.docker.com/get-docker/), [kind](https://kind.sigs.k8s.io/), `kubectl`, `helm`, `make`, `git`, `curl`, and a Go toolchain matching `go.mod`.
-- `jq` is optional; drop `| jq` from the commands below if you do not have it.
+- `jq` is optional. Drop `| jq` from the commands below if you do not have it.
 - Roughly 4 GB of memory free for the cluster.
 
 Clone the repository and run every command from its root:
@@ -75,8 +77,8 @@ You get one row per state, and the response includes the exact SQL the compiler 
 counts each store's headcount once per sale and returns a far smaller number. This certified
 metric tells the planner to deduplicate the denominator before dividing.
 
-Run it again and the `requestHash` matches, because the same request and model version always
-compile to the same SQL. Result caching is optional and off here, covered in
+Run it again and the `requestHash` matches, because the request, model version, and identity
+are unchanged. That full input always compiles to the same SQL. Result caching is optional and off here, covered in
 [Configuration and deployment](/reference/configuration).
 
 > **Header auth is for local use only.** It trusts the `X-Semantic-User` and

@@ -21,6 +21,8 @@ spec:
 
 The mechanical parts (datasets, fields, candidate joins) are generated. You supply metrics, join confirmation, and business meaning.
 
+<p class="so-key-point">Generation creates a scaffold. Certification remains a human review decision.</p>
+
 ---
 
 ## Step 1. Generate the scaffold
@@ -88,12 +90,13 @@ What it imports, and what it deliberately does not:
 | glossary terms | `ai_context.synonyms` | how an agent grounds "revenue" onto a metric |
 | PII / sensitivity tags | `governance.denyFields` | a request for the field then fails to compile |
 | deprecation | a `REVIEW` comment | flagged for a human, never silently dropped |
-|. | **metrics** | never imported. Certifying a formula stays a human decision |
+| none | **metrics** | never imported. Certifying a formula stays a human decision |
 
 Physical truth still comes from `-source`, because a metadata platform serves an
-*ingested copy* of the schema that can lag reality. Enrichment is additive and
-best effort: if DataHub is unreachable the command reports it, and a scaffold
-derived without enrichment is still valid. The URN path depends on the
+*ingested copy* of the schema that can lag reality. Tables with no matching DataHub
+dataset remain unenriched. If DataHub is unreachable, the command fails instead of
+silently writing a bare scaffold. Rerun without `-enrich datahub` to generate a valid
+physical scaffold. The URN path depends on the
 ingestion source. DataHub's `trino` source names datasets
 `<catalog>.<schema>.<table>`, hence `-datahub-dataset-prefix`. The `iceberg` and
 `hive` sources need no prefix.
@@ -318,5 +321,5 @@ keeps serving, so a schema change never silently breaks queries.
 
 ---
 
-Roles and the bigger picture: [OVERVIEW.md](/start/introduction). How compilation and governance work under the hood: [ARCHITECTURE.md](/architecture).
-
+For the bigger picture, read [What a semantic layer is](/start/introduction). For compilation
+and governance internals, read [How it works](/architecture).

@@ -12,6 +12,8 @@ A person authors a model. A controller compiles it and publishes the result. A s
 server turns each incoming question into exactly one SQL statement. Those three jobs belong
 to three different programs, and separating them is what makes the system safe to operate.
 
+<p class="so-key-point">Model lifecycle and query serving are separate paths joined by one versioned artifact.</p>
+
 <CombinedDiagram />
 
 ## The three components
@@ -74,9 +76,10 @@ request then flows through five stages.
 5. **Execute.** The server runs one statement and returns the rows, the SQL, the model
    version, a request hash, and an external decision fingerprint when a provider applies.
 
-The same request, from the same role, against the same model version, always produces
-byte identical SQL. That is what makes plans and results cacheable and what lets you trace
-a query in the engine's log back to the request that caused it.
+The same request, from the same identity, against the same model version, produces byte
+identical SQL. Identity includes the principal, groups, roles, and configured claims because
+row filters may depend on them. That determinism makes plans cacheable and lets you trace a
+query in the engine's log back to the request that caused it.
 
 ## Why the two halves never talk
 
@@ -99,7 +102,8 @@ Governance runs inside the compiler, before any SQL string exists.
 - A denial from either happens before any query reaches the engine.
 
 [The semantic server](/architecture/server) covers how the two gates compose and what each
-one checks.
+one checks. [Authorization](/architecture/authorization) shows the complete OPA and Ranger
+decision path.
 
 ## Bounded grammars
 

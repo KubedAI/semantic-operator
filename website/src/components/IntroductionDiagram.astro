@@ -1,0 +1,68 @@
+---
+// IntroductionDiagram: the two paths a new reader needs to understand.
+// Inline SVG keeps the labels editable and uses the shared light/dark theme tokens.
+const { caption = 'Authoring produces a governed Apache Ossie model. Serving uses the compiled model to give every consumer the same definitions.' } = Astro.props;
+---
+<figure class="so-figure">
+  <svg viewBox="0 0 720 340" role="img" aria-label="Two flows. Catalogs, query engines, and DataHub feed ossiectl, which produces an Apache Ossie model for the operator. Agents and applications query the semantic server, which generates governed SQL for Trino or StarRocks. BI tools use governed views on the same engine.">
+    <rect class="zone" x="8" y="24" width="704" height="118" rx="8"/>
+    <text class="zone-label" x="22" y="46">Define and operate the model</text>
+
+    <rect class="box" x="26" y="70" width="142" height="52" rx="6"/>
+    <text class="t" x="38" y="90">Catalog and engine</text>
+    <text class="t-sub" x="38" y="107">Glue · Polaris · DataHub</text>
+
+    <rect class="box-strong" x="210" y="76" width="100" height="42" rx="6"/>
+    <text class="t-mono" x="226" y="95">ossiectl</text>
+    <text class="t-sub" x="226" y="109">derive · enrich</text>
+
+    <rect class="box" x="354" y="70" width="132" height="52" rx="6"/>
+    <text class="t" x="368" y="90">Apache Ossie</text>
+    <text class="t-sub" x="368" y="107">SemanticModel YAML</text>
+
+    <rect class="box-strong" x="536" y="70" width="150" height="52" rx="6"/>
+    <text class="t" x="550" y="90">Semantic Operator</text>
+    <text class="t-sub" x="550" y="107">validate · publish · watch</text>
+
+    <path class="flow meta" d="M168 96 L204 96" marker-end="url(#intro-meta)"/>
+    <path class="flow k8s" d="M310 96 L348 96" marker-end="url(#intro-k8s)"/>
+    <path class="flow k8s" d="M486 96 L530 96" marker-end="url(#intro-k8s)"/>
+
+    <rect class="zone" x="8" y="160" width="704" height="164" rx="8"/>
+    <text class="zone-label" x="22" y="182">Serve every consumer</text>
+
+    <rect class="box" x="26" y="198" width="142" height="52" rx="6"/>
+    <text class="t" x="38" y="218">Agents and apps</text>
+    <text class="t-sub" x="38" y="235">MCP · REST · certified names</text>
+
+    <rect class="box-strong" x="232" y="198" width="146" height="52" rx="6"/>
+    <text class="t" x="246" y="218">Semantic Server</text>
+    <text class="t-sub" x="246" y="235">govern · compile · execute</text>
+
+    <rect class="box" x="536" y="198" width="150" height="52" rx="6"/>
+    <text class="t" x="550" y="218">Query engines</text>
+    <text class="t-sub" x="550" y="235">Trino · StarRocks</text>
+
+    <rect class="box" x="26" y="270" width="142" height="38" rx="6"/>
+    <text class="t" x="38" y="289">BI tools</text>
+    <text class="t-sub" x="92" y="289">governed views</text>
+
+    <path class="flow k8s" d="M168 224 L226 224" marker-end="url(#intro-k8s)"/>
+    <path class="flow data" d="M378 224 L530 224" marker-end="url(#intro-data)"/>
+    <text class="flow-t data" x="430" y="216">governed SQL</text>
+    <path class="flow data" d="M168 289 C 320 314, 456 304, 550 254" marker-end="url(#intro-data)"/>
+
+    <path class="flow k8s" d="M610 128 C 610 154, 310 146, 306 192" marker-end="url(#intro-k8s)"/>
+    <text class="flow-t k8s" x="406" y="154">published model</text>
+
+    <defs>
+      <marker id="intro-meta" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0 0 L8 4 L0 8 z" fill="var(--so-meta)"/></marker>
+      <marker id="intro-k8s" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0 0 L8 4 L0 8 z" fill="var(--so-k8s)"/></marker>
+      <marker id="intro-data" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0 0 L8 4 L0 8 z" fill="var(--so-data)"/></marker>
+    </defs>
+  </svg>
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>

@@ -6,8 +6,11 @@ description: "Reference for deploying and tuning the operator and server: authen
 This page collects the configuration and deployment detail that the architecture pages
 summarize. The architecture section explains the concepts. This page is the reference for
 values, thresholds, and deployment behavior. Configuration is delivered as a file the
-binaries read with `--config`, and any value can be overridden by a `SEMANTIC__` environment
-variable. The Helm chart renders the file and injects secrets as environment variables.
+binaries read with `--config`, and scalar settings can be overridden by `SEMANTIC__`
+environment variables. The authorization provider list is deliberately file-only. The Helm
+chart renders the file and injects secrets as environment variables.
+
+<p class="so-key-point">Defaults are bounded and production authentication fails closed.</p>
 
 ## Caller authentication
 
@@ -75,9 +78,10 @@ from a complete one. These are Helm values under `server.query`.
 | Values in one `IN` list | 1000 | Refused |
 | Requests in flight | 4 | Queued briefly, then 503 with `Retry-After` |
 
-The last two rows share one budget. Each in-flight request can hold a whole result until its
-response is written, so `maxConcurrent` multiplied by `maxResultBytes` must stay comfortably
-under the pod's memory limit. Raising either one means raising the memory limit too.
+Result size and requests in flight form one memory budget. Each in-flight request can hold a
+whole result until its response is written, so `maxConcurrent` multiplied by
+`maxResultBytes` must stay comfortably under the pod's memory limit. Raising either one
+means raising the memory limit too.
 
 ## Caching
 

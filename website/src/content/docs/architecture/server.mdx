@@ -1,13 +1,15 @@
 ---
-title: The semantic server
+title: Semantic Server
 description: The data plane. It authenticates the caller, compiles each request into exactly one governed SQL statement, runs it, and returns the rows alongside the SQL.
 ---
 
 import ServerDiagram from '../../../components/ServerDiagram.astro';
 
-The server is the query path. It holds no state of its own, writes nothing, and is the only
-component that reads table data. Because all of its state lives in ConfigMaps and an
-optional cache, replicas are interchangeable and it scales horizontally.
+The server is the query path. It holds no durable state, writes nothing to the engine, and
+is the only component that reads table data. It watches compiled models from ConfigMaps and
+may use an optional shared cache, so replicas are interchangeable and scale horizontally.
+
+<p class="so-key-point">No SQL exists until identity, external authorization, and built-in governance have passed.</p>
 
 <ServerDiagram />
 
@@ -82,7 +84,7 @@ identity, and never receives SQL or raw metric expressions.
 | Timeout, unreachable, malformed, or any obligation such as a mask or row filter | 503, never a fallback to allow |
 
 Configuring a provider, and the exact input it receives, is covered in
-[Authoring a model](/guides/authoring). The decision also becomes part of the cache key,
+[Authorization](/architecture/authorization). The decision also becomes part of the cache key,
 described in [Configuration and deployment](/reference/configuration).
 
 ### Plan
@@ -123,9 +125,11 @@ the memory budget that ties concurrency to result size are in
 
 ## Three surfaces, one compiler
 
-Agents connect over **MCP** and call `list_metrics`, `list_dimensions`, and `query_metric`.
-The tool descriptions and the model's own synonyms let an agent ground a user's wording
-onto a certified metric. The agent never writes SQL.
+Agents connect over **MCP** and call `list_models`, `list_metrics`, `list_dimensions`, and
+`query_metric`. The tool descriptions and the model's own synonyms let an agent ground a
+user's wording onto a certified metric. The agent never writes SQL. [How an agent request
+becomes SQL](/architecture/agent-to-sql) shows the complete exchange and explains how the planner
+generates SQL without an LLM.
 
 Applications use **REST**. `POST /v1/models/{model}/query` runs a request.
 `POST /v1/models/{model}/sql` returns the plan without executing it, which is useful in

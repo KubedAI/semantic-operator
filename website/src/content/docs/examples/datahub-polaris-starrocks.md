@@ -44,7 +44,7 @@ Asked to *"prepare a renewal briefing for Northstar Systems,"* the agent:
 3. Reads the exact semantic mapping from DataHub structured properties. Never guessed from names.
 4. Picks certified metrics by name. The operator compiles and runs the one governed SQL statement.
 5. Sends its principal in `X-Semantic-User` and role in `X-Semantic-Role`. The operator denies disallowed fields before any SQL exists, and adds row filters (for example `region = 'NA'`).
-6. Answers with certified values, DataHub context, and the operator's SQL/version/hash. No invented "health score."
+6. Answers with certified values, DataHub context, and the Semantic Server's SQL, version, and hash. No invented "health score."
 
 If DataHub is unavailable, discovery and trust questions fail rather than guess.
 
@@ -228,7 +228,7 @@ the same metric grouped by region returns only the NA row.
 Built-in governance is not the only gate. The demo also runs OPA as an external
 authorizer, and the server calls it first, before it compiles a model to SQL. A
 model opts in with `spec.governance.external.providerRef: account-opa`, and the
-server reaches OPA at the address set in the operator values. Both gates must
+server reaches OPA at the address set in the Helm values. Both gates must
 allow a request. If OPA is unreachable, the request fails closed with 503.
 
 `make opa-up` loads the policy in
@@ -238,7 +238,7 @@ for every model. A per-model `allowMetrics` list cannot do that without being
 copied into each model.
 
 Ask for a retention metric as `platform_analyst`. OPA denies it before any SQL
-exists, so the operator returns 403 and names the provider:
+exists, so the Semantic Server returns 403 and names the provider:
 
 ```bash
 curl -s -X POST localhost:8090/v1/models/saas_revenue/query \
@@ -321,16 +321,16 @@ The demo does not ship an agent. It exposes two MCP servers, and you point your
 own MCP host at them. Any host that speaks Streamable HTTP works, hosted or
 local. The examples below use Claude Code and Kiro CLI.
 
-- The **Semantic Operator MCP** at `http://localhost:8090/mcp`. It offers
+- The **Semantic Server MCP** at `http://localhost:8090/mcp`. It offers
   `list_models`, `list_metrics`, `list_dimensions`, and `query_metric`. The
-  client selects certified metrics and dimensions by name. The operator compiles
+  client selects certified metrics and dimensions by name. The Semantic Server compiles
   and runs the one governed SQL statement. The client never writes SQL.
 - The **DataHub MCP** at `http://localhost:8091/mcp`. It offers search, entity
   metadata, schema fields, lineage, glossary, and structured properties. The
   client uses it to discover assets and judge whether they are trustworthy.
 
 Header auth is on, so you send the identity yourself. Send `X-Semantic-User` and
-`X-Semantic-Role` to the operator MCP. Send `Authorization: Bearer local-no-auth`
+`X-Semantic-Role` to the Semantic Server MCP. Send `Authorization: Bearer local-no-auth`
 to the DataHub MCP, since auth is disabled locally. Scope the registration to
 this directory so it does not touch the rest of your machine.
 
@@ -390,7 +390,7 @@ metric together:
 
 ### Governance roles
 
-The role you send in `X-Semantic-Role` decides what the operator allows. Policy
+The role you send in `X-Semantic-Role` decides what the Semantic Server allows. Policy
 runs at compile time, so a denied field fails before any SQL exists, and a
 role's row filter is compiled into the SQL:
 
@@ -482,4 +482,3 @@ constants/         seed, window dates, and the fixed small-profile row counts
 gen/               deterministic streaming generators (dims + facts + anchors)
 loader/            catalog-owned CREATE TABLE + batched INSERT + row-count verify
 ```
-

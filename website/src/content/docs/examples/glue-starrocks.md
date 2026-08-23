@@ -156,7 +156,7 @@ go run ./cmd/ossiectl derive -source engine \
 **Verify.** Look at what it produced and what it left for you.
 
 ```bash
-grep -c 'expression:' tmp/scaffold.yaml   # fields the machine filled in
+grep -c '^          - name:' tmp/scaffold.yaml   # fields the machine filled in
 grep -c 'TODO' tmp/scaffold.yaml          # decisions left for a person
 go run ./cmd/ossiectl validate -f tmp/scaffold.yaml
 ```
@@ -259,7 +259,7 @@ curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
 ```
 
 **Verify.** The same `requestHash` as before. `cachedResult` is `true` only when the
-install configured `valkey.addr`; without Valkey, it remains `false` and the identical
+install configured `valkey.addr`. Without Valkey, it remains `false` and the identical
 hash still proves deterministic planning.
 
 To see the SQL without running it, use the dry run endpoint.
