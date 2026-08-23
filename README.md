@@ -1,10 +1,7 @@
 # Semantic Operator
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-<!-- These badges need a public repository; uncomment when the repo goes public:
 [![CI](https://github.com/KubedAI/semantic-operator/actions/workflows/ci.yaml/badge.svg)](https://github.com/KubedAI/semantic-operator/actions/workflows/ci.yaml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/KubedAI/semantic-operator)](https://goreportcard.com/report/github.com/KubedAI/semantic-operator)
--->
 
 **📖 Documentation: <https://kubedai.github.io/semantic-operator>**
 
@@ -17,8 +14,9 @@ metrics and dimensions. It never writes SQL.
 
 ## Why
 
-Point an LLM at a warehouse and it writes raw SQL. Measured across 30 business questions,
-three phrasings each, at temperature 0:
+Many AI agents ask an LLM to generate SQL directly from a warehouse schema. The SQL can run
+successfully while using the wrong business definition. We measured both approaches across
+30 business questions, with three phrasings each at temperature 0:
 
 | Path | Accuracy | Consistency across phrasings | Wrong answers |
 |---|---|---|---|
@@ -30,43 +28,29 @@ Every raw-path miss executed without error and returned a confidently wrong numb
 
 ## How it fits together
 
-```mermaid
-flowchart LR
-  subgraph author["Author · outside the cluster"]
-    cat[("Glue · DataHub<br/>Polaris · Hive")] -->|read metadata| cli["ossiectl<br/>derive · validate"]
-    cli --> yaml["model.yaml"]
-  end
+<p align="center">
+  <img src="docs/images/architecture-overview-light.svg"
+       alt="Semantic Operator architecture from model authoring through Kubernetes reconciliation to governed query serving"
+       width="1200">
+</p>
 
-  subgraph control["Control plane"]
-    yaml -->|kubectl apply| cr["SemanticModel"]
-    cr -->|watch| mgr["manager<br/>validate · compile<br/>drift-check · publish"]
-    mgr --> cm[("ConfigMap<br/>compiled artifact")]
-  end
-
-  subgraph data["Data plane"]
-    cm -->|watch| srv["server × N<br/>authn · govern<br/>plan · execute"]
-    agents(["Agents · apps · BI"]) --> srv
-    srv -->|one governed SELECT| engine[("StarRocks · Trino")]
-    mgr -.->|view DDL + drift-check| engine
-  end
-```
-
-The operator and the server never call each other. They coordinate through the Kubernetes
-API, which is why queries keep being served while the operator is upgrading.
+The Semantic Operator and Semantic Server never call each other. They coordinate through
+the Kubernetes API, which is why queries keep being served while the operator is upgrading.
 
 ## Quickstart
 
-Requires a Kubernetes cluster with a query engine (StarRocks or Trino) it can reach.
+Run the complete stack locally with Docker, kind, `kubectl`, Helm, Make, and the Go toolchain
+from `go.mod`:
 
 ```bash
-helm upgrade --install semantic-operator charts/semantic-operator \
-  --set server.auth.allowInsecureHeaderAuth=true \
-  --namespace semantic-system --create-namespace \
-  --set engine.type=starrocks \
-  --set engine.host=<engine-host>
+git clone https://github.com/KubedAI/semantic-operator.git
+cd semantic-operator
+make quickstart
 ```
 
-[Full quickstart, with the demo data and your first governed query →](https://kubedai.github.io/semantic-operator/start/quickstart)
+This creates a local kind cluster, installs Trino and Semantic Operator, loads demo data,
+and publishes a certified model.
+[Run your first governed query →](https://kubedai.github.io/semantic-operator/start/quickstart)
 
 ## Repository layout
 
@@ -85,9 +69,12 @@ website/          documentation site (Astro + Starlight)
 Everything lives on the [docs site](https://kubedai.github.io/semantic-operator). The most
 useful entry points:
 
-- [What this is](https://kubedai.github.io/semantic-operator/start/introduction) and [how it works](https://kubedai.github.io/semantic-operator/architecture)
+- [What a semantic layer is](https://kubedai.github.io/semantic-operator/start/introduction)
+  and [how Semantic Operator works](https://kubedai.github.io/semantic-operator/architecture)
+- [How an agent request becomes SQL](https://kubedai.github.io/semantic-operator/architecture/agent-to-sql)
 - [Authoring a model](https://kubedai.github.io/semantic-operator/guides/authoring)
-- [Components and access](https://kubedai.github.io/semantic-operator/architecture/access) — what each component needs, and what it deliberately does not
+- [Components and access](https://kubedai.github.io/semantic-operator/architecture/access),
+  including the permissions each component needs
 - [Adding a query engine](https://kubedai.github.io/semantic-operator/guides/adding-an-engine)
 - [Examples](https://kubedai.github.io/semantic-operator/examples)
 
