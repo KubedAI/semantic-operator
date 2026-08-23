@@ -78,7 +78,6 @@ example.
   `cancelled_flights`, `cancellation_rate` (a fan-out-safe ratio over the
   flights fact), `avg_distance`.
 - **Governance:** the `analyst` role is denied precise airport coordinates
-  (`a_latitude` / `a_longitude`); `carrier_analyst` is additionally row-filtered
-  to a single carrier; `admin` sees everything.
+  (`a_latitude` / `a_longitude`). `carrier_analyst` is also row-filtered
+  to a single carrier. `admin` sees everything.
 - **Views:** `delays_by_carrier`, `flights_by_origin_state`, `monthly_flights`.
-

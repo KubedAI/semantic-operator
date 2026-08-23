@@ -30,8 +30,8 @@ record.
 
 - A subscriber is a kind of customer, so anything true of customers is true of subscribers.
 - Cancellation is a state change of a subscription, not simply a row in a table.
-- Net revenue is derived from orders, discounts, refunds, and chargebacks, and that
-  derivation is part of what the number means.
+- A refund and a chargeback are different kinds of revenue reversal, even when separate
+  systems represent both as negative amounts.
 - Refund rate is meaningful per order per day and meaningless at a customer snapshot grain.
 - A failed payment often appears alongside churn, but appearing alongside is not causing.
 - An agent may propose a retention offer and may not send one without a human approving it.
@@ -116,8 +116,8 @@ about, because it answers graph queries over relational data without copying row
 suits a warehouse that already holds the facts.
 
 The first useful step needs no graph database at all. Carrying concept identifiers, owners,
-units, valid grains, and derivation links in the model itself, through the Ossie fields
-meant for exactly that, would answer many agent questions on its own.
+units, valid grains, and derivation links in a future supported Ossie representation would
+answer many agent questions on its own.
 
 If this is something you need, say so on the repository. Interest is what moves it up the
 list.

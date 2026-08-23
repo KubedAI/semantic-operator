@@ -1,44 +1,47 @@
 ---
 title: Choosing an example
-description: One shared retail model, several deployment stacks. Pick the one that matches your platform and follow it end to end.
+description: Independent walkthroughs for retail and SaaS models across local and EKS deployment stacks.
 ---
 
-Every example uses the same retail model, a small TPC-DS subset with five tables and seven
-certified metrics. What changes between them is the infrastructure underneath.
+The examples are independent. The EKS walkthroughs use the same five-table retail model so
+you can compare engines and catalogs directly. The laptop walkthrough uses three SaaS models
+to show how an agent composes semantic queries with richer DataHub context.
 
-That is the point. The same model, unchanged apart from a catalog name, produces the same
-numbers on StarRocks and on Trino. You can read one walkthrough and understand them all.
+<p class="so-key-point">Choose the walkthrough that matches the infrastructure and behavior you want to evaluate.</p>
 
-Start with [Prerequisites](/examples/prerequisites), which every walkthrough assumes.
+Each walkthrough contains its own run order. Read [Prerequisites](/examples/prerequisites)
+once for the shared workstation, cluster, image, and credential requirements.
 
 ## Pick a stack
 
-| Walkthrough | Catalog | Engine | Good for |
-|---|---|---|---|
-| [Retail on Glue and StarRocks](/examples/glue-starrocks) | AWS Glue | StarRocks | The reference path. Start here if you have no strong preference. |
-| [Retail on Glue and Trino](/examples/glue-trino) | AWS Glue | Trino | You already run Trino, or you want to see engine portability proved. |
-| [DataHub, Polaris and Trino](/examples/datahub-polaris-trino) | Apache Polaris | Trino | An open lakehouse with a metadata platform supplying business meaning. |
-| [Everything on your laptop](/examples/datahub-polaris-starrocks) | Apache Polaris | StarRocks | Trying the whole thing locally with no cloud account. |
+| Walkthrough | Model | Catalog | Engine | Good for |
+|---|---|---|---|---|
+| [Retail on Glue and StarRocks](/examples/glue-starrocks) | Retail | AWS Glue | StarRocks | The reference EKS path |
+| [Retail on Glue and Trino](/examples/glue-trino) | Retail | AWS Glue | Trino | Comparing the same model on another engine |
+| [DataHub, Polaris and Trino](/examples/datahub-polaris-trino) | Retail | Apache Polaris, enriched by DataHub | Trino | Deriving physical structure and importing business meaning |
+| [Everything on your laptop](/examples/datahub-polaris-starrocks) | SaaS revenue, adoption, and support | Apache Polaris, enriched by DataHub | StarRocks | Multiple models, two MCP servers, OPA, and no cloud account |
 
 ## What each walkthrough proves
 
-They all end at the same place, so you can judge whether this is worth adopting.
+The end-to-end walkthroughs share four checks even though their datasets and infrastructure
+differ.
 
 **A model reconciles.** It validates, binds to real tables, passes a drift check against the
 live schema, and publishes a versioned artifact.
 
-**A certified metric returns the right number.** Specifically `store_productivity`, a ratio
-that spans a join and is wrong in the obvious hand written version. You will compare it
-against ground truth.
+**A certified metric returns a verified number.** The retail walkthroughs use
+`store_productivity`, a ratio that needs fan-out-safe planning. The laptop walkthrough uses
+certified SaaS metrics across three business domains.
 
-**The same request is deterministic.** Ask twice and you get the same request hash, the same
-SQL, and a cache hit on the second call.
+**The same request is deterministic.** Repeating the same authorized request against the
+same model version and identity produces the same request hash and SQL. A configured cache
+can reuse the plan or result.
 
-**Governance is real.** An analyst asking for an email address gets a 403 before any SQL
-reaches the database. A row filtered role sees only its own rows.
+**Governance is enforced before SQL.** The examples exercise denied fields, row filters, or
+an external OPA decision depending on the stack.
 
-**BI works without the server.** Governed views live in the engine and any SQL client can
-read them.
+**Consumers share definitions.** Agents use MCP, applications use REST, and BI tools can
+read governed views in the engine.
 
 ## Beyond the walkthroughs
 

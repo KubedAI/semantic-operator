@@ -72,9 +72,9 @@ then never letting anything compute it another way.
     column no longer exists, the new version is rejected and the last good one keeps serving.
   </Card>
   <Card title="The server plans and runs queries" icon="rocket">
-    One request becomes exactly one SQL statement, with access rules already applied. Agents
-    connect over MCP (Model Context Protocol), applications over REST, and BI tools over
-    generated SQL views. Stateless, so it scales horizontally.
+    One MCP or REST request becomes exactly one SQL statement, with access rules already
+    applied. Agents connect over MCP and applications over REST. BI tools read governed SQL
+    views created by the operator. The server is stateless, so it scales horizontally.
   </Card>
 </CardGrid>
 </div>
@@ -119,8 +119,8 @@ then never letting anything compute it another way.
 ## Bring your own engine
 
 The engine is two pluggable halves chosen by one setting. **StarRocks** and **Trino** ship
-today, and the same model compiled for both returns identical numbers on a live cluster.
-Glue, Polaris, Hive Metastore, and Unity all work through the engine's own catalog, and
+today, and the planner renders the SQL syntax required by each engine. Glue, Polaris, Hive
+Metastore, and Unity work through the engine's own catalog, and
 your definitions stay portable because the model is plain
 [Apache Ossie](https://ossie.apache.org/).
 

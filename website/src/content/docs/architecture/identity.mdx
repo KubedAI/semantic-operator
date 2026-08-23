@@ -10,6 +10,8 @@ authenticates the request. It answers whose identity the SQL runs under on the e
 through the engine identity mode. This page covers both, and the OAuth token exchange that
 connects them.
 
+<p class="so-key-point">Caller authentication and engine session identity are separate decisions.</p>
+
 ## Authenticating the caller
 
 The server first resolves the caller to a verified identity, described on
@@ -24,7 +26,7 @@ to the server.
 
 | Mode | Engine session identity | Requires |
 |---|---|---|
-| `static` | the server's own engine credential | a username and password Secret |
+| `static` | the server's own engine credential | an engine user and, when required, a password Secret |
 | `passthrough` | the caller, via the forwarded bearer token | `jwt` mode, an engine that accepts a bearer token, `engine.userClaim` |
 | `exchange` | the caller, via an exchanged engine-audience token | `jwt` mode, `engine.userClaim`, token exchange configuration |
 
@@ -90,7 +92,7 @@ mode then decides whether the engine adds its own per-user layer.
 
 | Engine mode | Semantic-layer checks | Engine-side checks |
 |---|---|---|
-| `static` | always | none, since every query runs as one user |
+| `static` | always | service-account policy only, since every query runs as one engine user |
 | `passthrough` | always | per-user policy under the caller identity |
 | `exchange` | always | per-user policy under the caller identity |
 

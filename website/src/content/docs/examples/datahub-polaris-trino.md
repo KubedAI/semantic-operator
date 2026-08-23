@@ -38,7 +38,7 @@ counting the same employees once for every sale.
 
 An AI agent selects these certified metrics and dimensions instead of using an LLM to generate SQL. Semantic Operator validates the request, applies the model’s governance rules, and generates one deterministic SQL statement.
 
-The same model and request produce the same SQL and the same result. If the caller requests a metric or field they are not allowed to use, Semantic Operator rejects the request before generating any SQL.
+The same model, request, and caller identity produce the same SQL and result. If the caller requests a metric or field they are not allowed to use, the Semantic Server rejects the request before generating any SQL.
 
 Semantic Operator runs this governed semantic layer on Kubernetes.
 
@@ -83,7 +83,7 @@ AI agent
   |  metric: store_productivity
   |  dimension: store.s_state
   v
-Semantic Operator
+Semantic Server
   |
   |  Validates the request and checks the caller's permissions
   |  If access is denied, the request stops here
@@ -318,7 +318,7 @@ snap-....avro                    a snapshot, the atomic commit
 
 An empty listing means Trino's Pod Identity role cannot write to the bucket.
 
-## Stage 2. Install the semantic operator
+## Stage 2. Install Semantic Operator
 
 This deploys the two halves of the system. The manager watches `SemanticModel`
 resources, validates them against the live engine, and publishes compiled
@@ -589,7 +589,7 @@ quietly producing a model that looks enriched and is not.
 ```bash
 for f in tmp/scaffold-plain.yaml tmp/scaffold-enriched.yaml; do
   printf '%-28s fields=%s descriptions=%s synonyms=%s\n' "$(basename $f)" \
-    "$(grep -c 'expression:' $f)" "$(grep -c 'description:' $f)" "$(grep -c 'synonyms:' $f)"
+    "$(grep -c '^          - name:' $f)" "$(grep -c 'description:' $f)" "$(grep -c 'synonyms:' $f)"
 done
 diff tmp/scaffold-plain.yaml tmp/scaffold-enriched.yaml | grep '^>' | head -20
 ```
@@ -598,8 +598,8 @@ diff tmp/scaffold-plain.yaml tmp/scaffold-enriched.yaml | grep '^>' | head -20
 <summary>Expected difference</summary>
 
 ```
-scaffold-plain.yaml          fields=244 descriptions=7  synonyms=6
-scaffold-enriched.yaml       fields=244 descriptions=12 synonyms=9
+scaffold-plain.yaml          fields=121 descriptions=7  synonyms=6
+scaffold-enriched.yaml       fields=121 descriptions=12 synonyms=9
 ```
 
 ```
@@ -618,7 +618,7 @@ scaffold-enriched.yaml       fields=244 descriptions=12 synonyms=9
 
 </details>
 
-The physical half is identical, 244 fields either way. Both files describe the
+The physical half is identical, 121 fields either way. Both files describe the
 same tables. What changed is that one of them now carries what people know.
 Three of those additions matter more than the rest.
 
@@ -884,8 +884,8 @@ for stores in each state. Through the certified model it returns `644567.24` for
 plans the two sides of the ratio separately and counts each store's headcount
 once rather than once per sale.
 
-The `requestHash` is the other half. The same request compiles to the same SQL
-and the same hash, every time, from any client. That is what makes an answer
+The `requestHash` is the other half. The same request, model version, and identity compile
+to the same SQL and the same hash from any client. That is what makes an answer
 auditable. You can point at a number in a report and find the exact request that
 produced it.
 
@@ -904,7 +904,7 @@ curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/query \
 
 # the exact SQL, without executing it
 curl -s -X POST localhost:8090/v1/models/tpcds_retail_model/sql \
-  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: analyst' -H 'Content-Type: application/json' \
+  -H 'X-Semantic-User: demo-user' -H 'X-Semantic-Role: tx_analyst' -H 'Content-Type: application/json' \
   -d '{"metrics":["total_sales"],"dimensions":["item.i_category"]}' | jq -r '.plan.sql'
 ```
 
@@ -1005,7 +1005,7 @@ can inspect the SQL that produced both values.
 | A catalog supplied the meaning | The enriched scaffold gained synonyms, descriptions, and a working `denyFields` |
 | People wrote the rest | 7 metrics, 5 primary keys, and 4 joins no tool could have chosen |
 | Kubernetes checked it first | Drift checked against Trino before anything served |
-| Same question, same answer | Identical `requestHash` on every run |
+| Same governed input, same answer | Identical `requestHash` for the same model version, request, and identity |
 | Rules that cannot be skipped | 403 before any SQL existed, and a `WHERE` clause the caller cannot remove |
 | One model, every consumer | Same numbers over REST, over MCP, and from a plain SQL view |
 

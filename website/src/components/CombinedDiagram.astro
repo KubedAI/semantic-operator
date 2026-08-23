@@ -10,7 +10,7 @@
 const { caption = "Authoring happens once, by a person. Reconciliation and serving run continuously and independently. They coordinate through the Kubernetes API and never call each other, which is why queries keep being answered while the operator is upgrading." } = Astro.props;
 ---
 <figure class="so-figure">
-  <svg viewBox="0 0 720 460" role="img" aria-label="Three zones. A person authors a model with ossiectl outside the cluster. The Semantic Operator reconciles it into a published artifact. The Semantic Server answers queries against the query engine.">
+  <svg viewBox="0 0 720 510" role="img" aria-label="Three zones. A person authors a model with ossiectl outside the cluster. The Semantic Operator reconciles it into a published artifact. The Semantic Server can consult OPA or Ranger before it applies built-in governance and queries the engine.">
     <!-- zone 1, author -->
     <rect class="zone" x="8" y="26" width="704" height="118" rx="8"/>
     <text class="zone-label" x="22" y="48">1 · Author · outside the cluster</text>
@@ -58,7 +58,7 @@ const { caption = "Authoring happens once, by a person. Reconciliation and servi
     <text class="flow-t k8s" x="352" y="228">publish</text>
 
     <!-- zone 3, serve -->
-    <rect class="zone" x="8" y="296" width="704" height="150" rx="8"/>
+    <rect class="zone" x="8" y="296" width="704" height="198" rx="8"/>
     <text class="zone-label" x="22" y="318">3 · Serve · data plane</text>
     <text class="zone-name" x="698" y="318" text-anchor="end">Semantic Server</text>
 
@@ -78,6 +78,10 @@ const { caption = "Authoring happens once, by a person. Reconciliation and servi
     <rect class="box" x="558" y="402" width="132" height="32" rx="6"/>
     <text class="t-mono" x="570" y="422">semantic_views</text>
 
+    <rect class="box" x="216" y="430" width="132" height="42" rx="6"/>
+    <text class="t" x="230" y="449">OPA · Ranger</text>
+    <text class="t-sub" x="230" y="464">optional external PDP</text>
+
     <path class="flow k8s" d="M484 260 C 484 280, 330 290, 292 340" marker-end="url(#c-k8s)"/>
     <text class="flow-t k8s" x="332" y="292">watch artifact</text>
 
@@ -85,6 +89,9 @@ const { caption = "Authoring happens once, by a person. Reconciliation and servi
 
     <path class="flow data" d="M348 374 L552 370" marker-end="url(#c-data)"/>
     <text class="flow-t data" x="388" y="366">one governed SELECT</text>
+
+    <path class="flow k8s" d="M282 406 L282 424" marker-end="url(#c-k8s)"/>
+    <text class="flow-t k8s" x="290" y="420">authorize before plan or cache</text>
 
     <!-- operator to engine, routed round the right margin clear of every box -->
     <path class="flow ddl" d="M348 210 C 486 190, 706 206, 706 330 L 702 342" marker-end="url(#c-ddl)"/>

@@ -7,8 +7,8 @@ Supporting a new engine means writing two small pieces and registering them. The
 does not change, and neither does the operator, the governance model, or the serving
 layer.
 
-Trino was added exactly this way. Its dialect is about 70 lines and its client about 150.
-Diff those two files against the StarRocks equivalents and you have seen the whole job.
+Trino was added this way. Compare its dialect and client with the StarRocks equivalents to
+see the two boundaries in working code.
 
 ## The two halves
 
@@ -27,7 +27,7 @@ such as StarRocks share the same compiler.
 
 ## Step 1. Write the dialect
 
-Create `internal/emitter/<engine>/` and implement the six methods. Register the dialect
+Create `internal/emitter/<engine>/` and implement the `Dialect` interface. Register the dialect
 from `init()` so a blank import is all the wiring it needs.
 
 ```go

@@ -67,13 +67,13 @@ Trino accepts two kinds of connection at once, each carrying a different identit
 - **The caller.** Your query carries a Keycloak token. In passthrough and exchange, Trino
   reads the `preferred_username` claim and runs the query as that user, so Trino's own
   per-user rules apply. This is why alice and bob get different answers.
-- **The operator.** The operator connects to Trino with its own service credentials over Basic
-  auth, not with a user token. The manager uses one credential for reading metadata and
-  managing views, and the server uses a separate credential for queries. In static mode the
+- **The service.** The manager and Semantic Server connect to Trino with separate service
+  credentials over Basic auth, not with a user token. The manager credential reads metadata
+  and manages views. The server credential runs queries. In static mode the
   server runs every query under that server credential. TLS is on because Trino only accepts
   Basic auth over HTTPS.
 
-These two identities stay separate by design, so the operator's own access does not widen
+These two identities stay separate by design, so the service account's access does not widen
 what a caller sees. What the engine returns depends on the caller's identity.
 
 ## The engine's policy

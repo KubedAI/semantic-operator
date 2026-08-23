@@ -204,6 +204,19 @@
 .so-tag.data { background: var(--so-data-bg); color: var(--so-data); }
 .so-tag.k8s { background: var(--sl-color-accent-low); color: var(--sl-color-accent); }
 
+/* A single-sentence takeaway for readers who scan before reading the prose. */
+.sl-markdown-content .so-key-point {
+  margin: 1rem 0;
+  padding: 0.8rem 1rem;
+  border-left: 4px solid var(--sl-color-accent);
+  border-radius: 0 8px 8px 0;
+  background: var(--sl-color-accent-low);
+  color: var(--sl-color-text);
+  font-size: 1.025rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
 /* ---- diagram frame ----------------------------------------------------- */
 .so-figure {
   margin: 1.5rem 0;

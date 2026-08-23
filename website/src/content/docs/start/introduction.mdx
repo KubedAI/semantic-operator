@@ -1,0 +1,71 @@
+---
+title: What a semantic layer is
+description: Why AI agents need shared business definitions, what Apache Ossie standardizes, and how Semantic Operator runs those models on Kubernetes.
+---
+
+import IntroductionDiagram from '../../../components/IntroductionDiagram.astro';
+
+## Why a semantic layer matters
+
+A database describes tables and columns. It does not explain what the business means by
+revenue, which key joins a sale to a customer, how headcount should be counted, or who may
+read a sensitive field.
+
+<p class="so-key-point">A semantic layer gives missing business meaning one governed home.</p>
+
+It defines trusted metrics, dimensions, relationships, time fields, and access rules outside
+any one query or dashboard. Agents, applications, and BI tools can then use the same
+definitions and return the same numbers.
+
+Without a semantic layer, every consumer has to reconstruct that knowledge. Dashboards
+implement metrics differently. Analysts choose different columns and joins. An AI agent can
+ask an LLM to generate valid SQL that uses the wrong business definition and returns a
+plausible but incorrect answer. Giving an LLM a larger schema does not tell it which
+definition the organization has approved.
+
+## Why Apache Ossie exists
+
+Organizations and vendors responded by building their own semantic layers. The definitions
+were useful inside each product, but their different formats created another problem. A
+metric defined for one BI tool, data platform, or agent could not move cleanly to another.
+
+More than 50 organizations came together around Open Semantic Interchange to define a common
+format. The project is now [Apache Ossie (incubating)](https://ossie.apache.org/). Apache
+Ossie provides a vendor-neutral YAML specification for semantic models, including datasets,
+fields, relationships, metrics, and AI context. The same business definitions can be shared
+across analytics, AI, and BI systems instead of being locked inside one product. The
+[Apache incubation proposal](https://cwiki.apache.org/confluence/spaces/INCUBATOR/pages/430408796/OssieProposal)
+describes the participating community and the problem the standard addresses.
+
+<p class="so-key-point">Apache Ossie standardizes the semantic model, not its operational lifecycle.</p>
+
+The standard makes a semantic model portable. It does not generate a model from your
+systems, keep it synchronized with the live schema, or provide a production query service
+for agents and applications. Those operational pieces still need a runtime.
+
+## How Semantic Operator closes the gap
+
+<p class="so-key-point">Semantic Operator makes Apache Ossie models operational on Kubernetes.</p>
+
+It provides three parts that work together.
+
+- **Generate and enrich the model.** [ossiectl](/architecture/ossiectl) connects to a query
+  engine or catalog and derives an Apache Ossie model from the physical schema. It can enrich
+  the model with descriptions, glossary terms, and tags from DataHub. A person then reviews
+  the proposed relationships, defines the business metrics, and adds access rules.
+- **Manage the lifecycle.** You apply the model as a Kubernetes `SemanticModel` resource.
+  [The operator](/architecture/operator) validates it, compiles it, checks its physical
+  bindings against the live engine, and publishes a versioned artifact. Schema drift blocks
+  an invalid new version while the last valid version keeps serving.
+- **Serve governed queries.** [The semantic server](/architecture/server) accepts certified
+  metric and dimension names, applies access rules, and deterministically compiles the
+  request into one SQL statement. Agents use MCP, applications use REST, and BI tools use
+  governed SQL views. [How an agent request becomes SQL](/architecture/agent-to-sql) explains why
+  the LLM selects names but never writes SQL.
+
+<IntroductionDiagram />
+
+Apache Ossie provides the shared language. Semantic Operator provides the Kubernetes-native
+tooling, lifecycle, governance, and query runtime needed to use that language in production.
+
+Next, [run the quickstart](/start/quickstart) or [read how the components work together](/architecture).

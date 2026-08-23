@@ -1,5 +1,5 @@
 ---
-title: The ossiectl CLI
+title: Ossiectl CLI
 description: The command line tool that generates a semantic model from your catalog, validates it offline, and converts between the portable Ossie document and the Kubernetes resource.
 ---
 
@@ -10,6 +10,8 @@ writes a YAML file, and exits. You can also write the same file by hand. It neve
 inside the cluster and it is never in the query path.
 
 `ossiectl` uses the local credentials of the person running it.
+
+<p class="so-key-point">Ossiectl generates physical structure. A person still certifies business metrics and policy.</p>
 
 <OssiectlDiagram />
 
@@ -39,7 +41,8 @@ ossiectl derive -source engine -catalog polaris -database sales -out model.yaml
 ossiectl derive -source glue -region us-west-2 -database sales -out model.yaml
 ```
 
-Both produce identical dataset and field structure for the same tables.
+Both produce the same Ossie dataset and field shape for equivalent source metadata. Engine
+introspection remains preferable because it reflects what the deployed engine can resolve.
 
 ### Import business meaning
 
@@ -57,8 +60,8 @@ ossiectl derive -source engine -catalog polaris -database sales \
 Enrichment maps catalog metadata onto model fields:
 
 - descriptions become field documentation,
-- glossary terms become the synonyms an agent uses to map a person's words onto a certified
-  metric,
+- glossary terms become dataset and field synonyms that help an agent select dimensions and
+  understand the model,
 - PII and sensitivity tags become `denyFields` entries, so a request for a classified column
   fails to compile,
 - deprecated datasets are flagged for review rather than dropped silently.
