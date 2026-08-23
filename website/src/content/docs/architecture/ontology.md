@@ -1,125 +1,149 @@
 ---
-title: Semantic layers and ontologies
-description: What an ontology is, what the semantic model can and cannot express today, and how the two would work together.
+title: Ontology
+description: How an ontology complements a semantic model, how Apache Ossie ontology support is evolving, and how Semantic Operator may support it in the future.
 ---
 
-People who work with knowledge graphs ask why this project talks about semantic models and
-never about ontology. It is a fair question. The two solve neighbouring problems and the
-words are often used as if they meant the same thing. They do not.
+A semantic model defines how data can be queried. It records datasets, fields,
+joins, dimensions, and certified metrics. An ontology describes what the things
+in that data mean and how those business concepts relate.
 
-## Structure and meaning are different problems
+<p class="so-key-point">A semantic model makes data queryable. An ontology gives that data shared business meaning.</p>
 
-The model this operator compiles describes structure. It records which tables exist, which
-columns they hold, how they join, which metrics are certified, what a metric is called in
-everyday speech, and who is allowed to read what. That is enough to turn a request into one
-correct SQL statement, which is the job it was built for.
+For example, a semantic model can say:
 
-An ontology describes meaning. It records what the things in your business actually are,
-how they relate, and what has to be true about them. It is written to be reasoned over
-rather than executed.
+```text
+subscriber.customer_id joins customer.customer_id
+```
 
-The difference shows up as soon as you ask a question the schema cannot answer. A model can
-tell you that the `subscriber` table joins to the `customer` table on a key. It cannot tell
-you that every subscriber **is** a customer. Nothing in a join says that. A person knows it
-and writes queries accordingly. An agent does not.
+An ontology can say:
 
-## What the model cannot say today
+```text
+Subscriber is a subtype of Customer
+```
 
-Each of these is a real statement about a business that the current model has no way to
-record.
+The first statement tells a SQL planner how two datasets join. The second tells
+an agent what a Subscriber means. Both are useful, but they solve different
+problems.
 
-- A subscriber is a kind of customer, so anything true of customers is true of subscribers.
-- Cancellation is a state change of a subscription, not simply a row in a table.
-- A refund and a chargeback are different kinds of revenue reversal, even when separate
-  systems represent both as negative amounts.
-- Refund rate is meaningful per order per day and meaningless at a customer snapshot grain.
-- A failed payment often appears alongside churn, but appearing alongside is not causing.
-- An agent may propose a retention offer and may not send one without a human approving it.
-- Two fields with different names in two systems refer to the same business concept.
+## How Apache Ossie ontology is evolving
 
-None of these are exotic. They are the things a good analyst holds in their head. Today they
-survive as tribal knowledge, and the model cannot check them or hand them to an agent.
+The Apache Ossie community is developing an ontology specification alongside
+the core semantic model specification. The current draft defines:
 
-## Why this matters more with agents
+- entity concepts such as Customer, Employee, and Store,
+- value concepts such as CurrencyAmount or CustomerId,
+- inheritance between concepts,
+- relationships, identifiers, and multiplicity,
+- business constraints and derived concepts,
+- mappings from ontology concepts to semantic-model fields.
 
-A human reading a metric list fills in the missing meaning without noticing. They know a
-refund rate at customer grain is nonsense, so they never ask for it.
+The mappings are the bridge between conceptual meaning and queryable data.
+Ossie currently describes `object_mappings`, `referent_mappings`, and
+`link_mappings` that connect concepts and relationships to fields in one or
+more semantic models. See the [Apache Ossie ontology
+specification](https://github.com/apache/ossie/blob/main/ontology/ontology.md).
 
-An agent has no such instinct. It sees a metric and a dimension and combines them. The
-result runs and returns a number, and nothing in the output says the combination was
-meaningless. This is the same failure the semantic layer already fixes for arithmetic, one
-level up. The compiler stops an agent computing a metric the wrong way. It cannot yet stop
-an agent asking a question that has no valid answer.
+:::caution[This is an evolving community specification]
+The ontology specification is currently a `0.2.0.dev0` draft. Its structure and
+expression language may change as the Apache Ossie community develops it. The
+design below is our current direction, not an implemented or committed API.
+:::
 
-Governance has the same gap. The model can say a role may not read a column. It cannot say
-an action needs approval before anyone takes it.
+## How this may fit Semantic Operator
 
-## The pieces that already exist
+An ontology can be shared by several semantic models, so it should not be
+embedded in one `SemanticModel`. A likely Kubernetes design uses two additional
+resources:
 
-This is a solved area with mature open standards, so there is nothing to invent.
+- `Ontology` owns concepts, relationships, and business rules.
+- `OntologyBinding` maps those concepts to fields and metrics in one or more
+  `SemanticModel` resources.
 
-[OWL](https://www.w3.org/TR/owl2-primer/) provides classes, properties, hierarchies, and
-inference. It is how you state that a subscriber is a customer and have software draw the
-consequences.
+```text
+Ontology
+   |
+   | conceptual meaning
+   v
+OntologyBinding
+   |
+   | validated field mappings
+   v
+SemanticModel
+   |
+   | physical datasets, joins, and metrics
+   v
+Trino or StarRocks
+```
 
-[SHACL](https://www.w3.org/TR/shacl/) provides constraints and validation. It is how you
-state that every certified metric must name an owner, a unit, and a valid grain, and then
-fail a pull request that omits one.
+Semantic Operator could validate the ontology and its bindings, watch the
+referenced semantic models, and publish a versioned compiled artifact. A broken
+mapping would block the new version while the last valid version remained
+available, following the same lifecycle used for semantic models today.
 
-The two are complementary. OWL says what the domain means. SHACL checks whether a document
-obeys the rules. A useful setup needs both.
+## How queries may work
 
-[SKOS](https://www.w3.org/TR/skos-primer/) is the lighter option for the common case, which
-is a glossary of concepts with preferred labels, synonyms, and broader and narrower terms.
-Many teams need SKOS long before they need OWL.
+Existing metric queries would remain unchanged and would not require an
+ontology:
 
-## How this would help the operator
+```text
+query_metric
+    |
+    v
+compiled SemanticModel
+    |
+    v
+current planner
+    |
+    v
+one governed SQL statement
+```
 
-The interesting part is that the operator already has the right shape for it.
+A future ontology-aware query could first resolve business concepts through a
+compiled ontology binding. The resolved request would then use the existing
+semantic model and planner:
 
-Validation happens at compile time and refuses to publish a model that does not hold up.
-SHACL shapes are the same idea expressed over a graph, so ontology checks belong in the
-reconcile loop next to the schema drift check that is already there. A model referring to a
-retired concept would fail the same way a model referring to a dropped column fails now.
+```text
+concept request
+    |
+    v
+compiled Ontology + OntologyBinding
+    |
+    | resolve concepts to certified fields and metrics
+    v
+compiled SemanticModel
+    |
+    v
+current planner
+    |
+    v
+one governed SQL statement
+```
 
-Serving already answers questions about the model over MCP. An agent can list metrics and
-dimensions. It could also resolve a business term to a concept, explain where a metric comes
-from, or ask which metrics a change would affect.
+The two YAML documents would not be merged at query time. Ontology rules would
+also not be handed to an LLM to turn into SQL. Semantic Operator would validate
+and compile the supported mappings first. The existing deterministic planner
+would remain the only component that generates SQL.
 
-Authoring already imports meaning from DataHub. Glossary terms and concept identifiers are
-more of the same work a steward has already done.
+## Possible MCP tools
 
-## The line we would not cross
+The first useful integration would improve discovery without changing SQL
+generation:
 
-An ontology should inform planning and help an agent reason. It should not rewrite certified
-SQL while a query is running.
+- `list_ontologies`
+- `list_concepts`
+- `describe_concept`
+- `list_concept_relationships`
+- `resolve_concept`
 
-The whole value of this system is that a request compiles to one predictable statement that
-a person approved the definition of. Inference in the query path would trade that away for
-cleverness. The graph belongs beside the compiler, not inside it.
+These tools could help an LLM understand that Subscriber is a type of Customer
+or that buyer refers to the Customer concept.
 
-## Where this stands
+After ontology bindings and governance are proven, later tools could include
+`list_concept_metrics` and `query_concept`. A concept query should return the
+resolved semantic request, ontology version, semantic-model version, and SQL so
+the result remains explainable and auditable.
 
-Exploratory. Nothing described here is implemented, and the model gains nothing from
-ontology until the parts above are real.
-
-The direction is clear enough to state. [Apache Ossie](https://ossie.apache.org/) has
-working groups covering ontology representation and catalog integration. Following that
-standard beats inventing a parallel model that only this operator understands.
-
-The likely stack is all open source and mostly things teams already run. Ossie stays the
-analytics model. SKOS and OWL carry concepts and relationships. SHACL validates in CI.
-DataHub remains the catalog and glossary. An RDF store such as
-[Eclipse RDF4J](https://rdf4j.org/) or [Apache Jena](https://jena.apache.org/) comes in only
-when a graph is genuinely needed. [Ontop](https://ontop-vkg.org/guide/) is worth knowing
-about, because it answers graph queries over relational data without copying rows. That
-suits a warehouse that already holds the facts.
-
-The first useful step needs no graph database at all. Carrying concept identifiers, owners,
-units, valid grains, and derivation links in a future supported Ossie representation would
-answer many agent questions on its own.
-
-If this is something you need, say so on the repository. Interest is what moves it up the
-list.
-
-Next, read [how it works](/architecture) or [see it running](/start/quickstart).
+Ontology support is not implemented today. The immediate priority is to follow
+the Apache Ossie work and avoid creating a competing format. Once the community
+schema stabilizes, support can begin with offline validation and discovery
+before ontology mappings are allowed to influence query planning.

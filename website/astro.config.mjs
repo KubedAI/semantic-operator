@@ -52,8 +52,7 @@ export default defineConfig({
           { label: 'Identity and the engine', slug: 'architecture/identity' },
           { label: 'Authorization', slug: 'architecture/authorization' },
           { label: 'Access and credentials', slug: 'architecture/access' },
-          { label: 'Semantic layers and ontologies', slug: 'architecture/ontology' },
-          { label: 'How Semantic Operator compares', slug: 'architecture/how-this-compares' },
+          { label: 'Ontology', slug: 'architecture/ontology' },
         ],
       },
       {
