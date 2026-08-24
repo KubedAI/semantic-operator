@@ -12,7 +12,7 @@ PLATFORM   ?= linux/$(if $(filter aarch64 arm64,$(shell uname -m)),arm64,amd64)
 
 # Local kind commands share one repository-local kubeconfig and always select
 # the named kind context explicitly.
-KIND_CLUSTER_NAME ?= semantic-operator-dev
+KIND_CLUSTER_NAME ?= semantic-operator
 KIND_KUBECONFIG   ?= $(CURDIR)/.kube/config
 KIND_IMAGE_BASE   ?= semantic-operator-kind
 KIND_IMAGE_TAG    ?= local
@@ -243,7 +243,7 @@ e2e: ## Deploy the auth e2e matrix (KIND_ENGINE_TYPE) and run the suite in one s
 	E2E_CONTEXT="kind-$(KIND_CLUSTER_NAME)" \
 	E2E_ENGINE="$(KIND_ENGINE_TYPE)" \
 	E2E_SETUP=1 \
-	go test -tags e2e -count=1 -v ./test/e2e/auth/...
+	go test -tags e2e -count=1 -v ./test/e2e/...
 
 .PHONY: e2e-deploy
 e2e-deploy: ## Stand up the auth e2e matrix (engine, data, identity-mode releases); no tests
@@ -251,14 +251,14 @@ e2e-deploy: ## Stand up the auth e2e matrix (engine, data, identity-mode release
 	E2E_CONTEXT="kind-$(KIND_CLUSTER_NAME)" \
 	E2E_ENGINE="$(KIND_ENGINE_TYPE)" \
 	E2E_SETUP=1 \
-	go test -tags e2e -count=1 -v -run '^$$' ./test/e2e/auth/...
+	go test -tags e2e -count=1 -v -run '^$$' ./test/e2e/...
 
 .PHONY: e2e-test
 e2e-test: ## Run the auth e2e assertions against an already-deployed cluster
 	E2E_KUBECONFIG="$(KIND_KUBECONFIG)" \
 	E2E_CONTEXT="kind-$(KIND_CLUSTER_NAME)" \
 	E2E_ENGINE="$(KIND_ENGINE_TYPE)" \
-	go test -tags e2e -count=1 -v ./test/e2e/auth/...
+	go test -tags e2e -count=1 -v ./test/e2e/...
 
 .PHONY: quickstart
 quickstart: kind-deploy ## Minimal local stack for the Quickstart: plaintext Trino, operator, demo data, plain model (no auth, no OPA/Ranger)

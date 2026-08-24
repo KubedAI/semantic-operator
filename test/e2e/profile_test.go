@@ -1,6 +1,6 @@
 //go:build e2e
 
-package authe2e
+package e2e
 
 // profile is the single source of truth for one engine's e2e shape: what the
 // harness queries and asserts, and how the orchestrator prepares the engine.

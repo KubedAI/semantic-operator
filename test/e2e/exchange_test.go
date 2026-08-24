@@ -1,6 +1,6 @@
 //go:build e2e
 
-package authe2e
+package e2e
 
 import (
 	"strings"

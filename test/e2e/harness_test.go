@@ -11,7 +11,7 @@
 //
 // Every value is overridable by env, so the same suite runs against either
 // engine; the orchestrator (make e2e) deploys the matrix per KIND_ENGINE_TYPE.
-package authe2e
+package e2e
 
 import (
 	"bytes"
@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -122,6 +123,43 @@ func minimalQuery() map[string]any { return query() }
 func allowQuery() map[string]any   { return query(cfg.allowDim) }
 func denyQuery() map[string]any    { return query(cfg.denyDim) }
 func maskQuery() map[string]any    { return query(cfg.maskDim) }
+
+// rowsClose reports whether two row sets hold the same values. It compares
+// numbers within a relative tolerance and all other cells exactly. The
+// tolerance absorbs the last-bit drift of a parallel DOUBLE SUM. The engine
+// adds the column across splits in an order that is not fixed, so two runs of
+// the same aggregate can differ in the last bit.
+func rowsClose(a, b [][]any, relTol float64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if len(a[i]) != len(b[i]) {
+			return false
+		}
+		for j := range a[i] {
+			if !cellsClose(a[i][j], b[i][j], relTol) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// cellsClose compares two decoded JSON cells. Numbers decode to float64 and are
+// compared within relTol. All other cells are compared by their text form.
+func cellsClose(x, y any, relTol float64) bool {
+	fx, okx := x.(float64)
+	fy, oky := y.(float64)
+	if okx && oky {
+		if fx == fy {
+			return true
+		}
+		scale := math.Max(math.Abs(fx), math.Abs(fy))
+		return math.Abs(fx-fy) <= relTol*scale
+	}
+	return fmt.Sprintf("%v", x) == fmt.Sprintf("%v", y)
+}
 
 var (
 	cfg        config
