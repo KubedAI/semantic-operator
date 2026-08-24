@@ -15,10 +15,10 @@ image:
 engine:
   type: starrocks
 
-# Passwordless dev StarRocks FE in namespace account-demo. engine.host is empty, so the
-# legacy starrocks.host below is used.
+# Passwordless local StarRocks in namespace account-demo. engine.host is empty,
+# so the legacy starrocks.host value below is used.
 starrocks:
-  host: account-demo-fe-service.account-demo.svc.cluster.local
+  host: starrocks.account-demo.svc.cluster.local
   port: 9030
   user: root
   icebergCatalog: iceberg

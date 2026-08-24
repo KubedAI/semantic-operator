@@ -109,7 +109,7 @@ polaris-catalog: ## Create/ensure the Iceberg REST catalog 'account-demo' on Gar
 	@bash $(SCRIPTS)/polaris-catalog.sh
 
 # =============================================================================
-# Query engine — StarRocks (shared-data, 1 FE + 1 CN) reading Iceberg via Polaris.
+# Query engine — StarRocks reading Iceberg via Polaris.
 # =============================================================================
 .PHONY: starrocks-up
 starrocks-up: ## Install StarRocks (1 FE + 1 CN, shared-data on Garage)

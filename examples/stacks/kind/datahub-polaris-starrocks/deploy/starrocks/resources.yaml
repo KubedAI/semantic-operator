@@ -1,0 +1,81 @@
+# One all-in-one StarRocks container for the local kind demo.
+#
+# The image runs one FE and one BE in shared-nothing mode. Its storage is
+# ephemeral. The Iceberg tables remain in Garage, but a pod replacement removes
+# the StarRocks external-catalog definition. Run `make starrocks-catalog` after
+# a pod replacement.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: starrocks
+  namespace: account-demo
+  labels:
+    app: starrocks
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: starrocks
+  template:
+    metadata:
+      labels:
+        app: starrocks
+    spec:
+      containers:
+        - name: allin1
+          image: STARROCKS_IMAGE_REF
+          imagePullPolicy: IfNotPresent
+          # AWS SDK v2 enables extra request checksums by default. Garage does
+          # not accept that signed payload form for Iceberg manifest uploads.
+          env:
+            - name: AWS_REQUEST_CHECKSUM_CALCULATION
+              value: when_required
+            - name: AWS_RESPONSE_CHECKSUM_VALIDATION
+              value: when_required
+          ports:
+            - name: query
+              containerPort: 9030
+            - name: feproxy
+              containerPort: 8080
+          readinessProbe:
+            exec:
+              command:
+                - /bin/bash
+                - -c
+                - >-
+                  mysql -uroot -h127.0.0.1 -P9030 -e 'SHOW BACKENDS\G' |
+                  grep -q 'Alive: true'
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
+          resources:
+            requests:
+              cpu: 500m
+              memory: 3Gi
+            limits:
+              memory: 6Gi
+---
+# LOCAL KIND ONLY. kind maps these NodePorts to 127.0.0.1 on the host.
+apiVersion: v1
+kind: Service
+metadata:
+  name: starrocks
+  namespace: account-demo
+  labels:
+    app: starrocks
+spec:
+  type: NodePort
+  selector:
+    app: starrocks
+  ports:
+    - name: query
+      port: 9030
+      targetPort: query
+      nodePort: 30903
+    - name: http
+      port: 8030
+      targetPort: feproxy
+      nodePort: 30803

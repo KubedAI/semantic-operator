@@ -4,10 +4,7 @@
 # request here before it compiles the model to SQL. A deny here means the
 # request never becomes SQL. The built-in field and row governance in each
 # SemanticModel still applies afterward, to whatever this gate allows.
-#
-# OPA serves this at /v1/data/semantic/query/allow. The operator posts
-# {"input": {...}} and reads {"result": <bool>}. An undefined result is a deny,
-# and the operator fails closed if OPA is unreachable.
+
 package semantic.query
 
 import rego.v1
@@ -37,6 +34,7 @@ allow if {
 	input.action == "query"
 	input.model.name in account_models
 	count(finance_only_requested) > 0
+	"finance_analyst" in input.identity.roles
 	is_finance
 }
 
@@ -45,6 +43,5 @@ finance_only_requested contains m if {
 	m in finance_only_metrics
 }
 
-# Header auth carries the role. JWT auth (Keycloak) also carries groups.
 is_finance if "finance_analyst" in input.identity.roles
 is_finance if "finance" in input.identity.groups

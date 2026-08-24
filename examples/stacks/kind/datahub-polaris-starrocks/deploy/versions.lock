@@ -31,9 +31,6 @@ DATAHUB_MCP_VERSION=0.6.0
 # Resolved by the first `make charts-vendor` run (it prints available versions).
 # Pin them here, then re-run charts-vendor to actually pull.
 DATAHUB_PREREQ_CHART_VERSION=0.3.0
-# kube-starrocks 1.11.6 default appVersion is 4.1-latest; we override the FE/CN
-# image tag to STARROCKS_VERSION (4.0.13) via chart values.
-KUBE_STARROCKS_CHART_VERSION=1.11.6
 
 # --- Images I control directly (raw manifests) (confirm-on-pull) ---
 GARAGE_IMAGE=dxflrs/garage:v2.3.0
@@ -43,8 +40,7 @@ CADDY_IMAGE=caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd
 KEYCLOAK_IMAGE=quay.io/keycloak/keycloak:26.6@sha256:0aae0de7fca85525f727d3354df17896092de8bb26ae4c12d89c77e5df8cbce4
 # OPA (Open Policy Agent) — external, first-gate authorizer for governance.
 OPA_IMAGE=openpolicyagent/opa:1.19.1
-STARROCKS_FE_IMAGE=starrocks/fe-ubuntu:4.0.13
-STARROCKS_CN_IMAGE=starrocks/cn-ubuntu:4.0.13
+STARROCKS_IMAGE=starrocks/allin1-ubuntu:4.0.13
 # Apache Kafka (KRaft) deployed via deploy/datahub/kafka.yaml — replaces the
 # DataHub prerequisites chart's unmaintained bundled broker image.
 KAFKA_IMAGE=apache/kafka:3.9.0

@@ -1,29 +1,32 @@
 #!/usr/bin/env bash
-# StarRocks (1 FE + 1 CN, shared-data) via kube-starrocks chart.
-# The operator (helm-managed) comes up first; it then creates the FE/CN
-# StatefulSets from the StarRocksCluster CR, so we poll the CR phase.
+# Deploy one all-in-one StarRocks instance for the local kind demo.
 . "$(dirname "$0")/lib.sh"
 
-CHART="$(ls "$DEPLOY_DIR"/starrocks/charts/kube-starrocks-*.tgz 2>/dev/null | head -1)"
-[ -n "$CHART" ] && [ -f "$CHART" ] || die "kube-starrocks chart not vendored under $DEPLOY_DIR/starrocks/charts (run 'make charts-vendor')"
+MANIFEST="$DEPLOY_DIR/starrocks/resources.yaml"
+[ -f "$MANIFEST" ] || die "StarRocks manifest not found: $MANIFEST"
+[ -n "${STARROCKS_IMAGE:-}" ] || die "STARROCKS_IMAGE is not set in deploy/versions.lock"
 
-log "installing kube-starrocks (operator + 1 FE + 1 CN, shared-data on Garage)"
-helm upgrade --install starrocks "$CHART" -n account-demo --create-namespace \
-  -f "$DEPLOY_DIR/starrocks/values.yaml" --wait --timeout 5m
+# Remove the previous kube-starrocks release. Delete its custom resource while
+# the operator is still running, so the operator can remove its workloads.
+if kubectl -n account-demo get starrockscluster account-demo >/dev/null 2>&1; then
+  log "removing the legacy StarRocksCluster"
+  kubectl -n account-demo delete starrockscluster account-demo --wait --timeout=5m
+fi
+if helm -n account-demo status starrocks >/dev/null 2>&1; then
+  log "removing the legacy kube-starrocks Helm release"
+  helm -n account-demo uninstall starrocks --wait --timeout 5m
+fi
+kubectl -n account-demo delete service account-demo-fe-nodeport --ignore-not-found
 
-log "waiting for StarRocksCluster 'account-demo' to reach phase=running (FE+CN created by operator)"
-for i in $(seq 1 60); do
-  phase="$(kubectl -n account-demo get starrockscluster account-demo -o jsonpath='{.status.phase}' 2>/dev/null || true)"
-  printf '  [%02d] phase=%s\n' "$i" "${phase:-<none>}"
-  [ "$phase" = "running" ] && break
-  sleep 10
-done
-[ "$phase" = "running" ] || die "StarRocksCluster did not reach running; inspect: kubectl -n account-demo get pods; kubectl -n account-demo describe starrockscluster account-demo"
+kubectl create namespace account-demo --dry-run=client -o yaml | kubectl apply -f -
+log "deploying all-in-one StarRocks ($STARROCKS_IMAGE)"
+sed "s|STARROCKS_IMAGE_REF|$STARROCKS_IMAGE|g" "$MANIFEST" | kubectl apply -f -
 
-log "pods:"; kubectl -n account-demo get pods -o wide | grep -E 'account-demo-fe|account-demo-cn' || kubectl -n account-demo get pods
+# The FE must start and register the BE before queries can run. The readiness
+# probe checks that registration.
+log "waiting for the StarRocks backend"
+kubectl -n account-demo rollout status deployment/starrocks --timeout=10m
+kubectl -n account-demo get pod -l app=starrocks -o wide
 
-log "exposing FE on node ports (localhost:9030 MySQL / :8030 HTTP)"
-kubectl apply -f "$DEPLOY_DIR/starrocks/fe-nodeport.yaml"
-
-log "StarRocks OK — FE MySQL on account-demo-fe-service:9030 (host: localhost:9030 via NodePort mapping)"
+log "StarRocks OK: in-cluster starrocks:9030, host localhost:9030"
 log "next: starrocks-catalog — Iceberg REST external catalog -> Polaris"

@@ -5,7 +5,7 @@
 #   "acryl-datahub==1.6.0",
 # ]
 # ///
-"""Discover Glue assets and idempotently enrich them in DataHub.
+"""Discover datasets and idempotently enrich them in DataHub.
 
 The module keeps discovery, validation, and planning independent of the DataHub SDK so
 that they can be tested offline. DataHub imports occur only in DataHubClient methods;
@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Protocol, Sequence
@@ -29,6 +30,8 @@ MANIFEST_SCHEMA_VERSION = 1
 DEFAULT_DATABASE = "saas_accounts_demo"
 DEFAULT_PLATFORM = "glue"
 DEFAULT_ENV = "DEV"
+DEFAULT_DISCOVERY_TIMEOUT_SECONDS = 60.0
+DEFAULT_DISCOVERY_INTERVAL_SECONDS = 3.0
 FIXED_PROPERTIES: tuple[dict[str, Any], ...] = (
     {"id": "semantic.models", "display_name": "Semantic Models", "cardinality": "MULTIPLE"},
     {"id": "semantic.dataset", "display_name": "Semantic Dataset", "cardinality": "SINGLE"},
@@ -65,6 +68,10 @@ class MetadataValidationError(EnrichmentError):
 
 class DiscoveryError(EnrichmentError):
     """Canonical ingestion-created assets cannot be resolved exactly."""
+
+
+class MissingAssetsError(DiscoveryError):
+    """Ingested assets are not visible in DataHub search yet."""
 
 
 class ApplyError(EnrichmentError):
@@ -386,6 +393,7 @@ def discover_manifest(
         query=database,
     )))
     resolved: dict[str, str] = {}
+    missing: list[str] = []
     for table in expected_assets:
         qualified = f"{database}.{table}".lower()
         matches = []
@@ -394,15 +402,18 @@ def discover_manifest(
             if name == qualified or name.endswith("." + qualified):
                 matches.append(urn)
         if not matches:
-            raise DiscoveryError(
-                f"missing DataHub asset for {database}.{table} "
-                f"(platform={platform}, instance={platform_instance}, env={env})"
-            )
+            missing.append(f"{database}.{table}")
+            continue
         if len(matches) > 1:
             raise DiscoveryError(
                 f"ambiguous DataHub asset for {database}.{table}: " + ", ".join(matches)
             )
         resolved[table] = matches[0]
+    if missing:
+        raise MissingAssetsError(
+            f"missing DataHub assets: {', '.join(missing)} "
+            f"(platform={platform}, instance={platform_instance}, env={env})"
+        )
     return {
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "platform": platform,
@@ -411,6 +422,49 @@ def discover_manifest(
         "database": database,
         "assets": dict(sorted(resolved.items())),
     }
+
+
+def discover_manifest_with_retry(
+    client: DiscoveryClient,
+    expected_assets: Sequence[str],
+    *,
+    platform: str,
+    platform_instance: str,
+    env: str,
+    database: str,
+    timeout_seconds: float,
+    interval_seconds: float,
+    logger: logging.Logger,
+) -> dict[str, Any]:
+    """Wait for ingestion-created assets to become visible in DataHub search."""
+    deadline = time.monotonic() + timeout_seconds
+    attempts = 0
+    while True:
+        attempts += 1
+        try:
+            return discover_manifest(
+                client,
+                expected_assets,
+                platform=platform,
+                platform_instance=platform_instance,
+                env=env,
+                database=database,
+            )
+        except MissingAssetsError as exc:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise DiscoveryError(
+                    f"{exc}; assets did not become visible within "
+                    f"{timeout_seconds:g} seconds after {attempts} attempts"
+                ) from exc
+            delay = min(interval_seconds, remaining)
+            logger.info(
+                "DataHub search has not indexed all datasets; "
+                "retrying in %.1f seconds: %s",
+                delay,
+                exc,
+            )
+            time.sleep(delay)
 
 
 def write_manifest(manifest: Mapping[str, Any], output: Path | None = None) -> str:
@@ -671,6 +725,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--platform-instance", default=os.getenv("DATAHUB_PLATFORM_INSTANCE"))
     parser.add_argument("--env", default=DEFAULT_ENV)
     parser.add_argument("--database", default=DEFAULT_DATABASE)
+    parser.add_argument(
+        "--discovery-timeout-seconds",
+        type=float,
+        default=DEFAULT_DISCOVERY_TIMEOUT_SECONDS,
+        help="maximum time to wait for ingested datasets to appear in search",
+    )
+    parser.add_argument(
+        "--discovery-interval-seconds",
+        type=float,
+        default=DEFAULT_DISCOVERY_INTERVAL_SECONDS,
+        help="delay between missing-dataset discovery attempts",
+    )
     parser.add_argument("--dry-run", action="store_true", help="discover and plan without writing aspects")
     return parser.parse_args(argv)
 
@@ -685,15 +751,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise EnrichmentError("DATAHUB_GMS_TOKEN or --token is required")
         if not args.platform_instance:
             raise EnrichmentError("DATAHUB_PLATFORM_INSTANCE or --platform-instance is required")
+        if args.discovery_timeout_seconds < 0:
+            raise EnrichmentError("--discovery-timeout-seconds must be zero or greater")
+        if args.discovery_interval_seconds <= 0:
+            raise EnrichmentError("--discovery-interval-seconds must be greater than zero")
         metadata = load_metadata(args.metadata)
         client = DataHubClient(args.server, args.token)
-        manifest = discover_manifest(
+        manifest = discover_manifest_with_retry(
             client,
             metadata["expected_assets"],
             platform=args.platform,
             platform_instance=args.platform_instance,
             env=args.env,
             database=args.database,
+            timeout_seconds=args.discovery_timeout_seconds,
+            interval_seconds=args.discovery_interval_seconds,
+            logger=logger,
         )
         manifest_json = write_manifest(manifest, args.manifest_output)
         print(manifest_json, flush=True)

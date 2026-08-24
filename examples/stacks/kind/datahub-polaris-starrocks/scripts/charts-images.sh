@@ -2,9 +2,8 @@
 # Enumerate the exact image refs the vendored DataHub + prerequisites charts
 # render with our local values, and rewrite the block below the marker in
 # images.txt. Offline (helm template only) and re-runnable: it always regenerates
-# the block, so it stays in sync with the pinned charts + values. StarRocks,
-# Garage, Polaris, and Postgres images are listed by hand above the marker and
-# are left untouched.
+# the block, so it stays in sync with the pinned charts and values. Images for
+# raw manifests are listed by hand above the marker and are left untouched.
 . "$(dirname "$0")/lib.sh"
 export HELM_CACHE_HOME="${HELM_CACHE_HOME:-/tmp/helm/cache}"
 export HELM_CONFIG_HOME="${HELM_CONFIG_HOME:-/tmp/helm/config}"

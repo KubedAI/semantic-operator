@@ -16,10 +16,8 @@ openpolicyagent/opa:1.19.1
 # unmaintained bundled broker
 apache/kafka:3.9.0
 
-# --- StarRocks (kube-starrocks 1.11.6 chart; FE/CN pinned to 4.0.13) ---
-starrocks/operator:v1.11.6
-starrocks/fe-ubuntu:4.0.13
-starrocks/cn-ubuntu:4.0.13
+# --- StarRocks all-in-one 4.0.13 ---
+starrocks/allin1-ubuntu:4.0.13
 
 # --- Appended by `make charts-images` after `make charts-vendor` ---
 # DataHub 1.0.3 + prerequisites
@@ -30,3 +28,4 @@ docker.io/acryldata/datahub-frontend-react:v1.6.0
 docker.io/acryldata/datahub-gms:v1.6.0
 docker.io/acryldata/datahub-upgrade:v1.6.0
 opensearchproject/opensearch:2.19.5
+quay.io/keycloak/keycloak:26.6
