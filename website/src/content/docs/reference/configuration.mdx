@@ -71,12 +71,15 @@ from a complete one. These are Helm values under `server.query`.
 
 | Bound | Default | What happens past it |
 |---|---|---|
-| Row limit | 1000, max 10000 | Refused, not truncated |
+| Row limit | 1000, max 10000 | Refused |
 | Result size | 32 MiB | Abandoned while reading, before it is fully allocated |
 | Request body | 1 MiB | Refused |
 | Metrics, dimensions, filters | 25, 25, 50 | Refused |
 | Values in one `IN` list | 1000 | Refused |
 | Requests in flight | 4 | Queued briefly, then 503 with `Retry-After` |
+
+A request with no limit returns up to 1000 rows, and a larger
+result is refused. Name an explicit limit up to 10000 to read more.
 
 Result size and requests in flight form one memory budget. Each in-flight request can hold a
 whole result until its response is written, so `maxConcurrent` multiplied by

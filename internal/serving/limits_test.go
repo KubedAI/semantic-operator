@@ -9,14 +9,16 @@ import (
 )
 
 // A request with no limit used to compile to SQL with no LIMIT clause, so one
-// high-cardinality grouping could return the whole table.
-func TestUnsetLimitGetsTheDefault(t *testing.T) {
+// high-cardinality grouping could return the whole table. It now compiles with
+// one row past the default. That extra row is the probe Service.Query uses to
+// tell a complete result from a larger one it must refuse.
+func TestUnsetLimitGetsTheDefaultProbe(t *testing.T) {
 	got, err := Limits{}.apply(planner.Request{Metrics: []string{"revenue"}})
 	if err != nil {
 		t.Fatalf("apply: %v", err)
 	}
-	if got.Limit != DefaultLimits().DefaultRowLimit {
-		t.Fatalf("limit = %d, want the default %d", got.Limit, DefaultLimits().DefaultRowLimit)
+	if want := DefaultLimits().DefaultRowLimit + 1; got.Limit != want {
+		t.Fatalf("limit = %d, want the default plus the probe row %d", got.Limit, want)
 	}
 }
 

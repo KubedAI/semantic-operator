@@ -11,6 +11,11 @@ import (
 // bound. Adapters map it to 400, which is the default status in writeErr.
 var ErrRequestTooLarge = errors.New("request exceeds a configured limit")
 
+// ErrResultIncomplete marks a defaulted-limit query whose result exceeds the
+// default. Refused because a caller cannot tell a prefix from
+// the whole result. Adapters map it to 400.
+var ErrResultIncomplete = errors.New("result is incomplete at the default row limit: narrow the request or set an explicit limit")
+
 // Limits bound what one request may ask for and what one result may cost.
 //
 // The row limit matters most. Without it a single query against a
@@ -22,6 +27,11 @@ var ErrRequestTooLarge = errors.New("request exceeds a configured limit")
 // project exists to stop confidently wrong answers, and silently returning the
 // first 10,000 rows of a larger result is exactly that: the caller cannot tell
 // a complete answer from a truncated one. Refusing says so plainly.
+//
+// A request that names no limit is bound the same way: the effective limit
+// becomes DefaultRowLimit + 1, so Query can distinguish a complete result at
+// the default from a larger one it must refuse. An explicit limit is the
+// caller's intent and so is honored up to MaxRowLimit.
 type Limits struct {
 	// DefaultRowLimit applies when a request names no limit.
 	DefaultRowLimit int
@@ -131,7 +141,7 @@ func (l Limits) withDefaults() Limits {
 
 // apply validates the request shape and returns it with the row limit filled
 // in. It runs before the plan cache key is computed, so the key covers the
-// effective limit and a defaulted request cannot collide with an explicit one.
+// effective limit.
 func (l Limits) apply(req planner.Request) (planner.Request, error) {
 	l = l.withDefaults()
 
@@ -155,7 +165,8 @@ func (l Limits) apply(req planner.Request) (planner.Request, error) {
 	case req.Limit < 0:
 		return req, fmt.Errorf("%w: limit must not be negative", ErrRequestTooLarge)
 	case req.Limit == 0:
-		req.Limit = l.DefaultRowLimit
+		// Probe one row past the default so Query can refuse a larger result.
+		req.Limit = l.DefaultRowLimit + 1
 	case req.Limit > l.MaxRowLimit:
 		return req, fmt.Errorf("%w: limit %d exceeds the maximum of %d", ErrRequestTooLarge, req.Limit, l.MaxRowLimit)
 	}

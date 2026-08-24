@@ -315,6 +315,9 @@ func (s *Service) Query(ctx context.Context, adapter string, m *planner.Compiled
 	}
 	span.SetAttributes(attribute.String("semantic.request_hash", plan.RequestHash))
 
+	defaulted := req.Limit == 0
+	reportLimit := s.Limits.withDefaults().DefaultRowLimit
+
 	res := &QueryResult{
 		SQL: plan.SQL, Model: plan.Model, ModelVersion: plan.ModelVersion,
 		RequestHash: plan.RequestHash, Role: plan.Role,
@@ -341,6 +344,10 @@ func (s *Service) Query(ctx context.Context, adapter string, m *planner.Compiled
 				Rows    [][]any  `json:"rows"`
 			}
 			if err := json.Unmarshal(blob, &cached); err == nil {
+				if defaulted && len(cached.Rows) > reportLimit {
+					s.Metrics.Requests.WithLabelValues(adapter, m.Name, "result_incomplete").Inc()
+					return nil, fmt.Errorf("%w: the result has more than %d rows", ErrResultIncomplete, reportLimit)
+				}
 				s.Metrics.ResultCacheHits.Inc()
 				res.Columns, res.Rows, res.CachedResult = cached.Columns, cached.Rows, true
 				res.RowCount = len(cached.Rows)
@@ -363,6 +370,11 @@ func (s *Service) Query(ctx context.Context, adapter string, m *planner.Compiled
 	}
 	if rows == nil {
 		rows = [][]any{}
+	}
+
+	if defaulted && len(rows) > reportLimit {
+		s.Metrics.Requests.WithLabelValues(adapter, m.Name, "result_incomplete").Inc()
+		return nil, fmt.Errorf("%w: the result has more than %d rows", ErrResultIncomplete, reportLimit)
 	}
 	// The engine client already abandons an oversized result while scanning,
 	// which is the only place the allocation can actually be prevented. This
