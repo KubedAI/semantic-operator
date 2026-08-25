@@ -177,6 +177,17 @@ func cmdDerive(args []string) (err error) {
 			return fmt.Errorf("enrich datahub: %w", perr)
 		}
 		enrichment = catalog.EnrichWith(tables, meta)
+		// Zero matches almost always means the URN this derive builds does not
+		// address the datasets DataHub holds: a wrong platform, prefix, or env.
+		// Fail with the URN that was tried rather than emit a bare scaffold, so
+		// the user sees what to correct instead of a silent wall of YAML.
+		if len(enrichment.Tables) == 0 {
+			return fmt.Errorf("enrich datahub: matched 0 of %d tables\n"+
+				"  no DataHub dataset answered the URN this derive built, for example:\n"+
+				"    %s\n"+
+				"  compare it against the URNs in DataHub and correct -datahub-platform (%q), -datahub-dataset-prefix (%q), or -datahub-env (%q)",
+				len(tables), dh.SampleURN(*database, names[0]), *datahubPlatform, *datahubPrefix, *datahubEnv)
+		}
 		fmt.Fprintf(os.Stderr, "enriched %d/%d tables from DataHub (%d sensitive columns, %d deprecated)\n",
 			len(enrichment.Tables), len(tables), len(enrichment.DeniedFields), len(enrichment.DeprecatedTables))
 	default:

@@ -20,7 +20,8 @@ inside the cluster and it is never in the query path.
 ### Generate a model
 
 `derive` reads your catalog and writes a complete, schema valid model. Datasets and fields
-arrive populated, with `is_time` already flagged on date and timestamp columns. Candidate
+arrive populated. Date and timestamp columns have `dimension.is_time` set. Other fields
+remain non-dimensional until an author adds `dimension: {}` after semantic review. Candidate
 joins are inferred from key naming conventions and left commented out for a human to
 confirm. Metrics, primary keys, governance, and views are left as clearly marked
 placeholders.

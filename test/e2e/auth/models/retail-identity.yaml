@@ -44,6 +44,7 @@ spec:
           - name: s_store_name
             expression:
               dialects: [{ dialect: ANSI_SQL, expression: s_store_name }]
+            dimension: {}
       - name: customer
         source: customer
         primary_key: [c_customer_sk]
@@ -54,6 +55,7 @@ spec:
           - name: c_birth_year
             expression:
               dialects: [{ dialect: ANSI_SQL, expression: c_birth_year }]
+            dimension: {}
     relationships:
       - name: store_sales_to_store
         from: store_sales

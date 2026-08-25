@@ -200,8 +200,14 @@ func ValidateSpec(spec *v1alpha1.SemanticModelSpec) error {
 				add("view %q: dimension %q must be <existing dataset>.<field>", v.Name, dim)
 				continue
 			}
-			if d := datasets[ds]; len(d.Fields) > 0 && d.FindField(f) == nil {
+			d := datasets[ds]
+			field := d.FindField(f)
+			if field == nil {
 				add("view %q: dimension %q not found on dataset %q", v.Name, f, ds)
+				continue
+			}
+			if field.Dimension == nil {
+				add("view %q: field %q is not a declared dimension", v.Name, dim)
 			}
 		}
 		if v.Role != "" && spec.Governance.Role(v.Role) == nil {

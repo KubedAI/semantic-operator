@@ -11,9 +11,10 @@ type profile struct {
 	modelName string // ossie model name, used in the query URL
 
 	metric   string // a certified metric on the identity model
-	allowDim string // a dimension not on the denied table
-	denyDim  string // a dimension on the denied table
-	maskDim  string // the masked column, or "" when the engine cannot mask
+	allowDim string // a declared dimension not on the denied table
+	denyDim  string // a declared dimension on the denied table
+	maskDim  string // the masked declared dimension, or "" when the engine cannot mask
+	nonDim   string // a readable field with no Ossie dimension declaration
 
 	// setup is the make target (and args) that prepares the engine, data, and
 	// per-user grants before the identity-mode releases are deployed. Trino's
@@ -30,6 +31,7 @@ var profiles = map[string]profile{
 		allowDim:  "orders.clerk",
 		denyDim:   "customer.mktsegment",
 		maskDim:   "orders.clerk",
+		nonDim:    "orders.totalprice",
 		setup:     []string{"trino-deploy"},
 	},
 	"starrocks": {
@@ -39,6 +41,7 @@ var profiles = map[string]profile{
 		allowDim:  "store.s_store_name",
 		denyDim:   "customer.c_birth_year",
 		maskDim:   "", // StarRocks has no column masking; denial only.
+		nonDim:    "store_sales.ss_ext_sales_price",
 		setup:     []string{"models-deploy", "KIND_ENGINE_TYPE=starrocks"},
 	},
 }

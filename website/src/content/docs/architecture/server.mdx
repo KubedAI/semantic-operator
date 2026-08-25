@@ -126,7 +126,8 @@ the memory budget that ties concurrency to result size are in
 ## Three surfaces, one compiler
 
 Agents connect over **MCP** and call `list_models`, `list_metrics`, `list_dimensions`, and
-`query_metric`. The tool descriptions and the model's own synonyms let an agent ground a
+`query_metric`. `list_dimensions` returns only fields with an Ossie `dimension` declaration.
+The tool descriptions and the model's own synonyms let an agent ground a
 user's wording onto a certified metric. The agent never writes SQL. [How an agent request
 becomes SQL](/architecture/agent-to-sql) shows the complete exchange and explains how the planner
 generates SQL without an LLM.

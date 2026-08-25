@@ -119,6 +119,9 @@ func Build(cm *CompiledModel, d emitter.Dialect, req Request, id governance.Iden
 		if err != nil {
 			return nil, fmt.Errorf("dimension %q: %w", ds, err)
 		}
+		if !cf.IsDimension {
+			return nil, fmt.Errorf("dimension %q: field is not a declared dimension", ds)
+		}
 		dims = append(dims, dimSpec{Ref: ref, Field: cf})
 	}
 

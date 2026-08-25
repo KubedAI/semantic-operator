@@ -64,6 +64,28 @@ engine), and `-model`, `-name`, and `-namespace` for identifiers. `-region` or
 
 The generated file passes `ossiectl validate` as is, because empty metrics and relationships are legal. It grows richer as you fill in the placeholders.
 
+### Declare group-by dimensions
+
+Catalog metadata cannot decide which fields are valid business dimensions. `derive` marks
+only date and timestamp fields as time dimensions. Add `dimension: {}` to each other field
+that users and agents may group by:
+
+```yaml
+- name: region
+  expression:
+    dialects: [{ dialect: ANSI_SQL, expression: region }]
+  dimension: {}
+  description: Sales region
+```
+
+Use `dimension: {is_time: true}` for a time dimension. A field without a `dimension` block
+is not groupable. It does not appear in `list_dimensions`. A query or view that uses it as
+a dimension fails validation. Metric expressions and filters can still reference an
+undeclared field when governance permits access.
+
+Do not declare join keys, raw measures, or technical fields unless they are valid business
+groupings.
+
 > `derive` is a convenience, not a requirement. Use `-source engine` for the normal
 > connected workflow, `-source glue` to bootstrap without an engine, or hand-write
 > `datasets` yourself.
@@ -156,7 +178,11 @@ This is what lets an agent map a user's words to the right metric. Put a `descri
       synonyms: ["revenue", "gross sales", "sales amount", "total revenue"]
 ```
 
-`list_metrics` and `list_dimensions` return these to the agent, so "what is our revenue" grounds onto `total_sales`. You are not prompt-stuffing the schema. If your organization already curates this in DataHub, import it instead of retyping it: see [Import business meaning from a metadata catalog](#import-business-meaning-from-a-metadata-catalog) above. OpenMetadata is on the roadmap.
+`list_metrics` returns metric metadata. `list_dimensions` returns metadata only for fields with
+an explicit `dimension` declaration. This lets an agent ground "what is our revenue" onto
+`total_sales` and "by region" onto a certified group-by field. You are not prompt-stuffing
+the schema. If your organization already curates this in DataHub, import it instead of
+retyping it: see [Import business meaning from a metadata catalog](#import-business-meaning-from-a-metadata-catalog) above. OpenMetadata is on the roadmap.
 
 ## Step 5. Governance (optional)
 
@@ -284,7 +310,7 @@ and engine-native views continue to use the built-in policy only.
 ## Step 6. Governed BI views (optional)
 
 Materialize certified metrics as engine-native views that BI tools can read through StarRocks
-or Trino.
+or Trino. Every field in `dimensions` must have a `dimension` declaration in its Ossie field.
 
 ```yaml
 views:

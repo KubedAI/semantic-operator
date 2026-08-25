@@ -28,6 +28,12 @@ func fld(name, e string, isTime bool) v1alpha1.Field {
 	return f
 }
 
+func dimensionField(name, e string) v1alpha1.Field {
+	f := fld(name, e, false)
+	f.Dimension = &v1alpha1.Dimension{}
+	return f
+}
+
 func metric(name, e string) v1alpha1.Metric {
 	return v1alpha1.Metric{Name: name, Expression: v1alpha1.Expression{Dialects: []v1alpha1.DialectExpression{{Dialect: "ANSI_SQL", Expression: e}}}}
 }
@@ -49,21 +55,21 @@ func testSpec() *v1alpha1.SemanticModelSpec {
 				{Name: "date_dim", Source: "date_dim", PrimaryKey: []string{"d_date_sk"}, Fields: []v1alpha1.Field{
 					fld("d_date_sk", "d_date_sk", false),
 					fld("d_date", "d_date", true),
-					fld("d_year", "d_year", false),
+					dimensionField("d_year", "d_year"),
 				}},
 				{Name: "customer", Source: "customer", PrimaryKey: []string{"c_customer_sk"}, Fields: []v1alpha1.Field{
 					fld("c_customer_sk", "c_customer_sk", false),
-					fld("c_email_address", "c_email_address", false),
-					fld("customer_full_name", "c_first_name || ' ' || c_last_name", false),
+					dimensionField("c_email_address", "c_email_address"),
+					dimensionField("customer_full_name", "c_first_name || ' ' || c_last_name"),
 				}},
 				{Name: "item", Source: "item", PrimaryKey: []string{"i_item_sk"}, Fields: []v1alpha1.Field{
 					fld("i_item_sk", "i_item_sk", false),
-					fld("i_category", "i_category", false),
-					fld("i_brand", "i_brand", false),
+					dimensionField("i_category", "i_category"),
+					dimensionField("i_brand", "i_brand"),
 				}},
 				{Name: "store", Source: "store", PrimaryKey: []string{"s_store_sk"}, Fields: []v1alpha1.Field{
 					fld("s_store_sk", "s_store_sk", false),
-					fld("s_state", "s_state", false),
+					dimensionField("s_state", "s_state"),
 					fld("s_number_employees", "s_number_employees", false),
 				}},
 			},
@@ -100,6 +106,39 @@ func compiled(t *testing.T) *CompiledModel {
 		t.Fatal(err)
 	}
 	return cm
+}
+
+func TestCompilePreservesDimensionDeclarations(t *testing.T) {
+	cm := compiled(t)
+	if !cm.Datasets["item"].Fields["i_category"].IsDimension {
+		t.Fatal("dimension declaration was not preserved")
+	}
+	date := cm.Datasets["date_dim"].Fields["d_date"]
+	if !date.IsDimension || !date.IsTime {
+		t.Fatalf("time dimension flags were not preserved: %+v", date)
+	}
+	if cm.Datasets["store_sales"].Fields["ss_ext_sales_price"].IsDimension {
+		t.Fatal("undeclared measure was compiled as a dimension")
+	}
+}
+
+func TestUndeclaredFieldRejectedAsDimensionButAllowedAsFilter(t *testing.T) {
+	cm := compiled(t)
+	_, err := Build(cm, testDialect(t), Request{
+		Metrics:    []string{"total_sales"},
+		Dimensions: []string{"store_sales.ss_ext_sales_price"},
+	}, governance.Single("admin"))
+	if err == nil || !strings.Contains(err.Error(), "not a declared dimension") {
+		t.Fatalf("expected undeclared-dimension error, got %v", err)
+	}
+
+	_, err = Build(cm, testDialect(t), Request{
+		Metrics: []string{"total_sales"},
+		Filters: []Filter{{Field: "store_sales.ss_ext_sales_price", Op: ">", Value: 0}},
+	}, governance.Single("admin"))
+	if err != nil {
+		t.Fatalf("undeclared field should remain filterable: %v", err)
+	}
 }
 
 func TestSimpleMetricByDimension(t *testing.T) {

@@ -202,7 +202,7 @@ curl -s -X POST \
   localhost:8090/v1/models/saas_revenue/query \
   -H 'X-Semantic-User: demo' -H 'X-Semantic-Role: platform_analyst' \
   -H 'Content-Type: application/json' \
-  -d '{"metrics":["monthly_recurring_revenue"],"dimensions":["contract.contract_value"]}'
+  -d '{"metrics":["monthly_recurring_revenue"],"filters":[{"field":"contract.contract_value","op":">","value":0}]}'
 
 # {"error":"unauthorized: role \"platform_analyst\" may not read field \"contract.contract_value\""}
 ```

@@ -17,7 +17,7 @@ The Semantic Server exposes four MCP tools.
 |---|---|
 | `list_models` | Lists the published models the caller may use |
 | `list_metrics` | Lists the certified metrics the caller may query |
-| `list_dimensions` | Lists the dimensions the caller may group or filter by |
+| `list_dimensions` | Lists explicitly declared dimensions the caller may group by |
 | `query_metric` | Runs a structured semantic request |
 
 Suppose a user asks:
@@ -27,7 +27,9 @@ Suppose a user asks:
 The agent first discovers the vocabulary it is allowed to use. It calls `list_models` if
 several models are published, followed by `list_metrics` and `list_dimensions`. Those tools
 return names, descriptions, and synonyms from the model. Dimensions also include their data
-types and whether they are time dimensions.
+types and whether they are time dimensions. A field appears in this list only when its Ossie
+field has a `dimension` declaration. Filters can reference other modeled fields when
+governance permits access.
 
 The LLM uses that metadata to map the user's words to certified names. For example,
 "monthly recurring revenue" may match the metric `mrr`, and "region" may match
@@ -71,7 +73,7 @@ model and reviewed its business meaning. The compiled model contains:
 - the physical table and column behind each field,
 - the relationships and join keys between datasets,
 - primary keys used to prevent join fan-out,
-- field types and time dimensions,
+- field types, explicit dimension declarations, and time-dimension flags,
 - row, column, and metric access policies.
 
 When `query_metric` arrives, the server follows the same fixed pipeline every time.

@@ -32,6 +32,7 @@ spec:
           - name: clerk
             expression:
               dialects: [{ dialect: ANSI_SQL, expression: clerk }]
+            dimension: {}
       - name: customer
         source: customer
         primary_key: [custkey]
@@ -42,6 +43,7 @@ spec:
           - name: mktsegment
             expression:
               dialects: [{ dialect: ANSI_SQL, expression: mktsegment }]
+            dimension: {}
     relationships:
       - name: orders_to_customer
         from: orders

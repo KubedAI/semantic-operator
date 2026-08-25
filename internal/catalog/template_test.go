@@ -129,6 +129,9 @@ func TestRenderTemplate_TimeDimensionAndFields(t *testing.T) {
 	if sState == nil || sState.Description != "two-letter: state code" {
 		t.Errorf("s_state description not carried: %+v", sState)
 	}
+	if sState.Dimension != nil {
+		t.Errorf("derive must not certify non-time fields as dimensions: %+v", sState)
+	}
 }
 
 // TestRenderTemplate_EdgeCases covers arbitrary catalogs: a column name that is

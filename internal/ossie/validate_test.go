@@ -20,6 +20,12 @@ func field(name, expr string, isTime bool) v1alpha1.Field {
 	return f
 }
 
+func dimensionField(name, expr string) v1alpha1.Field {
+	f := field(name, expr, false)
+	f.Dimension = &v1alpha1.Dimension{}
+	return f
+}
+
 func validSpec() *v1alpha1.SemanticModelSpec {
 	return &v1alpha1.SemanticModelSpec{
 		Connection: v1alpha1.ConnectionSpec{Catalog: "iceberg", Database: "osi_demo"},
@@ -43,7 +49,7 @@ func validSpec() *v1alpha1.SemanticModelSpec {
 					Fields: []v1alpha1.Field{
 						field("d_date_sk", "d_date_sk", false),
 						field("d_date", "d_date", true),
-						field("d_year", "d_year", false),
+						dimensionField("d_year", "d_year"),
 					},
 				},
 				{
@@ -165,6 +171,18 @@ func TestValidateViewUnknownMetric(t *testing.T) {
 	s := validSpec()
 	s.Views[0].Metrics = []string{"ghost_metric"}
 	wantErr(t, s, `metric "ghost_metric" does not exist`)
+}
+
+func TestValidateViewRequiresDeclaredDimension(t *testing.T) {
+	s := validSpec()
+	s.Views[0].Dimensions = []string{"store_sales.ss_ext_sales_price"}
+	wantErr(t, s, `field "store_sales.ss_ext_sales_price" is not a declared dimension`)
+}
+
+func TestValidateViewDimensionRequiresModeledField(t *testing.T) {
+	s := validSpec()
+	s.Ossie.Datasets[1].Fields = nil
+	wantErr(t, s, `dimension "d_year" not found on dataset "date_dim"`)
 }
 
 // A row filter interpolating a claim must pass publication. The predicate

@@ -117,12 +117,14 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: c_code
+            dimension: {}
             description: Carrier code (business key)
           - name: c_name
             expression:
               dialects:
                 - dialect: ANSI_SQL
                   expression: c_name
+            dimension: {}
             description: Carrier name
             ai_context:
               synonyms: ["airline", "airline name", "carrier name"]
@@ -173,12 +175,14 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: a_code
+            dimension: {}
             description: Airport code
           - name: a_city_nm
             expression:
               dialects:
                 - dialect: ANSI_SQL
                   expression: a_city_nm
+            dimension: {}
             description: Airport city
             ai_context:
               synonyms: ["origin city", "departure city"]
@@ -187,6 +191,7 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: a_state_code
+            dimension: {}
             description: Airport state code
             ai_context:
               synonyms: ["origin state", "departure state"]
@@ -215,12 +220,14 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: a_code
+            dimension: {}
             description: Airport code
           - name: a_city_nm
             expression:
               dialects:
                 - dialect: ANSI_SQL
                   expression: a_city_nm
+            dimension: {}
             description: Airport city
             ai_context:
               synonyms: ["destination city", "arrival city"]
@@ -229,6 +236,7 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: a_state_code
+            dimension: {}
             description: Airport state code
             ai_context:
               synonyms: ["destination state", "arrival state"]

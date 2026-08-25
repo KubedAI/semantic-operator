@@ -48,6 +48,7 @@ type CompiledDataset struct {
 type CompiledField struct {
 	Name        string             `json:"name"`
 	Expr        string             `json:"expr"` // scalar over the dataset's physical columns
+	IsDimension bool               `json:"isDimension,omitempty"`
 	IsTime      bool               `json:"isTime,omitempty"`
 	Type        string             `json:"type,omitempty"` // physical type, filled by the bind step when known
 	Description string             `json:"description,omitempty"`
@@ -121,6 +122,7 @@ func Compile(spec *v1alpha1.SemanticModelSpec, namespace, resource string) (*Com
 			cf := &CompiledField{
 				Name:        f.Name,
 				Expr:        body,
+				IsDimension: f.Dimension != nil,
 				Description: f.Description,
 				AIContext:   v1alpha1.DecodeAIContext(f.AIContext),
 			}

@@ -76,7 +76,7 @@ func demoCR() *semanticv1alpha1.SemanticModel {
 					}},
 					{Name: "item", Source: "item", PrimaryKey: []string{"i_item_sk"}, Fields: []semanticv1alpha1.Field{
 						{Name: "i_item_sk", Expression: e("i_item_sk")},
-						{Name: "i_category", Expression: e("i_category")},
+						{Name: "i_category", Expression: e("i_category"), Dimension: &semanticv1alpha1.Dimension{}},
 					}},
 				},
 				Relationships: []semanticv1alpha1.Relationship{

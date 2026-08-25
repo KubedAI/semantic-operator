@@ -97,10 +97,11 @@ func governedModel() *planner.CompiledModel {
 		DatasetOrder: []string{"store"},
 		Datasets: map[string]*planner.CompiledDataset{
 			"store": {
-				Name: "store", FieldOrder: []string{"s_state", "manager_ssn"},
+				Name: "store", FieldOrder: []string{"s_state", "manager_ssn", "employee_count"},
 				Fields: map[string]*planner.CompiledField{
-					"s_state":     {Name: "s_state"},
-					"manager_ssn": {Name: "manager_ssn"},
+					"s_state":        {Name: "s_state", IsDimension: true},
+					"manager_ssn":    {Name: "manager_ssn", IsDimension: true},
+					"employee_count": {Name: "employee_count"},
 				},
 			},
 		},
@@ -133,20 +134,25 @@ func TestDiscoveryHidesWhatTheRoleCannotQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListDimensions: %v", err)
 	}
-	for _, d := range dims {
-		if d.Name == "store.manager_ssn" {
-			t.Fatalf("denied field disclosed in listing: %+v", dims)
-		}
+	if len(dims) != 1 || dims[0].Name != "store.s_state" {
+		t.Fatalf("analyst should see only the allowed declared dimension, got %+v", dims)
 	}
 
-	// The admin role sees everything, proving the filter is role-driven and not
-	// a blanket suppression.
+	// The admin role sees both declared dimensions. The readable employee_count
+	// field stays hidden because it has no Ossie dimension declaration.
 	adminMetrics, err := svc.ListMetrics(m, governance.Single("admin"))
 	if err != nil {
 		t.Fatalf("ListMetrics(admin): %v", err)
 	}
 	if len(adminMetrics) != 2 {
 		t.Fatalf("admin should see both metrics, got %+v", adminMetrics)
+	}
+	adminDims, err := svc.ListDimensions(m, governance.Single("admin"))
+	if err != nil {
+		t.Fatalf("ListDimensions(admin): %v", err)
+	}
+	if len(adminDims) != 2 || adminDims[0].Name != "store.s_state" || adminDims[1].Name != "store.manager_ssn" {
+		t.Fatalf("admin should see only declared dimensions, got %+v", adminDims)
 	}
 }
 

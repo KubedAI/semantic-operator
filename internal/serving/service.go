@@ -59,7 +59,7 @@ type MetricInfo struct {
 	Synonyms    []string `json:"synonyms,omitempty"`
 }
 
-// DimensionInfo is a listing entry for a groupable/filterable field.
+// DimensionInfo is a listing entry for an explicitly declared groupable field.
 type DimensionInfo struct {
 	Name        string   `json:"name"` // dataset.field
 	Description string   `json:"description,omitempty"`
@@ -216,9 +216,9 @@ func (s *Service) ListMetrics(m *planner.CompiledModel, id governance.Identity) 
 	return out, nil
 }
 
-// ListDimensions returns the dataset fields this identity may read, in model
-// order. Fields denied to the role are omitted, so a column name a role may
-// never see is never disclosed by listing it.
+// ListDimensions returns the explicitly declared dimensions this identity may
+// read, in model order. Fields denied to the role are omitted, so a column name
+// a role may never see is never disclosed by listing it.
 func (s *Service) ListDimensions(m *planner.CompiledModel, id governance.Identity) ([]DimensionInfo, error) {
 	vis, err := governance.Visible(m.Governance, id)
 	if err != nil {
@@ -229,6 +229,9 @@ func (s *Service) ListDimensions(m *planner.CompiledModel, id governance.Identit
 		ds := m.Datasets[dsName]
 		for _, fName := range ds.FieldOrder {
 			f := ds.Fields[fName]
+			if !f.IsDimension {
+				continue
+			}
 			ref := dsName + "." + fName
 			if !vis.Field(ref) {
 				continue

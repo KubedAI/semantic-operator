@@ -164,6 +164,13 @@ func (c *Client) urn(database, table string) string {
 		c.platform, path, c.env)
 }
 
+// SampleURN returns the dataset URN this client builds for a table. A caller
+// that matched nothing can print it, so the user can compare it against the
+// URNs DataHub actually holds and correct the platform, prefix, or env.
+func (c *Client) SampleURN(database, table string) string {
+	return c.urn(database, table)
+}
+
 // datasetQuery asks for exactly the fields enrichment consumes: dataset-level
 // documentation and tags, and per-column description, tags, and glossary
 // terms. Anything else DataHub knows is deliberately not requested.

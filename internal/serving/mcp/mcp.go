@@ -30,7 +30,7 @@ type listIn struct {
 }
 
 type filterIn struct {
-	Field  string `json:"field" jsonschema:"Dimension reference as dataset.field"`
+	Field  string `json:"field" jsonschema:"Modeled field reference as dataset.field. The field does not need a dimension declaration."`
 	Op     string `json:"op" jsonschema:"One of = != < <= > >= IN NOT IN LIKE BETWEEN"`
 	Value  any    `json:"value,omitempty" jsonschema:"Scalar comparison value"`
 	Values []any  `json:"values,omitempty" jsonschema:"Values for IN / NOT IN / BETWEEN"`
@@ -44,7 +44,7 @@ type orderByIn struct {
 type queryIn struct {
 	Model      string      `json:"model,omitempty" jsonschema:"Semantic model name. Optional when exactly one model is published."`
 	Metrics    []string    `json:"metrics" jsonschema:"Certified metric names from list_metrics. At least one."`
-	Dimensions []string    `json:"dimensions,omitempty" jsonschema:"Group-by dimensions as dataset.field from list_dimensions"`
+	Dimensions []string    `json:"dimensions,omitempty" jsonschema:"Explicitly declared group-by dimensions as dataset.field from list_dimensions"`
 	Filters    []filterIn  `json:"filters,omitempty" jsonschema:"Row filters applied before aggregation"`
 	Grain      string      `json:"grain,omitempty" jsonschema:"Time grain: day, week, month, quarter, or year. Requires a time dimension in dimensions."`
 	OrderBy    []orderByIn `json:"orderBy,omitempty" jsonschema:"Ordered requested fields. Add every requested dimension after a metric to guarantee stable Top-N ties."`
@@ -131,7 +131,7 @@ func NewServer(svc *serving.Service, version string, resolver serving.Credential
 
 	sdk.AddTool(srv, &sdk.Tool{
 		Name: "list_dimensions",
-		Description: "List groupable and filterable dimensions (dataset.field) with " +
+		Description: "List explicitly declared group-by dimensions (dataset.field) with " +
 			"types, synonyms, and time-dimension flags.",
 	}, func(ctx context.Context, req *sdk.CallToolRequest, in listIn) (*sdk.CallToolResult, listDimensionsOut, error) {
 		m, err := svc.Resolve(in.Model, serving.IdentityFrom(ctx))

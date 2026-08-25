@@ -99,18 +99,23 @@ spec:
             description: Account identifier.
           - name: account_name
             expression: {dialects: [{dialect: ANSI_SQL, expression: account_name}]}
+            dimension: {}
             description: Company account name.
           - name: segment
             expression: {dialects: [{dialect: ANSI_SQL, expression: segment}]}
+            dimension: {}
             description: Customer segment.
           - name: region
             expression: {dialects: [{dialect: ANSI_SQL, expression: region}]}
+            dimension: {}
             description: Customer region.
           - name: industry
             expression: {dialects: [{dialect: ANSI_SQL, expression: industry}]}
+            dimension: {}
             description: Customer industry.
           - name: csm_team
             expression: {dialects: [{dialect: ANSI_SQL, expression: csm_team}]}
+            dimension: {}
             description: Assigned customer-success team.
           - name: renewal_date
             expression: {dialects: [{dialect: ANSI_SQL, expression: renewal_date}]}
@@ -119,6 +124,7 @@ spec:
               is_time: true
           - name: lifecycle_status
             expression: {dialects: [{dialect: ANSI_SQL, expression: lifecycle_status}]}
+            dimension: {}
             description: Account lifecycle status.
 
       - name: product_feature
@@ -131,12 +137,15 @@ spec:
             description: Product feature identifier.
           - name: feature_name
             expression: {dialects: [{dialect: ANSI_SQL, expression: feature_name}]}
+            dimension: {}
             description: Product feature name.
           - name: product_area
             expression: {dialects: [{dialect: ANSI_SQL, expression: product_area}]}
+            dimension: {}
             description: Product area containing the feature.
           - name: criticality
             expression: {dialects: [{dialect: ANSI_SQL, expression: criticality}]}
+            dimension: {}
             description: Feature criticality classification.
 
       - name: date_dim
@@ -154,12 +163,15 @@ spec:
               is_time: true
           - name: year
             expression: {dialects: [{dialect: ANSI_SQL, expression: year}]}
+            dimension: {}
             description: Calendar year.
           - name: quarter
             expression: {dialects: [{dialect: ANSI_SQL, expression: quarter}]}
+            dimension: {}
             description: Calendar quarter number.
           - name: month
             expression: {dialects: [{dialect: ANSI_SQL, expression: month}]}
+            dimension: {}
             description: Calendar month number.
 
     relationships:

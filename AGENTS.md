@@ -99,6 +99,9 @@ leading `/* semantic-layer model=... version=... request=... */` comment for aud
   compiled as separate CTEs deduplicated on the dataset's `primary_key`.
 - Metric expressions and row-filter predicates are parsed under **bounded grammars**
   (`internal/planner/expr`); anything outside them fails at validation, never at query time.
+- A field is groupable only when its Ossie field has a `dimension` declaration. Compilation
+  preserves this as `CompiledField.IsDimension`. Discovery, requests, and views enforce it.
+  Filters remain valid on modeled non-dimension fields.
 
 **Trust model:** the CR author is trusted (field expressions are raw SQL scalars by design).
 Governance protects **query-time callers**, not against the model author. Identity is resolved

@@ -57,9 +57,10 @@ type config struct {
 	// mask (StarRocks), which skips the mask assertion.
 	engine   string
 	metric   string
-	allowDim string // a dimension not on the denied table
-	denyDim  string // a dimension on the denied table
-	maskDim  string // the masked column, or "" to skip masking
+	allowDim string // a declared dimension not on the denied table
+	denyDim  string // a declared dimension on the denied table
+	maskDim  string // the masked declared dimension, or "" to skip masking
+	nonDim   string // a readable field with no Ossie dimension declaration
 }
 
 func env(key, def string) string {
@@ -108,6 +109,7 @@ func loadConfig() config {
 		allowDim:      env("E2E_ALLOW_DIM", p.allowDim),
 		denyDim:       env("E2E_DENY_DIM", p.denyDim),
 		maskDim:       env("E2E_MASK_DIM", p.maskDim),
+		nonDim:        env("E2E_NON_DIM", p.nonDim),
 	}
 }
 

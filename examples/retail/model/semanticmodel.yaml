@@ -120,6 +120,7 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: d_year
+            dimension: {}
             description: Calendar year (2000-2002 in the demo data)
             ai_context:
               synonyms: ["year"]
@@ -128,12 +129,14 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: d_moy
+            dimension: {}
             description: Month of year (1-12)
           - name: d_quarter_name
             expression:
               dialects:
                 - dialect: ANSI_SQL
                   expression: d_quarter_name
+            dimension: {}
             description: Quarter name, e.g. 2001Q3
             ai_context:
               synonyms: ["quarter", "fiscal quarter"]
@@ -142,6 +145,7 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: d_month_name
+            dimension: {}
             description: Month name
             ai_context:
               synonyms: ["month"]
@@ -164,6 +168,7 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: c_customer_id
+            dimension: {}
             description: Business key
             ai_context:
               synonyms: ["customer ID", "customer number"]
@@ -172,18 +177,21 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: c_first_name
+            dimension: {}
             description: First name
           - name: c_last_name
             expression:
               dialects:
                 - dialect: ANSI_SQL
                   expression: c_last_name
+            dimension: {}
             description: Last name
           - name: customer_full_name
             expression:
               dialects:
                 - dialect: ANSI_SQL
                   expression: c_first_name || ' ' || c_last_name
+            dimension: {}
             description: Full name (computed)
             ai_context:
               synonyms: ["full name", "customer name"]
@@ -192,6 +200,7 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: c_email_address
+            dimension: {}
             description: Email address (PII, denied to the analyst role)
             ai_context:
               synonyms: ["email", "contact"]
@@ -200,6 +209,7 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: c_birth_year
+            dimension: {}
             description: Birth year
 
       - name: item
@@ -220,6 +230,7 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: i_item_id
+            dimension: {}
             description: Business key
             ai_context:
               synonyms: ["item ID", "product ID", "SKU"]
@@ -228,6 +239,7 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: i_item_desc
+            dimension: {}
             description: Item description
             ai_context:
               synonyms: ["product description", "item name"]
@@ -236,6 +248,7 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: i_brand
+            dimension: {}
             description: Brand
             ai_context:
               synonyms: ["brand", "manufacturer"]
@@ -244,6 +257,7 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: i_category
+            dimension: {}
             description: Product category
             ai_context:
               synonyms: ["category", "product category", "department"]
@@ -274,6 +288,7 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: s_store_id
+            dimension: {}
             description: Business key
             ai_context:
               synonyms: ["store ID", "store number"]
@@ -282,12 +297,14 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: s_store_name
+            dimension: {}
             description: Store name
           - name: s_city
             expression:
               dialects:
                 - dialect: ANSI_SQL
                   expression: s_city
+            dimension: {}
             description: City
             ai_context:
               synonyms: ["city"]
@@ -296,6 +313,7 @@ spec:
               dialects:
                 - dialect: ANSI_SQL
                   expression: s_state
+            dimension: {}
             description: Two-letter state code
             ai_context:
               synonyms: ["state", "region"]
