@@ -119,3 +119,24 @@ func TestDefaultMemoryBudgetFitsTheDefaultPod(t *testing.T) {
 			worstCase>>20, l.MaxConcurrentQueries, l.MaxResultBytes>>20, podLimitBytes>>20)
 	}
 }
+
+func TestFilterLimitCombinesRowAndMetricFilters(t *testing.T) {
+	req := planner.Request{
+		Metrics: []string{"revenue"},
+		Filters: []planner.Filter{
+			{Field: "sales.region", Op: "=", Value: "NA"},
+			{Field: "sales.year", Op: "=", Value: 2026},
+		},
+		MetricFilters: []planner.MetricFilter{
+			{Metric: "revenue", Op: ">", Value: 100},
+			{Metric: "revenue", Op: "<", Value: 1000},
+		},
+	}
+	if _, err := (Limits{MaxFilters: 4}).apply(req); err != nil {
+		t.Fatalf("combined filter count at the limit was rejected: %v", err)
+	}
+	req.MetricFilters = append(req.MetricFilters, planner.MetricFilter{Metric: "revenue", Op: "!=", Value: 500})
+	if _, err := (Limits{MaxFilters: 4}).apply(req); !errors.Is(err, ErrRequestTooLarge) {
+		t.Fatalf("combined filter count over the limit: want ErrRequestTooLarge, got %v", err)
+	}
+}

@@ -40,6 +40,9 @@ spec:
           - name: custkey
             expression:
               dialects: [{ dialect: ANSI_SQL, expression: custkey }]
+          - name: acctbal
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: acctbal }]
           - name: mktsegment
             expression:
               dialects: [{ dialect: ANSI_SQL, expression: mktsegment }]
@@ -54,6 +57,11 @@ spec:
       - name: total_price
         expression:
           dialects: [{ dialect: ANSI_SQL, expression: SUM(orders.totalprice) }]
+      - name: price_per_customer_balance
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: SUM(orders.totalprice) / NULLIF(SUM(customer.acctbal), 0)
   governance:
     defaultRole: analyst
     roles:

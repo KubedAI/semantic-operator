@@ -42,21 +42,23 @@ type orderByIn struct {
 }
 
 type queryIn struct {
-	Model      string      `json:"model,omitempty" jsonschema:"Semantic model name. Optional when exactly one model is published."`
-	Metrics    []string    `json:"metrics" jsonschema:"Certified metric names from list_metrics. At least one."`
-	Dimensions []string    `json:"dimensions,omitempty" jsonschema:"Explicitly declared group-by dimensions as dataset.field from list_dimensions"`
-	Filters    []filterIn  `json:"filters,omitempty" jsonschema:"Row filters applied before aggregation"`
-	Grain      string      `json:"grain,omitempty" jsonschema:"Time grain: day, week, month, quarter, or year. Requires a time dimension in dimensions."`
-	OrderBy    []orderByIn `json:"orderBy,omitempty" jsonschema:"Ordered requested fields. Add every requested dimension after a metric to guarantee stable Top-N ties."`
-	Limit      int         `json:"limit,omitempty" jsonschema:"Row limit applied after ordering"`
+	Model         string                 `json:"model,omitempty" jsonschema:"Semantic model name. Optional when exactly one model is published."`
+	Metrics       []string               `json:"metrics" jsonschema:"Certified metric names from list_metrics. At least one."`
+	Dimensions    []string               `json:"dimensions,omitempty" jsonschema:"Explicitly declared group-by dimensions as dataset.field from list_dimensions"`
+	Filters       []filterIn             `json:"filters,omitempty" jsonschema:"Row filters applied before aggregation"`
+	MetricFilters []planner.MetricFilter `json:"metricFilters,omitempty" jsonschema:"Filters on requested certified metric results applied after aggregation"`
+	Grain         string                 `json:"grain,omitempty" jsonschema:"Time grain: day, week, month, quarter, or year. Requires a time dimension in dimensions."`
+	OrderBy       []orderByIn            `json:"orderBy,omitempty" jsonschema:"Ordered requested fields. Add every requested dimension after a metric to guarantee stable Top-N ties."`
+	Limit         int                    `json:"limit,omitempty" jsonschema:"Row limit applied after metric filtering and ordering"`
 }
 
 func (in queryIn) plannerRequest() planner.Request {
 	req := planner.Request{
-		Metrics:    in.Metrics,
-		Dimensions: in.Dimensions,
-		TimeGrain:  in.Grain,
-		Limit:      in.Limit,
+		Metrics:       in.Metrics,
+		Dimensions:    in.Dimensions,
+		MetricFilters: in.MetricFilters,
+		TimeGrain:     in.Grain,
+		Limit:         in.Limit,
 	}
 	for _, f := range in.Filters {
 		req.Filters = append(req.Filters, planner.Filter{
@@ -148,7 +150,8 @@ func NewServer(svc *serving.Service, version string, resolver serving.Credential
 	sdk.AddTool(srv, &sdk.Tool{
 		Name: "query_metric",
 		Description: "Query one or more certified metrics grouped by dimensions with " +
-			"optional filters, time grain, ordering, and a row limit. For highest, lowest, " +
+			"optional row filters, post-aggregation metric filters, time grain, ordering, and a row limit. " +
+			"Metric filters may reference only requested certified metrics. For highest, lowest, " +
 			"or Top-N questions, order by the requested metric and add every requested " +
 			"dimension to guarantee stable ties before setting the limit. The semantic planner compiles " +
 			"the request into deterministic, governed SQL and executes it on the configured " +

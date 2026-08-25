@@ -10,11 +10,12 @@ type profile struct {
 	engine    string
 	modelName string // ossie model name, used in the query URL
 
-	metric   string // a certified metric on the identity model
-	allowDim string // a declared dimension not on the denied table
-	denyDim  string // a declared dimension on the denied table
-	maskDim  string // the masked declared dimension, or "" when the engine cannot mask
-	nonDim   string // a readable field with no Ossie dimension declaration
+	metric      string // a certified flat metric on the identity model
+	ratioMetric string // a certified ratio metric that requires split planning
+	allowDim    string // a declared dimension not on the denied table
+	denyDim     string // a declared dimension on the denied table
+	maskDim     string // the masked declared dimension, or "" when the engine cannot mask
+	nonDim      string // a readable field with no Ossie dimension declaration
 
 	// setup is the make target (and args) that prepares the engine, data, and
 	// per-user grants before the identity-mode releases are deployed. Trino's
@@ -25,23 +26,25 @@ type profile struct {
 
 var profiles = map[string]profile{
 	"trino": {
-		engine:    "trino",
-		modelName: "tpch_orders_model",
-		metric:    "total_price",
-		allowDim:  "orders.clerk",
-		denyDim:   "customer.mktsegment",
-		maskDim:   "orders.clerk",
-		nonDim:    "orders.totalprice",
-		setup:     []string{"trino-deploy"},
+		engine:      "trino",
+		modelName:   "tpch_orders_model",
+		metric:      "total_price",
+		ratioMetric: "price_per_customer_balance",
+		allowDim:    "orders.clerk",
+		denyDim:     "customer.mktsegment",
+		maskDim:     "orders.clerk",
+		nonDim:      "orders.totalprice",
+		setup:       []string{"trino-deploy"},
 	},
 	"starrocks": {
-		engine:    "starrocks",
-		modelName: "retail_identity_model",
-		metric:    "total_sales",
-		allowDim:  "store.s_store_name",
-		denyDim:   "customer.c_birth_year",
-		maskDim:   "", // StarRocks has no column masking; denial only.
-		nonDim:    "store_sales.ss_ext_sales_price",
-		setup:     []string{"models-deploy", "KIND_ENGINE_TYPE=starrocks"},
+		engine:      "starrocks",
+		modelName:   "retail_identity_model",
+		metric:      "total_sales",
+		ratioMetric: "store_productivity",
+		allowDim:    "store.s_store_name",
+		denyDim:     "customer.c_birth_year",
+		maskDim:     "", // StarRocks has no column masking; denial only.
+		nonDim:      "store_sales.ss_ext_sales_price",
+		setup:       []string{"models-deploy", "KIND_ENGINE_TYPE=starrocks"},
 	},
 }

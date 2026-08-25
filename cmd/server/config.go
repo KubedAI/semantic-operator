@@ -122,6 +122,7 @@ type QueryConfig struct {
 	MaxRowLimit     int `yaml:"maxRowLimit" env:"QUERY_MAX_ROW_LIMIT"`
 	MaxMetrics      int `yaml:"maxMetrics" env:"QUERY_MAX_METRICS"`
 	MaxDimensions   int `yaml:"maxDimensions" env:"QUERY_MAX_DIMENSIONS"`
+	// MaxFilters bounds row filters and post-aggregation metric filters together.
 	MaxFilters      int `yaml:"maxFilters" env:"QUERY_MAX_FILTERS"`
 	MaxFilterValues int `yaml:"maxFilterValues" env:"QUERY_MAX_FILTER_VALUES"`
 	// MaxResultBytes bounds one result while it is read; it bounds both the

@@ -55,12 +55,13 @@ type config struct {
 
 	// Query shape differs per engine. maskDim is empty when the engine cannot
 	// mask (StarRocks), which skips the mask assertion.
-	engine   string
-	metric   string
-	allowDim string // a declared dimension not on the denied table
-	denyDim  string // a declared dimension on the denied table
-	maskDim  string // the masked declared dimension, or "" to skip masking
-	nonDim   string // a readable field with no Ossie dimension declaration
+	engine      string
+	metric      string
+	ratioMetric string
+	allowDim    string // a declared dimension not on the denied table
+	denyDim     string // a declared dimension on the denied table
+	maskDim     string // the masked declared dimension, or "" to skip masking
+	nonDim      string // a readable field with no Ossie dimension declaration
 }
 
 func env(key, def string) string {
@@ -106,6 +107,7 @@ func loadConfig() config {
 		localPortBase: envInt("E2E_LOCAL_PORT_BASE", 19001),
 		engine:        engine,
 		metric:        env("E2E_METRIC", p.metric),
+		ratioMetric:   env("E2E_RATIO_METRIC", p.ratioMetric),
 		allowDim:      env("E2E_ALLOW_DIM", p.allowDim),
 		denyDim:       env("E2E_DENY_DIM", p.denyDim),
 		maskDim:       env("E2E_MASK_DIM", p.maskDim),
@@ -333,10 +335,12 @@ func mintToken(ctx context.Context, user string) (string, error) {
 }
 
 type queryResult struct {
-	status int
-	rows   [][]any
-	errMsg string
-	raw    []byte
+	status  int
+	columns []string
+	rows    [][]any
+	sql     string
+	errMsg  string
+	raw     []byte
 }
 
 // masked reports whether any returned cell equals the sentinel mask value.
@@ -379,6 +383,12 @@ func queryModel(ctx context.Context, ns, model string, headers map[string]string
 		}
 		if rw, ok := parsed["rows"]; ok {
 			_ = json.Unmarshal(rw, &r.rows)
+		}
+		if cw, ok := parsed["columns"]; ok {
+			_ = json.Unmarshal(cw, &r.columns)
+		}
+		if sw, ok := parsed["sql"]; ok {
+			_ = json.Unmarshal(sw, &r.sql)
 		}
 	}
 	return r, nil

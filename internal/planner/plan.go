@@ -1,11 +1,14 @@
 package planner
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
+	"time"
 
 	"github.com/KubedAI/semantic-operator/api/v1alpha1"
 	"github.com/KubedAI/semantic-operator/internal/emitter"
@@ -15,15 +18,80 @@ import (
 
 // Request is a semantic query: metrics by dimensions, filtered, ordered, at a grain.
 type Request struct {
-	Model      string   `json:"model"`
-	Metrics    []string `json:"metrics"`
-	Dimensions []string `json:"dimensions,omitempty"`
-	Filters    []Filter `json:"filters,omitempty"`
+	Model         string         `json:"model"`
+	Metrics       []string       `json:"metrics"`
+	Dimensions    []string       `json:"dimensions,omitempty"`
+	Filters       []Filter       `json:"filters,omitempty"`
+	MetricFilters []MetricFilter `json:"metricFilters,omitempty"`
 	// TimeGrain is one of day, week, month, quarter, year. It truncates the
 	// first requested time dimension (dimension.is_time).
 	TimeGrain string          `json:"timeGrain,omitempty"`
 	OrderBy   []OrderByClause `json:"orderBy,omitempty"`
 	Limit     int             `json:"limit,omitempty"`
+}
+
+// MetricFilter restricts aggregate results. Metric is an exact requested
+// certified metric name. The bounded operators are =, !=, <, <=, >, >=, and
+// BETWEEN. Scalar operators use Value. BETWEEN uses exactly two Values.
+type MetricFilter struct {
+	Metric string `json:"metric" jsonschema:"Requested certified metric name"`
+	Op     string `json:"op" jsonschema:"One of = != < <= > >= BETWEEN"`
+	Value  any    `json:"value,omitempty" jsonschema:"Non-null scalar value for = != < <= > or >="`
+	Values []any  `json:"values,omitempty" jsonschema:"Exactly two non-null scalar values for BETWEEN"`
+
+	valueSet  bool
+	valuesSet bool
+}
+
+// UnmarshalJSON records field presence so explicit null and conflicting value
+// forms are rejected instead of being treated as omitted. The nested object is
+// also closed when Request is decoded outside the REST adapter.
+func (f *MetricFilter) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		Metric string          `json:"metric"`
+		Op     string          `json:"op"`
+		Value  json.RawMessage `json:"value"`
+		Values json.RawMessage `json:"values"`
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&wire); err != nil {
+		return err
+	}
+
+	*f = MetricFilter{Metric: wire.Metric, Op: wire.Op}
+	if wire.Value != nil {
+		f.valueSet = true
+		if err := json.Unmarshal(wire.Value, &f.Value); err != nil {
+			return fmt.Errorf("value: %w", err)
+		}
+	}
+	if wire.Values != nil {
+		f.valuesSet = true
+		if err := json.Unmarshal(wire.Values, &f.Values); err != nil {
+			return fmt.Errorf("values: %w", err)
+		}
+	}
+	return nil
+}
+
+func (f MetricFilter) hasValue() bool  { return f.valueSet || f.Value != nil }
+func (f MetricFilter) hasValues() bool { return f.valuesSet || f.Values != nil }
+
+// MarshalJSON preserves explicit null fields. Presence changes validation, so
+// it must also change request hashes and external authorization input.
+func (f MetricFilter) MarshalJSON() ([]byte, error) {
+	wire := map[string]any{
+		"metric": f.Metric,
+		"op":     f.Op,
+	}
+	if f.hasValue() {
+		wire["value"] = f.Value
+	}
+	if f.hasValues() {
+		wire["values"] = f.Values
+	}
+	return json.Marshal(wire)
 }
 
 // OrderByClause orders by one requested output field. Field is a certified
@@ -91,6 +159,77 @@ type orderSpec struct {
 	Direction string
 }
 
+// metricFilterSpec is a validated filter paired with its requested metric.
+type metricFilterSpec struct {
+	Filter MetricFilter
+	Metric *CompiledMetric
+}
+
+func resolveMetricFilters(filters []MetricFilter, metrics []*CompiledMetric) ([]metricFilterSpec, error) {
+	requested := make(map[string]*CompiledMetric, len(metrics))
+	for _, metric := range metrics {
+		requested[metric.Name] = metric
+	}
+
+	out := make([]metricFilterSpec, 0, len(filters))
+	for i, filter := range filters {
+		metric, ok := requested[filter.Metric]
+		if !ok {
+			return nil, fmt.Errorf("metricFilters[%d].metric %q must reference a requested certified metric", i, filter.Metric)
+		}
+
+		switch filter.Op {
+		case "=", "!=", "<", "<=", ">", ">=":
+			if !filter.hasValue() || filter.Value == nil {
+				return nil, fmt.Errorf("metricFilters[%d] on %q: %s requires a non-null value", i, filter.Metric, filter.Op)
+			}
+			if filter.hasValues() {
+				return nil, fmt.Errorf("metricFilters[%d] on %q: %s does not accept values", i, filter.Metric, filter.Op)
+			}
+			if err := validateMetricFilterValue(filter.Value); err != nil {
+				return nil, fmt.Errorf("metricFilters[%d] on %q: %w", i, filter.Metric, err)
+			}
+		case "BETWEEN":
+			if filter.hasValue() {
+				return nil, fmt.Errorf("metricFilters[%d] on %q: BETWEEN does not accept value", i, filter.Metric)
+			}
+			if len(filter.Values) != 2 {
+				return nil, fmt.Errorf("metricFilters[%d] on %q: BETWEEN requires exactly two values", i, filter.Metric)
+			}
+			for _, value := range filter.Values {
+				if err := validateMetricFilterValue(value); err != nil {
+					return nil, fmt.Errorf("metricFilters[%d] on %q: %w", i, filter.Metric, err)
+				}
+			}
+		default:
+			return nil, fmt.Errorf("metricFilters[%d] on %q: unsupported operator %q", i, filter.Metric, filter.Op)
+		}
+		out = append(out, metricFilterSpec{Filter: filter, Metric: metric})
+	}
+	return out, nil
+}
+
+func validateMetricFilterValue(value any) error {
+	switch value := value.(type) {
+	case string, bool, int, int32, int64, time.Time:
+		return nil
+	case float32:
+		if math.IsNaN(float64(value)) || math.IsInf(float64(value), 0) {
+			return fmt.Errorf("value must be finite")
+		}
+		return nil
+	case float64:
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return fmt.Errorf("value must be finite")
+		}
+		return nil
+	case nil:
+		return fmt.Errorf("value must not be null")
+	default:
+		return fmt.Errorf("unsupported value type %T", value)
+	}
+}
+
 // Build compiles a semantic request into one SQL statement. It is a pure
 // function of (model, dialect, request, identity): no I/O, no randomness,
 // map iteration only through order slices.
@@ -110,6 +249,10 @@ func Build(cm *CompiledModel, d emitter.Dialect, req Request, id governance.Iden
 			return nil, fmt.Errorf("unknown metric %q; available: %s", name, strings.Join(cm.MetricOrder, ", "))
 		}
 		metrics = append(metrics, m)
+	}
+	metricFilters, err := resolveMetricFilters(req.MetricFilters, metrics)
+	if err != nil {
+		return nil, err
 	}
 
 	// Resolve dimensions.
@@ -249,13 +392,13 @@ func Build(cm *CompiledModel, d emitter.Dialect, req Request, id governance.Iden
 
 	var sql string
 	if len(split) == 0 {
-		sql, err = b.flatQuery(baseRequired, inline, req.Filters, true)
+		sql, err = b.flatQuery(baseRequired, inline, req.Filters, metricFilters, true)
 		if err != nil {
 			return nil, err
 		}
 		sql = finishQuery(sql, len(dims), order, req.Limit)
 	} else {
-		sql, err = b.compositeQuery(baseRequired, inline, split[0], split[1:], req.Filters)
+		sql, err = b.compositeQuery(baseRequired, inline, split[0], split[1:], req.Filters, metricFilters)
 		if err != nil {
 			return nil, err
 		}

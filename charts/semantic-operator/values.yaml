@@ -148,6 +148,7 @@ server:
     maxRowLimit: ~
     maxMetrics: ~       # [25]
     maxDimensions: ~    # [25]
+    # Combined maximum for row filters and post-aggregation metric filters.
     maxFilters: ~       # [50]
     maxFilterValues: ~  # [1000] values in one IN list
     # Encoded result ceiling in bytes. Catches results that are small in rows

@@ -38,8 +38,9 @@ type Limits struct {
 	// MaxRowLimit is the largest limit a caller may ask for.
 	MaxRowLimit int
 
-	MaxMetrics      int
-	MaxDimensions   int
+	MaxMetrics    int
+	MaxDimensions int
+	// MaxFilters bounds row filters and metric filters together.
 	MaxFilters      int
 	MaxFilterValues int
 
@@ -151,8 +152,8 @@ func (l Limits) apply(req planner.Request) (planner.Request, error) {
 	if n := len(req.Dimensions); n > l.MaxDimensions {
 		return req, fmt.Errorf("%w: %d dimensions requested, the maximum is %d", ErrRequestTooLarge, n, l.MaxDimensions)
 	}
-	if n := len(req.Filters); n > l.MaxFilters {
-		return req, fmt.Errorf("%w: %d filters requested, the maximum is %d", ErrRequestTooLarge, n, l.MaxFilters)
+	if n := len(req.Filters) + len(req.MetricFilters); n > l.MaxFilters {
+		return req, fmt.Errorf("%w: %d row and metric filters requested in total, the maximum is %d", ErrRequestTooLarge, n, l.MaxFilters)
 	}
 	for _, f := range req.Filters {
 		if n := len(f.Values); n > l.MaxFilterValues {

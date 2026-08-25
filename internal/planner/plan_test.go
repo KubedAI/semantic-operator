@@ -1,6 +1,7 @@
 package planner
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -171,6 +172,9 @@ func TestDeterminism(t *testing.T) {
 		Metrics:    []string{"total_sales", "customer_lifetime_value", "store_productivity"},
 		Dimensions: []string{"item.i_category", "date_dim.d_year"},
 		Filters:    []Filter{{Field: "store.s_state", Op: "IN", Values: []any{"TX", "CA"}}},
+		MetricFilters: []MetricFilter{
+			{Metric: "store_productivity", Op: ">", Value: 10},
+		},
 		OrderBy: []OrderByClause{
 			{Field: "store_productivity", Direction: "desc"},
 			{Field: "item.i_category", Direction: "asc"},
@@ -590,5 +594,199 @@ func TestSpecVersionChangesWithSpec(t *testing.T) {
 	s2.Ossie.Metrics[0].Description = "changed"
 	if SpecVersion(s1) == SpecVersion(s2) {
 		t.Fatal("changed spec must change version")
+	}
+}
+
+func TestMetricFilterOperators(t *testing.T) {
+	cm := compiled(t)
+	cases := []struct {
+		name   string
+		filter MetricFilter
+		want   string
+	}{
+		{"equal", MetricFilter{Metric: "total_sales", Op: "=", Value: 100}, "HAVING (SUM(`store_sales`.`ss_ext_sales_price`) = 100)"},
+		{"not equal", MetricFilter{Metric: "total_sales", Op: "!=", Value: 100}, "HAVING (SUM(`store_sales`.`ss_ext_sales_price`) != 100)"},
+		{"less", MetricFilter{Metric: "total_sales", Op: "<", Value: 100}, "HAVING (SUM(`store_sales`.`ss_ext_sales_price`) < 100)"},
+		{"less or equal", MetricFilter{Metric: "total_sales", Op: "<=", Value: 100}, "HAVING (SUM(`store_sales`.`ss_ext_sales_price`) <= 100)"},
+		{"greater", MetricFilter{Metric: "total_sales", Op: ">", Value: 100}, "HAVING (SUM(`store_sales`.`ss_ext_sales_price`) > 100)"},
+		{"greater or equal", MetricFilter{Metric: "total_sales", Op: ">=", Value: 100}, "HAVING (SUM(`store_sales`.`ss_ext_sales_price`) >= 100)"},
+		{"between", MetricFilter{Metric: "total_sales", Op: "BETWEEN", Values: []any{100, 200}}, "HAVING (SUM(`store_sales`.`ss_ext_sales_price`) BETWEEN 100 AND 200)"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			plan, err := Build(cm, testDialect(t), Request{
+				Metrics:       []string{"total_sales"},
+				MetricFilters: []MetricFilter{tc.filter},
+			}, governance.Single("admin"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(plan.SQL, tc.want) {
+				t.Fatalf("missing %q in:\n%s", tc.want, plan.SQL)
+			}
+		})
+	}
+}
+
+func TestMetricFiltersUseHavingBeforeOrderAndLimit(t *testing.T) {
+	cm := compiled(t)
+	plan, err := Build(cm, testDialect(t), Request{
+		Metrics:    []string{"total_sales", "total_profit"},
+		Dimensions: []string{"item.i_category"},
+		MetricFilters: []MetricFilter{
+			{Metric: "total_sales", Op: ">", Value: 1000},
+			{Metric: "total_profit", Op: "BETWEEN", Values: []any{10, 50}},
+		},
+		OrderBy: []OrderByClause{{Field: "total_sales", Direction: "desc"}},
+		Limit:   5,
+	}, governance.Single("admin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "HAVING (SUM(`store_sales`.`ss_ext_sales_price`) > 1000)\n" +
+		"   AND (SUM(`store_sales`.`ss_net_profit`) BETWEEN 10 AND 50)\n" +
+		"ORDER BY 2 DESC\nLIMIT 5"
+	if !strings.Contains(plan.SQL, want) {
+		t.Fatalf("metric filters must be ANDed before ordering and limiting:\n%s", plan.SQL)
+	}
+}
+
+func TestInlineRatioMetricFilterUsesExpandedExpression(t *testing.T) {
+	cm := compiled(t)
+	plan, err := Build(cm, testDialect(t), Request{
+		Metrics:       []string{"customer_lifetime_value"},
+		Dimensions:    []string{"date_dim.d_year"},
+		MetricFilters: []MetricFilter{{Metric: "customer_lifetime_value", Op: ">", Value: 500}},
+	}, governance.Single("admin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "HAVING (SUM(`store_sales`.`ss_ext_sales_price`) / NULLIF(COUNT(DISTINCT `customer`.`c_customer_sk`), 0) > 500)"
+	if !strings.Contains(plan.SQL, want) {
+		t.Fatalf("inline ratio filter did not use the expanded expression:\n%s", plan.SQL)
+	}
+	if strings.Contains(plan.SQL, "HAVING `customer_lifetime_value`") {
+		t.Fatalf("HAVING must not use a SELECT alias:\n%s", plan.SQL)
+	}
+}
+
+func TestCompositeMetricFiltersUseFinalValues(t *testing.T) {
+	cm := compiled(t)
+	plan, err := Build(cm, testDialect(t), Request{
+		Metrics:    []string{"total_sales", "store_productivity"},
+		Dimensions: []string{"item.i_category"},
+		MetricFilters: []MetricFilter{
+			{Metric: "store_productivity", Op: ">", Value: 2},
+			{Metric: "total_sales", Op: "BETWEEN", Values: []any{100, 1000}},
+		},
+		OrderBy: []OrderByClause{{Field: "store_productivity", Direction: "desc"}},
+		Limit:   10,
+	}, governance.Single("admin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(plan.SQL, "HAVING") {
+		t.Fatalf("composite filters must not be pushed into aggregate CTEs:\n%s", plan.SQL)
+	}
+	want := "WHERE ((`m_store_productivity_num`.`val` / NULLIF(`m_store_productivity_den`.`val`, 0)) > 2)\n" +
+		"  AND (`base`.`m_total_sales` BETWEEN 100 AND 1000)\n" +
+		"ORDER BY 3 DESC\nLIMIT 10"
+	if !strings.Contains(plan.SQL, want) {
+		t.Fatalf("composite filters must use final metric values before order and limit:\n%s", plan.SQL)
+	}
+}
+
+func TestMetricFilterValidation(t *testing.T) {
+	base := Request{Metrics: []string{"total_sales"}}
+	cases := []struct {
+		name   string
+		filter MetricFilter
+		want   string
+	}{
+		{"unrequested metric", MetricFilter{Metric: "total_profit", Op: ">", Value: 1}, "requested certified metric"},
+		{"raw expression", MetricFilter{Metric: "SUM(total_sales)", Op: ">", Value: 1}, "requested certified metric"},
+		{"unsupported operator", MetricFilter{Metric: "total_sales", Op: "LIKE", Value: 1}, "unsupported operator"},
+		{"case sensitive operator", MetricFilter{Metric: "total_sales", Op: "between", Values: []any{1, 2}}, "unsupported operator"},
+		{"missing scalar value", MetricFilter{Metric: "total_sales", Op: ">"}, "non-null value"},
+		{"null scalar value", MetricFilter{Metric: "total_sales", Op: ">", Value: nil}, "non-null value"},
+		{"scalar with values", MetricFilter{Metric: "total_sales", Op: ">", Value: 1, Values: []any{2}}, "does not accept values"},
+		{"between with value", MetricFilter{Metric: "total_sales", Op: "BETWEEN", Value: 1, Values: []any{2, 3}}, "does not accept value"},
+		{"between wrong count", MetricFilter{Metric: "total_sales", Op: "BETWEEN", Values: []any{1}}, "exactly two values"},
+		{"between null", MetricFilter{Metric: "total_sales", Op: "BETWEEN", Values: []any{nil, 2}}, "must not be null"},
+		{"object value", MetricFilter{Metric: "total_sales", Op: ">", Value: map[string]any{"sql": "1"}}, "unsupported value type"},
+		{"array value", MetricFilter{Metric: "total_sales", Op: ">", Value: []any{1}}, "unsupported value type"},
+	}
+	cm := compiled(t)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := base
+			req.MetricFilters = []MetricFilter{tc.filter}
+			_, err := Build(cm, testDialect(t), req, governance.Single("admin"))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestMetricFilterJSONIsStrict(t *testing.T) {
+	cm := compiled(t)
+	var req Request
+	if err := json.Unmarshal([]byte(`{"metrics":["total_sales"],"metricFilters":[{"metric":"total_sales","op":"BETWEEN","value":null,"values":[1,2]}]}`), &req); err != nil {
+		t.Fatal(err)
+	}
+	valid := Request{
+		Metrics:       []string{"total_sales"},
+		MetricFilters: []MetricFilter{{Metric: "total_sales", Op: "BETWEEN", Values: []any{float64(1), float64(2)}}},
+	}
+	if RequestHash(req, "admin") == RequestHash(valid, "admin") {
+		t.Fatal("presence-sensitive invalid request must not share a cache key with a valid request")
+	}
+	encoded, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"value":null`) {
+		t.Fatalf("explicit null field was lost during serialization: %s", encoded)
+	}
+	_, err = Build(cm, testDialect(t), req, governance.Single("admin"))
+	if err == nil || !strings.Contains(err.Error(), "does not accept value") {
+		t.Fatalf("explicit null value must not be treated as omitted, got %v", err)
+	}
+
+	err = json.Unmarshal([]byte(`{"metrics":["total_sales"],"metricFilters":[{"metric":"total_sales","op":">","value":1,"expression":"SUM(x)"}]}`), &req)
+	if err == nil || !strings.Contains(err.Error(), "expression") {
+		t.Fatalf("unknown nested property must be rejected, got %v", err)
+	}
+}
+
+func TestMetricFilterUnauthorizedMetricFailsGovernance(t *testing.T) {
+	cm := compiled(t)
+	cm.Governance.Roles[0].AllowMetrics = []string{"total_sales"}
+	_, err := Build(cm, testDialect(t), Request{
+		Metrics:       []string{"total_profit"},
+		MetricFilters: []MetricFilter{{Metric: "total_profit", Op: ">", Value: 0}},
+	}, governance.Single("analyst"))
+	if !errors.Is(err, governance.ErrUnauthorized) {
+		t.Fatalf("expected ErrUnauthorized, got %v", err)
+	}
+}
+
+func TestMetricFiltersChangeRequestHash(t *testing.T) {
+	base := Request{Metrics: []string{"total_sales"}}
+	baseHash := RequestHash(base, "analyst")
+	filtered := base
+	filtered.MetricFilters = []MetricFilter{{Metric: "total_sales", Op: ">", Value: 100}}
+	filteredHash := RequestHash(filtered, "analyst")
+	if filteredHash == baseHash {
+		t.Fatal("metric filters must change the request hash")
+	}
+	filtered.MetricFilters[0].Value = 101
+	if RequestHash(filtered, "analyst") == filteredHash {
+		t.Fatal("metric filter values must change the request hash")
+	}
+	filtered.MetricFilters[0].Op = ">="
+	if RequestHash(filtered, "analyst") == filteredHash {
+		t.Fatal("metric filter operators must change the request hash")
 	}
 }

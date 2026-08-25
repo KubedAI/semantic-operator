@@ -91,14 +91,17 @@ func TestOversizedBodyIsRejected(t *testing.T) {
 // rather than through the handler, because driving the full query path would
 // require a wired cache, tracer, and engine to prove a point about decoding.
 func TestWellFormedBodyPassesDecoding(t *testing.T) {
-	body := `{"metrics":["revenue"],"dimensions":["store.s_state"],"filters":[{"field":"store.s_state","op":"=","value":"NY"}],"timeGrain":"month","orderBy":[{"field":"revenue","direction":"desc"},{"field":"store.s_state","direction":"asc"}],"limit":10}`
+	body := `{"metrics":["revenue"],"dimensions":["store.s_state"],"filters":[{"field":"store.s_state","op":"=","value":"NY"}],"metricFilters":[{"metric":"revenue","op":"BETWEEN","values":[100,1000]}],"timeGrain":"month","orderBy":[{"field":"revenue","direction":"desc"},{"field":"store.s_state","direction":"asc"}],"limit":10}`
 	r := httptest.NewRequest(http.MethodPost, "/v1/models/retail/query", strings.NewReader(body))
 	var req planner.Request
 	if err := decodeJSON(httptest.NewRecorder(), r, 1<<20, &req); err != nil {
 		t.Fatalf("valid body was rejected: %v", err)
 	}
-	if len(req.Metrics) != 1 || req.Limit != 10 || len(req.Filters) != 1 || len(req.OrderBy) != 2 {
+	if len(req.Metrics) != 1 || req.Limit != 10 || len(req.Filters) != 1 || len(req.MetricFilters) != 1 || len(req.OrderBy) != 2 {
 		t.Fatalf("body decoded incorrectly: %+v", req)
+	}
+	if req.MetricFilters[0].Metric != "revenue" || req.MetricFilters[0].Op != "BETWEEN" || len(req.MetricFilters[0].Values) != 2 {
+		t.Fatalf("metricFilters decoded incorrectly: %+v", req.MetricFilters)
 	}
 	if req.OrderBy[0].Field != "revenue" || req.OrderBy[0].Direction != "desc" {
 		t.Fatalf("orderBy decoded incorrectly: %+v", req.OrderBy)
@@ -120,5 +123,15 @@ func TestExternalAuthorizationUnavailableIsServiceUnavailable(t *testing.T) {
 	writeErr(w, authorization.ErrUnavailable)
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503; body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUnknownMetricFilterPropertyIsRejected(t *testing.T) {
+	body := `{"metrics":["revenue"],"metricFilters":[{"metric":"revenue","op":">","value":100,"expression":"SUM(amount)"}]}`
+	r := httptest.NewRequest(http.MethodPost, "/v1/models/retail/query", strings.NewReader(body))
+	var req planner.Request
+	err := decodeJSON(httptest.NewRecorder(), r, 1<<20, &req)
+	if err == nil || !strings.Contains(err.Error(), "expression") {
+		t.Fatalf("expected unknown nested property error, got %v", err)
 	}
 }

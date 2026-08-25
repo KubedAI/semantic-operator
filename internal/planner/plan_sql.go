@@ -159,6 +159,33 @@ func (b *builder) renderInlineMetric(m *CompiledMetric) (string, error) {
 	return num + " / NULLIF(" + den + ", 0)", nil
 }
 
+// renderMetricFilter renders a validated comparison against an aggregate
+// expression or a final composite metric expression. Request values only pass
+// through the dialect literal renderer.
+func (b *builder) renderMetricFilter(spec metricFilterSpec, lhs string) (string, error) {
+	filter := spec.Filter
+	switch filter.Op {
+	case "=", "!=", "<", "<=", ">", ">=":
+		value, err := b.d.Literal(filter.Value)
+		if err != nil {
+			return "", fmt.Errorf("metric filter on %q: %w", filter.Metric, err)
+		}
+		return "(" + lhs + " " + filter.Op + " " + value + ")", nil
+	case "BETWEEN":
+		low, err := b.d.Literal(filter.Values[0])
+		if err != nil {
+			return "", fmt.Errorf("metric filter on %q: %w", filter.Metric, err)
+		}
+		high, err := b.d.Literal(filter.Values[1])
+		if err != nil {
+			return "", fmt.Errorf("metric filter on %q: %w", filter.Metric, err)
+		}
+		return "(" + lhs + " BETWEEN " + low + " AND " + high + ")", nil
+	default:
+		return "", fmt.Errorf("internal: unvalidated metric filter operator %q", filter.Op)
+	}
+}
+
 func (b *builder) renderFilter(f Filter) (string, error) {
 	ref, _, err := resolveFieldRef(b.cm, f.Field)
 	if err != nil {
@@ -270,7 +297,7 @@ type selectItem struct {
 
 // flatQuery renders a single-pass SELECT: dims + inline metric aggregates
 // over one join tree, grouped by the dimension ordinals.
-func (b *builder) flatQuery(required map[string]bool, metrics []*CompiledMetric, filters []Filter, publicAliases bool) (string, error) {
+func (b *builder) flatQuery(required map[string]bool, metrics []*CompiledMetric, filters []Filter, metricFilters []metricFilterSpec, publicAliases bool) (string, error) {
 	var items []selectItem
 	for i, dm := range b.dims {
 		e, err := b.renderDim(dm)
@@ -303,7 +330,24 @@ func (b *builder) flatQuery(required map[string]bool, metrics []*CompiledMetric,
 	if err != nil {
 		return "", err
 	}
-	return renderSelect(b.d, items, from, where, len(b.dims)), nil
+	sql := renderSelect(b.d, items, from, where, len(b.dims))
+	if len(metricFilters) == 0 {
+		return sql, nil
+	}
+
+	having := make([]string, 0, len(metricFilters))
+	for _, filter := range metricFilters {
+		lhs, err := b.renderInlineMetric(filter.Metric)
+		if err != nil {
+			return "", err
+		}
+		predicate, err := b.renderMetricFilter(filter, lhs)
+		if err != nil {
+			return "", err
+		}
+		having = append(having, predicate)
+	}
+	return sql + "\nHAVING " + strings.Join(having, "\n   AND "), nil
 }
 
 // sideQuery renders one side of a split ratio metric as a subquery with
@@ -407,7 +451,7 @@ func (b *builder) sideQuery(t expr.AggTerm, filters []Filter) (string, error) {
 
 // compositeQuery combines a base single-pass query with one or more split
 // ratio metrics via CTEs joined null-safe on the dimension columns.
-func (b *builder) compositeQuery(baseRequired map[string]bool, inline []*CompiledMetric, firstSplit *CompiledMetric, restSplit []*CompiledMetric, filters []Filter) (string, error) {
+func (b *builder) compositeQuery(baseRequired map[string]bool, inline []*CompiledMetric, firstSplit *CompiledMetric, restSplit []*CompiledMetric, filters []Filter, metricFilters []metricFilterSpec) (string, error) {
 	splits := append([]*CompiledMetric{firstSplit}, restSplit...)
 
 	type cte struct{ name, sql string }
@@ -415,7 +459,7 @@ func (b *builder) compositeQuery(baseRequired map[string]bool, inline []*Compile
 	hasBase := len(inline) > 0
 	if hasBase {
 		// Base still needs its own join tree even with only dims + filters.
-		sql, err := b.flatQuery(baseRequired, inline, filters, false)
+		sql, err := b.flatQuery(baseRequired, inline, filters, nil, false)
 		if err != nil {
 			return "", err
 		}
@@ -474,6 +518,25 @@ func (b *builder) compositeQuery(baseRequired map[string]bool, inline []*Compile
 			))
 		}
 		sb.WriteString("\nINNER JOIN " + b.d.QuoteIdent(c.name) + " ON " + strings.Join(conds, " AND "))
+	}
+	if len(metricFilters) > 0 {
+		predicates := make([]string, 0, len(metricFilters))
+		for _, filter := range metricFilters {
+			var lhs string
+			if hasBase && containsMetric(inline, filter.Metric.Name) {
+				lhs = b.d.QuoteIdent("base") + "." + b.d.QuoteIdent("m_"+filter.Metric.Name)
+			} else {
+				num := b.d.QuoteIdent("m_"+filter.Metric.Name+"_num") + "." + b.d.QuoteIdent("val")
+				den := b.d.QuoteIdent("m_"+filter.Metric.Name+"_den") + "." + b.d.QuoteIdent("val")
+				lhs = "(" + num + " / NULLIF(" + den + ", 0))"
+			}
+			predicate, err := b.renderMetricFilter(filter, lhs)
+			if err != nil {
+				return "", err
+			}
+			predicates = append(predicates, predicate)
+		}
+		sb.WriteString("\nWHERE " + strings.Join(predicates, "\n  AND "))
 	}
 	return sb.String(), nil
 }

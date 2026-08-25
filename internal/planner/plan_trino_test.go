@@ -112,3 +112,47 @@ func TestTrinoOrderByMetricAndDimension(t *testing.T) {
 		t.Fatalf("unexpected Trino ordering:\n%s", plan.SQL)
 	}
 }
+
+func TestTrinoMetricFilterUsesExpandedHavingExpression(t *testing.T) {
+	cm := compiled(t)
+	plan, err := Build(cm, trinoDialect(t), Request{
+		Metrics:       []string{"total_sales"},
+		Dimensions:    []string{"item.i_category"},
+		MetricFilters: []MetricFilter{{Metric: "total_sales", Op: ">", Value: 1000}},
+	}, governance.Single("admin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(plan.SQL, "`") {
+		t.Fatalf("backtick leaked into Trino SQL:\n%s", plan.SQL)
+	}
+	want := `HAVING (SUM("store_sales"."ss_ext_sales_price") > 1000)`
+	if !strings.Contains(plan.SQL, want) {
+		t.Fatalf("missing expanded Trino HAVING predicate %q in:\n%s", want, plan.SQL)
+	}
+	if strings.Contains(plan.SQL, `HAVING "total_sales"`) {
+		t.Fatalf("Trino HAVING cannot reference a SELECT alias:\n%s", plan.SQL)
+	}
+}
+
+func TestTrinoCompositeMetricFilterUsesFinalCTEValues(t *testing.T) {
+	cm := compiled(t)
+	plan, err := Build(cm, trinoDialect(t), Request{
+		Metrics:       []string{"store_productivity"},
+		Dimensions:    []string{"item.i_category"},
+		MetricFilters: []MetricFilter{{Metric: "store_productivity", Op: "BETWEEN", Values: []any{1.5, 3.5}}},
+		OrderBy:       []OrderByClause{{Field: "store_productivity", Direction: "desc"}},
+		Limit:         4,
+	}, governance.Single("admin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(plan.SQL, "`") {
+		t.Fatalf("backtick leaked into Trino SQL:\n%s", plan.SQL)
+	}
+	want := `WHERE (("m_store_productivity_num"."val" / NULLIF("m_store_productivity_den"."val", 0)) BETWEEN 1.5 AND 3.5)` +
+		"\nORDER BY 2 DESC\nLIMIT 4"
+	if !strings.Contains(plan.SQL, want) {
+		t.Fatalf("missing final Trino composite predicate:\n%s", plan.SQL)
+	}
+}

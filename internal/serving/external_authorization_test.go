@@ -83,7 +83,11 @@ func TestExternalAllowPreservesBuiltInGovernanceAndFingerprint(t *testing.T) {
 	allow := &stubAuthorizer{decision: authorization.Decision{Allow: true, Revision: "bundle-8"}}
 	svc := &Service{Dialect: starrocks.Dialect{}, Authorization: allow}
 
-	plan, cached, err := svc.Plan(context.Background(), "test", model, planner.Request{Metrics: []string{"revenue"}}, governance.Single("analyst"))
+	request := planner.Request{
+		Metrics:       []string{"revenue"},
+		MetricFilters: []planner.MetricFilter{{Metric: "revenue", Op: ">", Value: 100}},
+	}
+	plan, cached, err := svc.Plan(context.Background(), "test", model, request, governance.Single("analyst"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,6 +99,9 @@ func TestExternalAllowPreservesBuiltInGovernanceAndFingerprint(t *testing.T) {
 	}
 	if allow.input.Environment.Adapter != "test" || allow.input.Environment.AccessTimeUnixMilli <= 0 {
 		t.Fatalf("provider did not receive trusted request environment: %+v", allow.input.Environment)
+	}
+	if len(allow.input.Request.MetricFilters) != 1 || allow.input.Request.MetricFilters[0].Metric != "revenue" {
+		t.Fatalf("provider did not receive metric filters: %+v", allow.input.Request)
 	}
 
 	// OPA is additive. It cannot grant a metric that the built-in role denies.

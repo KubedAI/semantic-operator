@@ -45,6 +45,9 @@ spec:
             expression:
               dialects: [{ dialect: ANSI_SQL, expression: s_store_name }]
             dimension: {}
+          - name: s_number_employees
+            expression:
+              dialects: [{ dialect: ANSI_SQL, expression: s_number_employees }]
       - name: customer
         source: customer
         primary_key: [c_customer_sk]
@@ -71,6 +74,11 @@ spec:
       - name: total_sales
         expression:
           dialects: [{ dialect: ANSI_SQL, expression: SUM(store_sales.ss_ext_sales_price) }]
+      - name: store_productivity
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: SUM(store_sales.ss_ext_sales_price) / NULLIF(SUM(store.s_number_employees), 0)
   governance:
     defaultRole: analyst
     roles:
